@@ -274,7 +274,7 @@ describe("services/step-up-password.service (db integration)", () => {
             ).rejects.toThrow("Invalid session");
         });
 
-        it("FINDING: a missing user throws 'User not found' but does NOT revoke the session (req 11)", async () => {
+        it("revokes the session when the user is missing (req 11)", async () => {
             const { issued, challengeId } = await setupStepUp({ createUserDoc: false });
 
             await expect(
@@ -285,11 +285,38 @@ describe("services/step-up-password.service (db integration)", () => {
                 })
             ).rejects.toThrow("User not found");
 
-            // Unlike the challenge-validation failures, the user-missing branch
-            // leaves the session pending (no defensive revoke).
             const session = await findSessionById(issued.sessionId);
-            expect(session?.state).toBe("step_up_pending");
-            expect(session?.revokedAt).toBeNull();
+            expect(session?.revokedAt).toBeInstanceOf(Date);
+        });
+
+        it("revokes the session when the account is inactive (req 11b)", async () => {
+            const { issued, challengeId } = await setupStepUp({ status: "banned" });
+
+            await expect(
+                completePasswordStepUpChallenge({
+                    challengeId,
+                    password: PASSWORD,
+                    refreshToken: issued.refreshToken,
+                })
+            ).rejects.toThrow("Account is not active");
+
+            const session = await findSessionById(issued.sessionId);
+            expect(session?.revokedAt).toBeInstanceOf(Date);
+        });
+
+        it("revokes the session when password auth is unavailable (req 11c)", async () => {
+            const { issued, challengeId } = await setupStepUp({ plainPassword: null });
+
+            await expect(
+                completePasswordStepUpChallenge({
+                    challengeId,
+                    password: PASSWORD,
+                    refreshToken: issued.refreshToken,
+                })
+            ).rejects.toThrow("Password authentication not available for this account");
+
+            const session = await findSessionById(issued.sessionId);
+            expect(session?.revokedAt).toBeInstanceOf(Date);
         });
     });
 

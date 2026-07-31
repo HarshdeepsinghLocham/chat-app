@@ -15,6 +15,12 @@ minimumReleaseAgeExclude:
   - brace-expansion@2.1.4
   - brace-expansion@5.0.8
 
+# npm advisory range is still <=5.0.7 / >=5.0.8, so it falsely flags
+# patched 1.1.18 / 2.1.4 backports (GHSA-mh99-v99m-4gvg).
+auditConfig:
+  ignoreGhsas:
+    - GHSA-mh99-v99m-4gvg
+
 overrides:
   react: "19.1.0"
   react-dom: "19.1.0"

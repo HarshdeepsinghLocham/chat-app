@@ -61,15 +61,20 @@ export async function completePasswordStepUpChallenge({
             tokenVersion?: number;
         } | null>();
 
+    // Non-retryable user-state failures: revoke the pending session.
+    // Only an incorrect password (below) keeps the session alive for retry.
     if (!user) {
+        await revokeSession(payload.sessionId);
         throw new Error("User not found");
     }
 
     if (user.status && user.status !== "active") {
+        await revokeSession(payload.sessionId);
         throw new Error("Account is not active");
     }
 
     if (!user.password) {
+        await revokeSession(payload.sessionId);
         throw new Error("Password authentication not available for this account");
     }
 

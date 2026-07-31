@@ -10,21 +10,33 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 
+minimumReleaseAgeExclude:
+  - brace-expansion@1.1.18
+  - brace-expansion@2.1.4
+  - brace-expansion@5.0.8
+
+# npm advisory range is still <=5.0.7 / >=5.0.8, so it falsely flags
+# patched 1.1.18 / 2.1.4 backports (GHSA-mh99-v99m-4gvg).
+auditConfig:
+  ignoreGhsas:
+    - GHSA-mh99-v99m-4gvg
+
 overrides:
   react: "19.1.0"
   react-dom: "19.1.0"
   next: "15.5.21"
   prettier: "^3.6.2"
   shell-quote: "^1.9.0"
-  postcss: "^8.5.10"
+  postcss: "^8.5.18"
   esbuild: "^0.28.1"
   jest-mock: "30.4.1"
   tar: "^7.5.19"
   sharp: "^0.35.0"
   axios: "^1.18.0"
-  "brace-expansion@<1.1.16": "1.1.16"
-  "brace-expansion@>=2.0.0 <2.1.2": "2.1.2"
-  "brace-expansion@>=3.0.0 <5.0.7": "5.0.7"
+  # GHSA-mh99-v99m-4gvg — keep each major on its patched line for minimatch compat.
+  "brace-expansion@<1.1.18": "1.1.18"
+  "brace-expansion@>=2.0.0 <2.1.4": "2.1.4"
+  "brace-expansion@>=3.0.0 <5.0.8": "5.0.8"
   "js-yaml@>=3 <3.15.0": "3.15.0"
   "js-yaml@>=4 <4.3.0": "4.3.0"
   "ws@>=6.0.0 <6.2.4": "^6.2.4"

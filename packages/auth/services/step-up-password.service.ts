@@ -41,6 +41,11 @@ export async function completePasswordStepUpChallenge({
         throw new Error("Challenge session mismatch");
     }
 
+    if (challenge.verificationMethod !== "password") {
+        await revokeSession(payload.sessionId);
+        throw new Error("Challenge verification method mismatch");
+    }
+
     // Expiry before status: getChallengeById may already have flipped status to
     // "expired", but expiresAt stays in the past so this branch stays reachable.
     if (challenge.expiresAt.getTime() <= Date.now()) {

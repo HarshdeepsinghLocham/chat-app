@@ -73,6 +73,7 @@ async function setupOtp(opts: {
     const challenge = await createPendingPasswordChallenge({
         userId: opts.challengeUserId ?? userId,
         sessionId: opts.challengeSessionId ?? issued.sessionId,
+        verificationMethod: "otp",
     });
 
     return { userId, email, issued, challengeId: challenge._id.toString() };
@@ -103,7 +104,7 @@ describe("services/step-up-otp.service (db integration)", () => {
             expect(result.expiresAt).toBeInstanceOf(Date);
         });
 
-        it("persists only a bcrypt OTP hash (never the plaintext) and switches method to otp", async () => {
+        it("persists only a bcrypt OTP hash (never the plaintext)", async () => {
             const { issued, challengeId } = await setupOtp();
 
             const { otp } = await requestOtpStepUpChallenge({
@@ -243,6 +244,7 @@ describe("services/step-up-otp.service (db integration)", () => {
             const challenge = await createExpiredChallenge({
                 userId: user._id.toString(),
                 sessionId: issued.sessionId,
+                verificationMethod: "otp",
             });
 
             await expect(
@@ -255,6 +257,22 @@ describe("services/step-up-otp.service (db integration)", () => {
             expect((await findSessionById(issued.sessionId))?.revokedAt).toBeInstanceOf(Date);
         });
 
+        it("rejects a password-method challenge on OTP request and revokes the session", async () => {
+            const { issued, challengeId } = await setupOtp();
+            await StepUpChallenge.findByIdAndUpdate(challengeId, {
+                verificationMethod: "password",
+            });
+
+            await expect(
+                requestOtpStepUpChallenge({
+                    challengeId,
+                    refreshToken: issued.refreshToken,
+                })
+            ).rejects.toThrow("Challenge verification method mismatch");
+
+            expect((await findSessionById(issued.sessionId))?.revokedAt).toBeInstanceOf(Date);
+        });
+
         it("rejects an already-verified challenge and revokes the session", async () => {
             const user = await createUser();
             const issued = await issueRefreshTokenForSession({
@@ -264,6 +282,7 @@ describe("services/step-up-otp.service (db integration)", () => {
             const challenge = await createVerifiedChallenge({
                 userId: user._id.toString(),
                 sessionId: issued.sessionId,
+                verificationMethod: "otp",
             });
 
             await expect(
@@ -447,6 +466,7 @@ describe("services/step-up-otp.service (db integration)", () => {
             const challenge = await createPendingPasswordChallenge({
                 userId,
                 sessionId: sessionA.sessionId,
+                verificationMethod: "otp",
             });
             const challengeId = challenge._id.toString();
 

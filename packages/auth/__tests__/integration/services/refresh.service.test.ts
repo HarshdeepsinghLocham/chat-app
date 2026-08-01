@@ -311,6 +311,41 @@ describe("services/refresh.service (db integration)", () => {
             expect(String(challenge?.sessionId)).toBe(issued.sessionId);
         });
 
+        it("ignores a stale password challenge and creates an OTP one for Google-only users (req 16c)", async () => {
+            const ctx = buildRequestContext();
+            const user = await createUser({
+                plainPassword: undefined,
+                authProviders: ["google"],
+                googleSub: `google-${objectId()}`,
+            });
+            const userId = user._id.toString();
+            const issued = await issueRefreshTokenForSession({
+                userId,
+                deviceId: storedDeviceFingerprint(ctx),
+                userAgent: ctx.userAgent,
+                ipAddress: ctx.ipAddress,
+                state: "step_up_pending",
+            });
+            const stale = await StepUpChallenge.create({
+                userId: new Types.ObjectId(userId),
+                sessionId: new Types.ObjectId(issued.sessionId),
+                status: "pending",
+                verificationMethod: "password",
+                expiresAt: new Date(Date.now() + 60_000),
+            });
+
+            const error = (await refreshService({
+                refreshToken: issued.refreshToken,
+                ...ctx,
+            }).catch((e: unknown) => e)) as AuthStepUpRequiredError;
+
+            expect(error).toBeInstanceOf(AuthStepUpRequiredError);
+            expect(error.challengeId).not.toBe(stale._id.toString());
+            const challenge = await StepUpChallenge.findById(error.challengeId);
+            expect(challenge?.verificationMethod).toBe("otp");
+            expect(challenge?.status).toBe("pending");
+        });
+
         it("does NOT delete or revoke the session during step-up (req 17)", async () => {
             const { ctx, issued } = await setupRefreshable();
 

@@ -51,6 +51,11 @@ export async function requestOtpStepUpChallenge({
         throw new Error("Challenge session mismatch");
     }
 
+    if (challenge.verificationMethod !== "otp") {
+        await revokeSession(payload.sessionId);
+        throw new Error("Challenge verification method mismatch");
+    }
+
     // Expiry before status: getChallengeById may already have flipped status to
     // "expired", but expiresAt stays in the past so this branch stays reachable.
     if (challenge.expiresAt.getTime() <= Date.now()) {
@@ -132,6 +137,11 @@ export async function completeOtpStepUpChallenge({
     if (String(challenge.sessionId) !== payload.sessionId) {
         await revokeSession(payload.sessionId);
         throw new Error("Challenge session mismatch");
+    }
+
+    if (challenge.verificationMethod !== "otp") {
+        await revokeSession(payload.sessionId);
+        throw new Error("Challenge verification method mismatch");
     }
 
     // Expiry before status: getChallengeById may already have flipped status to

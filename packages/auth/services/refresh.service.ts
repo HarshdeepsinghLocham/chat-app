@@ -77,10 +77,13 @@ export const refreshService = async ({
     });
 
     if (session.state === "step_up_pending") {
+        // Only reuse a pending challenge when its method matches the user.
+        // A stale password challenge must not trap a Google-only account.
         const existingChallenge = await StepUpChallenge.findOne({
             userId: payload.sub,
             sessionId: payload.sessionId,
             status: "pending",
+            verificationMethod: stepUpVerificationMethod,
             expiresAt: { $gt: new Date() },
         })
             .sort({ createdAt: -1 })

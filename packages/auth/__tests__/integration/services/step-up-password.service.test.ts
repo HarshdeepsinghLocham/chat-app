@@ -205,6 +205,24 @@ describe("services/step-up-password.service (db integration)", () => {
             expect(session?.revokedAt).toBeInstanceOf(Date);
         });
 
+        it("rejects an OTP-method challenge and revokes the session", async () => {
+            const { issued, challengeId } = await setupStepUp();
+            await StepUpChallenge.findByIdAndUpdate(challengeId, {
+                verificationMethod: "otp",
+            });
+
+            await expect(
+                completePasswordStepUpChallenge({
+                    challengeId,
+                    password: PASSWORD,
+                    refreshToken: issued.refreshToken,
+                })
+            ).rejects.toThrow("Challenge verification method mismatch");
+
+            const session = await findSessionById(issued.sessionId);
+            expect(session?.revokedAt).toBeInstanceOf(Date);
+        });
+
         it("rejects an expired challenge with 'Challenge expired' and revokes the session (req 8)", async () => {
             const user = await createUser({ plainPassword: PASSWORD });
             const userId = user._id.toString();

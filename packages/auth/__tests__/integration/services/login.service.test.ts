@@ -66,15 +66,19 @@ describe("services/login.service (db integration)", () => {
             expect(result.user._id.toString()).toBe(user._id.toString());
         });
 
-        it("still issues tokens when mustChangePassword is set (change-password flow)", async () => {
+        it("issues access-only authorization when mustChangePassword is set", async () => {
             const user = await createUser({ plainPassword: PASSWORD });
-            await User.findByIdAndUpdate(user._id, { mustChangePassword: true });
+            const userId = user._id.toString();
+            await User.findByIdAndUpdate(userId, { mustChangePassword: true });
 
             const result = await loginUser({ email: user.email, password: PASSWORD });
 
             expect(result.user.mustChangePassword).toBe(true);
             expect(result.accessToken).toBeTruthy();
-            expect(result.refreshToken).toBeTruthy();
+            expect(result.refreshToken).toBeUndefined();
+            // No ordinary refresh session — flagged users cannot continue normal auth.
+            expect(await countSessions(userId)).toBe(0);
+            expect(verifyAccessToken(result.accessToken).sub).toBe(userId);
         });
     });
 

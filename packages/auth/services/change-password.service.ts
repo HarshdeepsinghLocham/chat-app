@@ -106,7 +106,7 @@ export async function changePasswordService(
  * 1. Sets mustChangePassword on the user
  * 2. Invalidates all sessions/tokens
  * 3. Blocks refresh / Google OAuth until the user changes their password
- *    (password login still works so the change-password flow can run)
+ * 4. Password login issues access-only authorization for change-password
  */
 export async function forcePasswordChangeService(userId: string): Promise<{
     userId: string;
@@ -130,13 +130,40 @@ export async function forcePasswordChangeService(userId: string): Promise<{
         throw new Error("Password authentication not available for this account");
     }
 
-    await User.findByIdAndUpdate(userId, { mustChangePassword: true });
+    const mongoSession = await mongoose.startSession();
+    let invalidationResult: TokenInvalidationResult | undefined;
 
-    const result = await invalidateAllUserTokens(userId, "admin_revocation");
+    try {
+        await mongoSession.withTransaction(async () => {
+            const updatedUser = await User.findByIdAndUpdate(
+                userId,
+                { mustChangePassword: true },
+                { new: true, session: mongoSession }
+            )
+                .select("_id")
+                .lean<{ _id: { toString(): string } } | null>();
+
+            if (!updatedUser) {
+                throw new Error("User not found");
+            }
+
+            invalidationResult = await invalidateAllUserTokens(
+                userId,
+                "admin_revocation",
+                mongoSession
+            );
+        });
+    } finally {
+        await mongoSession.endSession();
+    }
+
+    if (!invalidationResult) {
+        throw new Error("Failed to force password change");
+    }
 
     return {
         userId,
         success: true,
-        tokenVersionAfter: result.newTokenVersion,
+        tokenVersionAfter: invalidationResult.newTokenVersion,
     };
 }

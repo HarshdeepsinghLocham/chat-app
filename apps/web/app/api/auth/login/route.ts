@@ -68,6 +68,8 @@ export async function POST(req: NextRequest) {
             ipAddress,
         });
 
+        const mustChangePassword = Boolean(user.mustChangePassword);
+
         await logAuthEventBestEffort({
             eventType: "login_success",
             outcome: "success",
@@ -86,14 +88,17 @@ export async function POST(req: NextRequest) {
                 role: user.role,
                 status: user.status,
                 profilePicture: user.profilePicture || null,
-                mustChangePassword: Boolean(user.mustChangePassword),
+                mustChangePassword,
             },
             accessToken,
-            refreshToken,
+            // Flagged users receive access-only authorization for password change.
+            ...(refreshToken ? { refreshToken } : {}),
         });
 
         response.headers.append("Set-Cookie", buildAccessTokenCookie(accessToken));
-        response.headers.append("Set-Cookie", buildRefreshTokenCookie(refreshToken));
+        if (refreshToken && !mustChangePassword) {
+            response.headers.append("Set-Cookie", buildRefreshTokenCookie(refreshToken));
+        }
 
         return response;
     } catch (error) {

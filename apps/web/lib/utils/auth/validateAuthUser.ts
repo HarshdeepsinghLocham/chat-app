@@ -28,6 +28,7 @@ type DbUserRecord = {
     tokenVersion?: number;
     isBanned?: boolean;
     isDeleted?: boolean;
+    mustChangePassword?: boolean;
 };
 
 export type AuthenticatedUser = {
@@ -35,11 +36,14 @@ export type AuthenticatedUser = {
     email: string;
     role: AccessRole;
     tokenVersion: number;
+    mustChangePassword: boolean;
 };
 
 export type ResolveAuthUserOptions = {
     useRedisCache?: boolean;
     cacheTtlSeconds?: number;
+    /** When true, allow users flagged mustChangePassword (change-password route only). */
+    allowPasswordChange?: boolean;
 };
 
 function normalizeRole(role: string | undefined): AccessRole {
@@ -66,6 +70,7 @@ function toCachedUserState(user: DbUserRecord): CachedUserState {
         status: user.status,
         isBanned: user.isBanned,
         isDeleted: user.isDeleted,
+        mustChangePassword: user.mustChangePassword === true,
     };
 }
 
@@ -73,7 +78,7 @@ async function loadUserStateFromDb(userId: string): Promise<CachedUserState | nu
     await connectToDatabase();
 
     const user = await User.findById(userId)
-        .select("_id email role status tokenVersion isBanned isDeleted")
+        .select("_id email role status tokenVersion isBanned isDeleted mustChangePassword")
         .lean<DbUserRecord | null>();
 
     if (!user) return null;
@@ -108,7 +113,8 @@ async function resolveUserState(
 
 function assertActiveUserState(
     user: CachedUserState,
-    expectedTokenVersion?: number
+    expectedTokenVersion?: number,
+    options: ResolveAuthUserOptions = {}
 ): AuthenticatedUser {
     if (isUserDeleted(user)) {
         throw new ForbiddenError("User account has been deleted", "AUTH_USER_DELETED");
@@ -125,11 +131,16 @@ function assertActiveUserState(
         throw new UnauthorizedError("Token has been revoked", "AUTH_TOKEN_REVOKED");
     }
 
+    if (user.mustChangePassword === true && options.allowPasswordChange !== true) {
+        throw new ForbiddenError("Password change required", "AUTH_PASSWORD_CHANGE_REQUIRED");
+    }
+
     return {
         id: user.id,
         email: user.email,
         role: normalizeRole(user.role),
         tokenVersion: user.tokenVersion,
+        mustChangePassword: user.mustChangePassword === true,
     };
 }
 
@@ -183,7 +194,7 @@ export async function validateAuthUser(
         throw new UnauthorizedError("User not found", "AUTH_USER_NOT_FOUND");
     }
 
-    return assertActiveUserState(user, payload.tokenVersion);
+    return assertActiveUserState(user, payload.tokenVersion, options);
 }
 
 type ResolveUserByIdInput = {
@@ -206,5 +217,5 @@ export async function validateAuthUserById(
         throw new UnauthorizedError("User not found", "AUTH_USER_NOT_FOUND");
     }
 
-    return assertActiveUserState(user, tokenVersion);
+    return assertActiveUserState(user, tokenVersion, options);
 }

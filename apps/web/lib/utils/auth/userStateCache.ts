@@ -8,6 +8,7 @@ export type CachedUserState = {
     status?: string;
     isBanned?: boolean;
     isDeleted?: boolean;
+    mustChangePassword?: boolean;
 };
 
 const DEFAULT_USER_STATE_CACHE_TTL_SECONDS = 45;
@@ -52,6 +53,7 @@ export async function getCachedUserState(userId: string): Promise<CachedUserStat
             status: parsed.status,
             isBanned: parsed.isBanned,
             isDeleted: parsed.isDeleted,
+            mustChangePassword: parsed.mustChangePassword === true,
         };
     } catch {
         return null;

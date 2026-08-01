@@ -177,6 +177,7 @@ describe("step-up authentication integration flow", () => {
             role: "user",
             status: "active",
             tokenVersion: 0,
+            authProviders: ["password"],
         });
 
         createChallengeMock.mockResolvedValue({
@@ -195,10 +196,15 @@ describe("step-up authentication integration flow", () => {
             challengeId: "challenge-123",
         });
 
-        expect(createChallengeMock).toHaveBeenCalledWith("user-2", "session-risky", {
-            ip: "10.0.0.10",
-            userAgent: "different-agent",
-        });
+        expect(createChallengeMock).toHaveBeenCalledWith(
+            "user-2",
+            "session-risky",
+            {
+                ip: "10.0.0.10",
+                userAgent: "different-agent",
+            },
+            "password"
+        );
         // Critical: the session must be kept alive (pending), not revoked, so the
         // challenge can be completed against the same refresh session.
         expect(markSessionStepUpPendingMock).toHaveBeenCalledWith("session-risky");
@@ -209,6 +215,7 @@ describe("step-up authentication integration flow", () => {
         getChallengeByIdMock.mockResolvedValue({
             userId: "user-3",
             sessionId: "session-3",
+            verificationMethod: "password",
             status: "pending",
             expiresAt: new Date(Date.now() + 60_000),
         });
@@ -259,6 +266,7 @@ describe("step-up authentication integration flow", () => {
         getChallengeByIdMock.mockResolvedValue({
             userId: "user-4",
             sessionId: "session-4",
+            verificationMethod: "password",
             status: "pending",
             expiresAt: new Date(Date.now() + 60_000),
         });
@@ -310,6 +318,7 @@ describe("step-up authentication integration flow", () => {
         getChallengeByIdMock.mockResolvedValue({
             userId: "user-5",
             sessionId: "session-5",
+            verificationMethod: "password",
             status: "pending",
             expiresAt: new Date(Date.now() - 1_000),
         });
@@ -331,6 +340,7 @@ describe("step-up authentication integration flow", () => {
         getChallengeByIdMock.mockResolvedValue({
             userId: "user-6",
             sessionId: "session-6",
+            verificationMethod: "password",
             status: "pending",
             expiresAt: new Date(Date.now() + 60_000),
         });
@@ -380,6 +390,7 @@ describe("step-up authentication integration flow", () => {
         getChallengeByIdMock.mockResolvedValue({
             userId: "user-7",
             sessionId: "session-7",
+            verificationMethod: "otp",
             status: "pending",
             expiresAt: new Date(Date.now() + 60_000),
             otp: undefined,
@@ -426,6 +437,7 @@ describe("step-up authentication integration flow", () => {
         getChallengeByIdMock.mockResolvedValue({
             userId: "user-8",
             sessionId: "session-8",
+            verificationMethod: "otp",
             status: "pending",
             expiresAt: new Date(Date.now() + 60_000),
             otp: { hash: "otp-hash", sentAt: new Date() },
@@ -476,6 +488,7 @@ describe("step-up authentication integration flow", () => {
         getChallengeByIdMock.mockResolvedValue({
             userId: "user-9",
             sessionId: "session-9",
+            verificationMethod: "otp",
             status: "pending",
             expiresAt: new Date(Date.now() + 60_000),
             otp: { hash: "otp-hash", sentAt: new Date() },

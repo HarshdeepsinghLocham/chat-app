@@ -6,7 +6,8 @@ export type AuthErrorCode =
     | "AUTH_USER_NOT_FOUND"
     | "AUTH_USER_BANNED"
     | "AUTH_USER_DELETED"
-    | "AUTH_TOKEN_REVOKED";
+    | "AUTH_TOKEN_REVOKED"
+    | "AUTH_PASSWORD_CHANGE_REQUIRED";
 
 export class AuthError extends Error {
     readonly statusCode: 401 | 403;
@@ -33,7 +34,7 @@ export class UnauthorizedError extends AuthError {
 export class ForbiddenError extends AuthError {
     constructor(
         message = "Forbidden",
-        code: Extract<AuthErrorCode, "AUTH_FORBIDDEN" | "AUTH_USER_BANNED" | "AUTH_USER_DELETED"> = "AUTH_FORBIDDEN"
+        code: Extract<AuthErrorCode, "AUTH_FORBIDDEN" | "AUTH_USER_BANNED" | "AUTH_USER_DELETED" | "AUTH_PASSWORD_CHANGE_REQUIRED"> = "AUTH_FORBIDDEN"
     ) {
         super(message, 403, code);
         this.name = "ForbiddenError";

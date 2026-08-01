@@ -168,66 +168,21 @@ describe("services/force-password-change.service (db integration)", () => {
         });
     });
 
-    describe("documentation verification", () => {
-        it("writes NO 'must change password' flag anywhere on the user (req 10)", async () => {
+    describe("password-change enforcement", () => {
+        it("sets mustChangePassword without altering the password hash (req 10)", async () => {
             const user = await createUser({ plainPassword: PASSWORD });
             const userId = user._id.toString();
-
-            await forcePasswordChangeService(userId);
-
-            const persisted = await readFullUser(userId);
-            expect(persisted).not.toBeNull();
-
-            // FINDING: the docstring claims step 1 "Sets a temporary flag on the
-            // user", but no such field is ever written. Assert the absence of
-            // every plausible flag name.
-            const flagCandidates = [
-                "forcePasswordChange",
-                "mustChangePassword",
-                "passwordChangeRequired",
-                "passwordResetRequired",
-                "requirePasswordChange",
-                "forcePasswordReset",
-                "passwordExpired",
-            ];
-            for (const flag of flagCandidates) {
-                expect(persisted).not.toHaveProperty(flag);
-            }
-        });
-
-        it("changes ONLY tokenVersion (and the timestamps) on the user (req 11)", async () => {
-            const user = await createUser({ plainPassword: PASSWORD, tokenVersion: 3 });
-            const userId = user._id.toString();
-
             const before = (await readFullUser(userId))!;
+
             await forcePasswordChangeService(userId);
-            const after = (await readFullUser(userId))!;
 
-            // tokenVersion is the only domain field that moved.
-            expect(before.tokenVersion).toBe(3);
-            expect(after.tokenVersion).toBe(4);
-
-            // Every other field is byte-for-byte identical (ignoring the
-            // auto-managed updatedAt that mongoose timestamps bumps on update).
-            const ignore = new Set(["tokenVersion", "updatedAt", "__v"]);
-            const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
-            for (const key of keys) {
-                if (ignore.has(key)) continue;
-                expect(JSON.stringify(after[key])).toBe(JSON.stringify(before[key]));
-            }
-
-            // The password hash specifically is untouched: this service does NOT
-            // actually change any password despite its name.
-            expect(after.password).toBe(before.password);
+            const persisted = (await readFullUser(userId))!;
+            expect(persisted.mustChangePassword).toBe(true);
+            expect(persisted.password).toBe(before.password);
         });
 
-        it("does NOT actually force a password change - it only revokes tokens (req 12)", async () => {
-            // The docstring promises the operation will "force client to prompt
-            // user for new password on next login". In reality the only durable
-            // effects are: tokenVersion++ and session deletion. There is no
-            // persisted signal a client could read to know a password change is
-            // required, so the documented behavior is not implemented.
-            const user = await createUser({ plainPassword: PASSWORD });
+        it("increments tokenVersion and clears sessions while setting the flag (req 11)", async () => {
+            const user = await createUser({ plainPassword: PASSWORD, tokenVersion: 3 });
             const userId = user._id.toString();
             await createSessionDoc({ userId });
 
@@ -235,13 +190,26 @@ describe("services/force-password-change.service (db integration)", () => {
             await forcePasswordChangeService(userId);
             const after = (await readFullUser(userId))!;
 
-            // Observable effects: tokens invalidated + sessions gone.
-            expect(after.tokenVersion).toBe((before.tokenVersion as number) + 1);
+            expect(before.tokenVersion).toBe(3);
+            expect(after.tokenVersion).toBe(4);
+            expect(after.mustChangePassword).toBe(true);
             expect(await countSessions(userId)).toBe(0);
-
-            // Password unchanged and no "change required" marker persisted, so a
-            // client cannot distinguish this from an ordinary forced logout.
             expect(after.password).toBe(before.password);
+        });
+
+        it("rejects Google-only / passwordless accounts (req 12)", async () => {
+            const user = await createUser({
+                plainPassword: undefined,
+                authProviders: ["google"],
+                googleSub: `google-${objectId()}`,
+            });
+
+            await expect(forcePasswordChangeService(user._id.toString())).rejects.toThrow(
+                "Password authentication not available for this account"
+            );
+
+            const persisted = (await readFullUser(user._id.toString()))!;
+            expect(persisted.mustChangePassword).toBe(false);
         });
     });
 });

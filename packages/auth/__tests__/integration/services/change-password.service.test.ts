@@ -19,10 +19,11 @@ function countSessions(userId: string): Promise<number> {
 }
 
 async function readUser(userId: string) {
-    return User.findById(userId).select("_id password tokenVersion").lean<{
+    return User.findById(userId).select("_id password tokenVersion mustChangePassword").lean<{
         _id: Types.ObjectId;
         password?: string;
         tokenVersion?: number;
+        mustChangePassword?: boolean;
     } | null>();
 }
 
@@ -84,6 +85,21 @@ describe("services/change-password.service (db integration)", () => {
             expect(await countSessions(userId)).toBe(0);
             const after = await readUser(userId);
             expect(after?.tokenVersion).toBe(3);
+        });
+
+        it("clears mustChangePassword when the password is changed", async () => {
+            const user = await createUser({ plainPassword: OLD_PASSWORD });
+            const userId = user._id.toString();
+            await User.findByIdAndUpdate(userId, { mustChangePassword: true });
+
+            await changePasswordService({
+                userId,
+                oldPassword: OLD_PASSWORD,
+                newPassword: NEW_PASSWORD,
+            });
+
+            const after = await readUser(userId);
+            expect(after?.mustChangePassword).toBe(false);
         });
     });
 

@@ -4,6 +4,7 @@ import { loginUser } from "../../../services/login.service.js";
 import { verifyAccessToken } from "../../../tokens/verify.js";
 import { verifySession } from "../../../session/verify-session.js";
 import { SessionModel } from "../../../repositories/sessionModel.js";
+import { User } from "../../../../db/models/User.js";
 import { useTestDb } from "../../helpers/db.js";
 import { createUser } from "../../helpers/factories/user.factory.js";
 
@@ -63,6 +64,17 @@ describe("services/login.service (db integration)", () => {
             });
 
             expect(result.user._id.toString()).toBe(user._id.toString());
+        });
+
+        it("still issues tokens when mustChangePassword is set (change-password flow)", async () => {
+            const user = await createUser({ plainPassword: PASSWORD });
+            await User.findByIdAndUpdate(user._id, { mustChangePassword: true });
+
+            const result = await loginUser({ email: user.email, password: PASSWORD });
+
+            expect(result.user.mustChangePassword).toBe(true);
+            expect(result.accessToken).toBeTruthy();
+            expect(result.refreshToken).toBeTruthy();
         });
     });
 

@@ -11,6 +11,7 @@ import {
 } from "../../../repositories/session.repo.js";
 import { SessionModel } from "../../../repositories/sessionModel.js";
 import { StepUpChallenge } from "../../../../db/models/StepUpChallenge.js";
+import { User } from "../../../../db/models/User.js";
 import { useTestDb } from "../../helpers/db.js";
 import { objectId } from "../../helpers/ids.js";
 import { createUser } from "../../helpers/factories/user.factory.js";
@@ -172,6 +173,15 @@ describe("services/refresh.service (db integration)", () => {
             await expect(
                 refreshService({ refreshToken: issued.refreshToken, ...ctx })
             ).rejects.toThrow("ACCOUNT_DELETED");
+        });
+
+        it("rejects when mustChangePassword is set", async () => {
+            const { ctx, userId, issued } = await setupRefreshable();
+            await User.findByIdAndUpdate(userId, { mustChangePassword: true });
+
+            await expect(
+                refreshService({ refreshToken: issued.refreshToken, ...ctx })
+            ).rejects.toThrow("Password change required");
         });
     });
 

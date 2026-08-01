@@ -67,6 +67,7 @@ export async function changePasswordService(
                 userId,
                 {
                     password: hashedNewPassword,
+                    mustChangePassword: false,
                 },
                 { new: true, session: mongoSession }
             )
@@ -101,23 +102,36 @@ export async function changePasswordService(
 
 /**
  * Force password change for a user (admin action).
- * This is used when an admin needs to force a user to change password,
- * for example after detecting suspicious activity.
- * 
- * This operation:
- * 1. Sets a temporary flag on the user
- * 2. Invalidates all tokens
- * 3. Forces client to prompt user for new password on next login
- * 
- * @param userId - The user's ID
- * @returns Confirmation of forced password change
+ *
+ * 1. Sets mustChangePassword on the user
+ * 2. Invalidates all sessions/tokens
+ * 3. Blocks refresh / Google OAuth until the user changes their password
+ *    (password login still works so the change-password flow can run)
  */
 export async function forcePasswordChangeService(userId: string): Promise<{
     userId: string;
     success: boolean;
     tokenVersionAfter: number;
 }> {
-    // Increment tokenVersion to invalidate all tokens
+    const user = await User.findById(userId)
+        .select("_id password authProviders")
+        .lean<{
+            _id: { toString(): string };
+            password?: string;
+            authProviders?: Array<"password" | "google">;
+        } | null>();
+
+    if (!user) {
+        throw new Error("User not found");
+    }
+
+    const providers = Array.isArray(user.authProviders) ? user.authProviders : [];
+    if (!user.password || !providers.includes("password")) {
+        throw new Error("Password authentication not available for this account");
+    }
+
+    await User.findByIdAndUpdate(userId, { mustChangePassword: true });
+
     const result = await invalidateAllUserTokens(userId, "admin_revocation");
 
     return {

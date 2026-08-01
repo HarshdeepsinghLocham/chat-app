@@ -19,6 +19,7 @@ export interface IUser extends Document {
     twoFactorEnabled: boolean;
     twoFactorSecret: string;
     tokenVersion: number;
+    mustChangePassword: boolean;
     conversations: Types.ObjectId[];
 }
 
@@ -43,6 +44,7 @@ const userSchema = new Schema<IUser>({
     twoFactorEnabled: { type: Boolean, default: false },
     twoFactorSecret: { type: String },
     tokenVersion: { type: Number, default: 0 },
+    mustChangePassword: { type: Boolean, default: false },
     conversations: [{ type: Schema.Types.ObjectId, ref: 'Conversation' }],
 },
     { timestamps: true },

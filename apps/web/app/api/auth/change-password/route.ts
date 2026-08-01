@@ -36,8 +36,11 @@ export async function POST(req: NextRequest) {
     try {
         await connectToDatabase();
 
-        // Validate user is authenticated
-        const user = await validateAuthUser({ useRedisCache: false });
+        // Allow flagged mustChangePassword users through this route only.
+        const user = await validateAuthUser({
+            useRedisCache: false,
+            allowPasswordChange: true,
+        });
 
         // Parse request body
         const body = await req.json();

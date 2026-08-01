@@ -41,6 +41,16 @@ export const loginUser = async ({
         type: "access",
     });
 
+    // Flagged accounts get a short-lived access token only (for change-password).
+    // No refresh session — ordinary auth requires completing the password change.
+    if (user.mustChangePassword) {
+        return {
+            user,
+            accessToken,
+            refreshToken: undefined,
+        };
+    }
+
     const { refreshToken } = await createUserSession({
         userId: user._id.toString(),
         deviceId,

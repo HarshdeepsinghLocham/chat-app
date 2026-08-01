@@ -205,6 +205,20 @@ describe("services/google-oauth.service (db integration)", () => {
             ).rejects.toThrow("Account is not active");
         });
 
+        it("rejects when mustChangePassword is set", async () => {
+            const user = await createUser({
+                email: "force-change@gmail.com",
+                plainPassword: "temp-p4ss",
+                authProviders: ["password", "google"],
+                googleSub: "sub-force-change",
+            });
+            await User.findByIdAndUpdate(user._id, { mustChangePassword: true });
+
+            await expect(
+                login({ sub: "sub-force-change", email: "force-change@gmail.com" })
+            ).rejects.toThrow("Password change required");
+        });
+
         it("rejects a soft-deleted account with ACCOUNT_DELETED", async () => {
             await createUser({
                 email: "deleted@gmail.com",

@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
                 role: user.role,
                 status: user.status,
                 profilePicture: user.profilePicture || null,
+                mustChangePassword: Boolean(user.mustChangePassword),
             },
             accessToken,
             refreshToken,

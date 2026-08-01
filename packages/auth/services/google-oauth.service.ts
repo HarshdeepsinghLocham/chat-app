@@ -281,6 +281,10 @@ export async function loginWithGoogleCode({
         throw new Error("ACCOUNT_DELETED");
     }
 
+    if (user.mustChangePassword) {
+        throw new Error("Password change required");
+    }
+
     const accessToken = generateAccessToken({
         sub: user._id.toString(),
         role: user.role,

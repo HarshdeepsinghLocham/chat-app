@@ -25,7 +25,7 @@ export const refreshService = async ({
     const { payload, session } = await verifySession(refreshToken);
 
     const user = await User.findById(payload.sub)
-        .select("_id role status tokenVersion isDeleted authProviders")
+        .select("_id role status tokenVersion isDeleted authProviders mustChangePassword")
         .lean<{
             _id: { toString(): string };
             role?: "user" | "moderator" | "admin";
@@ -33,6 +33,7 @@ export const refreshService = async ({
             tokenVersion?: number;
             isDeleted?: boolean;
             authProviders?: Array<"password" | "google">;
+            mustChangePassword?: boolean;
         } | null>();
 
     if (!user) {
@@ -45,6 +46,10 @@ export const refreshService = async ({
 
     if (user.status && user.status !== "active") {
         throw new Error("Account is not active");
+    }
+
+    if (user.mustChangePassword) {
+        throw new Error("Password change required");
     }
 
     const currentTokenVersion = user.tokenVersion || 0;

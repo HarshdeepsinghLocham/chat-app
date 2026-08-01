@@ -177,6 +177,7 @@ describe("step-up authentication integration flow", () => {
             role: "user",
             status: "active",
             tokenVersion: 0,
+            authProviders: ["password"],
         });
 
         createChallengeMock.mockResolvedValue({
@@ -195,10 +196,15 @@ describe("step-up authentication integration flow", () => {
             challengeId: "challenge-123",
         });
 
-        expect(createChallengeMock).toHaveBeenCalledWith("user-2", "session-risky", {
-            ip: "10.0.0.10",
-            userAgent: "different-agent",
-        });
+        expect(createChallengeMock).toHaveBeenCalledWith(
+            "user-2",
+            "session-risky",
+            {
+                ip: "10.0.0.10",
+                userAgent: "different-agent",
+            },
+            "password"
+        );
         // Critical: the session must be kept alive (pending), not revoked, so the
         // challenge can be completed against the same refresh session.
         expect(markSessionStepUpPendingMock).toHaveBeenCalledWith("session-risky");

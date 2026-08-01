@@ -234,7 +234,7 @@ describe("services/step-up-otp.service (db integration)", () => {
             expect((await findSessionById(issued.sessionId))?.revokedAt).toBeInstanceOf(Date);
         });
 
-        it("FINDING: an expired challenge reports 'Challenge is not pending' (dead 'Challenge expired' branch)", async () => {
+        it("rejects an expired challenge with 'Challenge expired' and revokes the session", async () => {
             const user = await createUser();
             const issued = await issueRefreshTokenForSession({
                 userId: user._id.toString(),
@@ -251,7 +251,7 @@ describe("services/step-up-otp.service (db integration)", () => {
                     otp: "123456",
                     refreshToken: issued.refreshToken,
                 })
-            ).rejects.toThrow("Challenge is not pending");
+            ).rejects.toThrow("Challenge expired");
             expect((await findSessionById(issued.sessionId))?.revokedAt).toBeInstanceOf(Date);
         });
 

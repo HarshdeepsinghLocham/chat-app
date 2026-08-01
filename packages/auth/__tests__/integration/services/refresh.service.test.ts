@@ -272,6 +272,7 @@ describe("services/refresh.service (db integration)", () => {
             const challenge = await StepUpChallenge.findById(error.challengeId);
             expect(challenge).not.toBeNull();
             expect(challenge?.status).toBe("pending");
+            expect(challenge?.verificationMethod).toBe("password");
             expect(String(challenge?.userId)).toBe(userId);
             expect(String(challenge?.sessionId)).toBe(issued.sessionId);
             expect(
@@ -279,6 +280,35 @@ describe("services/refresh.service (db integration)", () => {
                     userId: new Types.ObjectId(userId),
                 })
             ).toBe(1);
+        });
+
+        it("creates an OTP step-up challenge for Google-only accounts on drift (req 16b)", async () => {
+            const ctx = buildRequestContext();
+            const user = await createUser({
+                plainPassword: undefined,
+                authProviders: ["google"],
+                googleSub: `google-${objectId()}`,
+            });
+            const userId = user._id.toString();
+            const issued = await issueRefreshTokenForSession({
+                userId,
+                deviceId: storedDeviceFingerprint(ctx),
+                userAgent: ctx.userAgent,
+                ipAddress: ctx.ipAddress,
+            });
+
+            const error = (await refreshService({
+                refreshToken: issued.refreshToken,
+                ...driftedContext(ctx),
+            }).catch((e: unknown) => e)) as AuthStepUpRequiredError;
+
+            expect(error).toBeInstanceOf(AuthStepUpRequiredError);
+            const challenge = await StepUpChallenge.findById(error.challengeId);
+            expect(challenge).not.toBeNull();
+            expect(challenge?.status).toBe("pending");
+            expect(challenge?.verificationMethod).toBe("otp");
+            expect(String(challenge?.userId)).toBe(userId);
+            expect(String(challenge?.sessionId)).toBe(issued.sessionId);
         });
 
         it("does NOT delete or revoke the session during step-up (req 17)", async () => {

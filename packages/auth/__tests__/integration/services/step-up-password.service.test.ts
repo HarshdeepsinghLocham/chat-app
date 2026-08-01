@@ -205,7 +205,7 @@ describe("services/step-up-password.service (db integration)", () => {
             expect(session?.revokedAt).toBeInstanceOf(Date);
         });
 
-        it("FINDING: an expired challenge reports 'Challenge is not pending' (not 'Challenge expired') (req 8)", async () => {
+        it("rejects an expired challenge with 'Challenge expired' and revokes the session (req 8)", async () => {
             const user = await createUser({ plainPassword: PASSWORD });
             const userId = user._id.toString();
             const issued = await issueRefreshTokenForSession({
@@ -217,16 +217,15 @@ describe("services/step-up-password.service (db integration)", () => {
                 sessionId: issued.sessionId,
             });
 
-            // getChallengeById() lazily flips the expired-but-pending row to
-            // "expired", so the service's dedicated "Challenge expired" branch is
-            // unreachable; the status check fires first.
+            // getChallengeById() lazily flips the row to "expired"; expiry is
+            // checked before the generic status guard so the message is explicit.
             await expect(
                 completePasswordStepUpChallenge({
                     challengeId: challenge._id.toString(),
                     password: PASSWORD,
                     refreshToken: issued.refreshToken,
                 })
-            ).rejects.toThrow("Challenge is not pending");
+            ).rejects.toThrow("Challenge expired");
 
             expect(await challengeStatus(challenge._id.toString())).toBe("expired");
             const session = await findSessionById(issued.sessionId);

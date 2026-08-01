@@ -51,14 +51,16 @@ export async function requestOtpStepUpChallenge({
         throw new Error("Challenge session mismatch");
     }
 
-    if (challenge.status !== "pending") {
-        await revokeSession(payload.sessionId);
-        throw new Error("Challenge is not pending");
-    }
-
+    // Expiry before status: getChallengeById may already have flipped status to
+    // "expired", but expiresAt stays in the past so this branch stays reachable.
     if (challenge.expiresAt.getTime() <= Date.now()) {
         await revokeSession(payload.sessionId);
         throw new Error("Challenge expired");
+    }
+
+    if (challenge.status !== "pending") {
+        await revokeSession(payload.sessionId);
+        throw new Error("Challenge is not pending");
     }
 
     if (challenge.otp?.sentAt && challenge.otp.sentAt.getTime() > Date.now() - OTP_RESEND_COOLDOWN_MS) {
@@ -132,14 +134,16 @@ export async function completeOtpStepUpChallenge({
         throw new Error("Challenge session mismatch");
     }
 
-    if (challenge.status !== "pending") {
-        await revokeSession(payload.sessionId);
-        throw new Error("Challenge is not pending");
-    }
-
+    // Expiry before status: getChallengeById may already have flipped status to
+    // "expired", but expiresAt stays in the past so this branch stays reachable.
     if (challenge.expiresAt.getTime() <= Date.now()) {
         await revokeSession(payload.sessionId);
         throw new Error("Challenge expired");
+    }
+
+    if (challenge.status !== "pending") {
+        await revokeSession(payload.sessionId);
+        throw new Error("Challenge is not pending");
     }
 
     if (!challenge.otp?.hash) {

@@ -92,7 +92,8 @@ function assertValidObjectId(id: string, fieldName: "id" | "userId" | "sessionId
 export async function createChallenge(
     userId: string,
     sessionId: string,
-    metadata?: StepUpChallengeMetadata
+    metadata?: StepUpChallengeMetadata,
+    verificationMethod: StepUpChallengeVerificationMethod = "password"
 ): Promise<IStepUpChallenge> {
     const safeUserId = assertValidObjectId(userId, "userId");
     const safeSessionId = assertValidObjectId(sessionId, "sessionId");
@@ -101,7 +102,7 @@ export async function createChallenge(
         userId: safeUserId,
         sessionId: safeSessionId,
         status: "pending",
-        verificationMethod: "password",
+        verificationMethod,
         expiresAt: new Date(Date.now() + STEP_UP_TTL_MS),
         metadata,
     });

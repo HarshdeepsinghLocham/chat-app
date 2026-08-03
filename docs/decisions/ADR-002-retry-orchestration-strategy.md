@@ -4,7 +4,7 @@
 - Scope: `apps/task-worker` (outbox loop, agent runner, retry scheduler/scanner,
   retry classifier, retry manager), `packages/services/outbox.service.ts`,
   `packages/db/models/Task.ts`
-- Related: ADR-001 (Task lifecycle), `docs/architecture/task-worker-execution-flow.md`
+- Related: ADR-001 (Task lifecycle), [archived worker flow](../archive/optional-autonomy/task-worker-execution-flow.md)
 
 ## Context
 
@@ -22,7 +22,7 @@ A third, much shorter-lived retry is the **inline action retry** inside
 `RetryManager.execute`, used by miscellaneous tool calls inside `AgentRunner`
 that want bounded inline retry. The `buildExecutionPlan` / `runExecutionPlan`
 block in `apps/task-worker/index.ts:968-1130` is **dead code** (zero callers);
-see [gap audit P2-8](../architecture/adr-implementation-gap-audit.md).
+see [gap audit P2-8](../archive/adr-implementation-gap-audit.md).
 
 ADR-002 documents how these three layers compose, what guarantees each layer
 provides, and how idempotency is enforced.
@@ -294,4 +294,4 @@ any non-negative integer.
   **Confirmed** on schema (`OutboxEvent.ts:37`).
 - `TASK_AGENT_PERSISTENT_LOOP_ENABLED` toggles `runTask` vs `runTaskPersistent`
   inside `AgentRunner`; both are live paths. The separate `buildExecutionPlan`
-  block is dead code — see [gap audit](../architecture/adr-implementation-gap-audit.md).
+  block is dead code — see [gap audit](../archive/adr-implementation-gap-audit.md).

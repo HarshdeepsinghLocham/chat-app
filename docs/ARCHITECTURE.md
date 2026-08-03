@@ -11,7 +11,8 @@
 |-------|-------|
 | **Verification date** | 2026-07-01 |
 | **Verified against commit** | `cff07cb887d7cde2b48069a3ca2d6da1dd63fca8` |
-| **Roadmap version** | [Production Roadmap V1](./PRODUCTION_ROADMAP_V1.md) — Phase 0.1 |
+| **Product contract** | [ADR-005](./decisions/ADR-005-suggest-first-work-coordination.md) — suggest-first; autonomy optional |
+| **Historical roadmap** | [V1 archived](./archive/PRODUCTION_ROADMAP_V1.md) (V2 product roadmap is tracked outside the repo) |
 
 Statements in this file describe **current runtime behavior** unless labeled **Planned / Future**.
 For accepted design decisions, use the ADRs below instead of duplicating rationale here.
@@ -21,10 +22,13 @@ For accepted design decisions, use the ADRs below instead of duplicating rationa
 | Task lifecycle FSM (dual state, shadow mode) | [ADR-001](./decisions/ADR-001-task-lifecycle-state-machine.md) |
 | Retry orchestration (outbox, task retry, idempotency) | [ADR-002](./decisions/ADR-002-retry-orchestration-strategy.md) |
 | Socket authorization bridge | [ADR-003](./decisions/ADR-003-socket-authorization-bridge.md) |
+| Personal + optional organizations | [ADR-004](./decisions/ADR-004-personal-and-optional-organizations.md) |
+| Suggest-first work coordination | [ADR-005](./decisions/ADR-005-suggest-first-work-coordination.md) |
 
-Deeper flow detail: [`task-worker-execution-flow.md`](./architecture/task-worker-execution-flow.md),
-[`realtime-messaging-system.md`](./architecture/realtime-messaging-system.md).
-ADR implementation gaps (FIXED / OPEN / DEFERRED): [`adr-implementation-gap-audit.md`](./architecture/adr-implementation-gap-audit.md).
+Deeper flow detail: [`realtime-messaging-system.md`](./architecture/realtime-messaging-system.md),
+[`authentication-and-session-model.md`](./architecture/authentication-and-session-model.md).
+Optional worker/LLM detail (archived): [`archive/optional-autonomy/task-worker-execution-flow.md`](./archive/optional-autonomy/task-worker-execution-flow.md).
+Historical V1 gap audit: [`archive/adr-implementation-gap-audit.md`](./archive/adr-implementation-gap-audit.md).
 Production infra checklist: [`operations/PRODUCTION_REQUIREMENTS.md`](./operations/PRODUCTION_REQUIREMENTS.md).
 
 ## 1. System overview
@@ -188,7 +192,7 @@ flowchart LR
 
 This is a separate process implementing a **transactional outbox** consumer. See
 [ADR-002](./decisions/ADR-002-retry-orchestration-strategy.md) for retry and idempotency layers and
-[`task-worker-execution-flow.md`](./architecture/task-worker-execution-flow.md) for the full control
+[`archive/optional-autonomy/task-worker-execution-flow.md`](./archive/optional-autonomy/task-worker-execution-flow.md) for the full control
 flow.
 
 ### Current implementation
@@ -225,7 +229,7 @@ flow.
 
 ### Planned / Future
 
-Tracked in [Production Roadmap V1](./PRODUCTION_ROADMAP_V1.md) Phase 2+:
+Tracked under [ADR-005](./decisions/ADR-005-suggest-first-work-coordination.md) (V1 history: [archive](./archive/PRODUCTION_ROADMAP_V1.md)):
 
 - **LLM message classifier** at ingress — Milestone 2.1 (complete; `TASK_CLASSIFIER_MODE`).
 - **Expanded intent taxonomy** (`chat`, `incident`, `scheduling`, etc.) — Milestone 2.2 (complete).

@@ -2,7 +2,7 @@
 
 - Status: Accepted (implemented, partially in shadow mode)
 - Scope: `apps/task-worker`, `packages/db/models/Task.ts`, `packages/types/task/execution-state.ts`
-- Related: ADR-002 (Retry orchestration), `docs/architecture/task-worker-execution-flow.md`
+- Related: ADR-002 (Retry orchestration), [archived worker flow](../archive/optional-autonomy/task-worker-execution-flow.md)
 
 ## Context
 
@@ -133,7 +133,7 @@ Branches:
 - `RETRY_DUE` → `queued` (the retry scanner promotes legacy `lifecycleState`
   to `ready` and enqueues the outbox event; when `TASK_RETRY_SHADOW_EMIT=1` it
   also emits `RETRY_DUE` to the shadow FSM — see
-  [gap audit §ADR-001 gap #1](../architecture/adr-implementation-gap-audit.md)).
+  [gap audit §ADR-001 gap #1](../archive/adr-implementation-gap-audit.md)).
 - `CANCEL_REQUESTED` / `CANCEL_FINALIZED` flow to `cancelling`/`cancelled`. The
   reducer accepts CANCEL_REQUESTED from almost any non-terminal state, but the
   current runtime has no observed callers emitting these events; cancellation is

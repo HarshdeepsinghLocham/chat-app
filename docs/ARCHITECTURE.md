@@ -229,7 +229,7 @@ flow.
 
 ### Planned / Future
 
-Tracked under [ADR-005](./decisions/ADR-005-suggest-first-work-coordination.md) (V1 history: [archive](./archive/PRODUCTION_ROADMAP_V1.md)):
+Product contract: [ADR-005](./decisions/ADR-005-suggest-first-work-coordination.md). Phased roadmap is tracked in Notion (not this repo). V1 history: [archive](./archive/PRODUCTION_ROADMAP_V1.md).
 
 - **LLM message classifier** at ingress — Milestone 2.1 (complete; `TASK_CLASSIFIER_MODE`).
 - **Expanded intent taxonomy** (`chat`, `incident`, `scheduling`, etc.) — Milestone 2.2 (complete).

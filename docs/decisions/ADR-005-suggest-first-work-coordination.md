@@ -12,9 +12,9 @@ V1 built a trustworthy async task-worker, classifier, approvals, org policy, and
 
 ## Decision
 
-1. **Suggest-first is the default.** Ingress classification produces reviewable work suggestions (or intent rows with suggestion lifecycle). It does **not** enqueue tool-running execution unless an explicit execution mode allows it.
+1. **Suggest-first is the default.** Ingress classification produces reviewable work suggestions (or intent rows with suggestion lifecycle). Tool-running execution is gated by execution mode (below).
 2. **Create task ≠ allow AI tools.** Accepting a suggestion creates coordinated work (owner, due, status). Enabling autonomous tool runs is a separate approval/policy step.
-3. **Execution modes** (org and personal overlays): `suggest_only` (default) · `require_approval` · `auto_execute` (allowlisted intents/tools only).
+3. **Execution modes** (org and personal overlays): `suggest_only` (default) · `require_approval` · `auto_execute` (allowlisted intents/tools only). In `suggest_only`, enqueuing `task.execution.requested` records task/audit work for policy evaluation only — it must **not** execute tools or cause external side effects.
 4. **Manager surfaces are primary UX.** Work inbox, approvals, and org visibility outrank the task orchestration / run-detail panel. The panel remains a drill-down for optional runs.
 5. **Personal + optional orgs (ADR-004) remain.** No forced tenancy. Org policy can tighten defaults; personal stays env-driven until product settings exist.
 6. **V1 runtime ADRs stay in force** for worker correctness (ADR-001 lifecycle, ADR-002 retry, ADR-003 socket bridge) when autonomy is enabled.

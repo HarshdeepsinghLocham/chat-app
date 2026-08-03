@@ -32,7 +32,7 @@ Product direction: [ADR-005](docs/decisions/ADR-005-suggest-first-work-coordinat
 
 | Theme | What you get |
 | --- | --- |
-| **Suggest-first extraction** | Chat → intents / proposed work; review before side effects. |
+| **Suggest-first extraction** | Chat → intents / proposed work; review before side effects (including task creation and audit writes). |
 | **Manager control** | Approvals, tool grants, org policy, and audit trails. |
 | **Org visibility** | Personal workspace by default; optional organizations (ADR-004). |
 | **Realtime collaboration** | Socket.IO for messages, presence, and work updates. |
@@ -74,7 +74,7 @@ flowchart LR
 
 Full system map: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Optional LLM/worker operator docs: [`docs/archive/optional-autonomy/`](docs/archive/optional-autonomy/).
 
-**Ingress note:** new chat messages are classified in the task worker (`packages/services/task-intelligence.service.ts`). V2 default direction is **suggest-first** ([ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md)); LLM providers are used for classification (when enabled) and for optional **task execution** (`task.execution.requested`).
+**Ingress note:** new chat messages are classified via `classifyMessage()` in `packages/services/task-intelligence.service.ts` using the current **regex/heuristic** path (`TASK_CLASSIFIER_MODE` defaults to `regex`). Product direction is **suggest-first** ([ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md)). LLM providers are used for optional **task execution** (`task.execution.requested`); LLM ingress classification (`shadow` / `llm` modes) is available but not the default.
 
 ## Platform stack
 

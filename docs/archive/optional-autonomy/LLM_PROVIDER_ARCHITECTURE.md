@@ -9,7 +9,7 @@
 > sections of this document is **implemented** under `apps/task-worker/services/llm/` (`provider-factory.ts`,
 > `OpenAIProvider`, `HuggingFaceProvider`). The "Current Architecture Critiques" in §Executive Summary
 > below are **historical** — they describe the codebase before that refactor. For the live provider matrix
-> and OSS setup, see [`oss-inference-compatibility.md`](../guides/oss-inference-compatibility.md).
+> and OSS setup, see [`oss-inference-compatibility.md`](./oss-inference-compatibility.md).
 > **Ingress message classification** remains regex-based (`packages/services/task-intelligence.service.ts`);
 > LLM providers are used in the agent runner only.
 

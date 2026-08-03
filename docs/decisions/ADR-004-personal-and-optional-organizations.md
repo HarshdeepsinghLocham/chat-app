@@ -5,7 +5,7 @@
   `packages/services/authorization.service.ts`, web `/api/organizations/*`,
   conversation/task `organizationId` fields
 - Related: [ADR-003](./ADR-003-socket-authorization-bridge.md),
-  [PRODUCTION_ROADMAP_V1.md](../PRODUCTION_ROADMAP_V1.md) Phase 7.1
+  [archived PRODUCTION_ROADMAP_V1.md](../archive/PRODUCTION_ROADMAP_V1.md) Phase 7.1; product direction [ADR-005](./ADR-005-suggest-first-work-coordination.md)
 
 ## Context
 

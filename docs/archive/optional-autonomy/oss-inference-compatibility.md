@@ -18,14 +18,14 @@ It is grounded in the actual code in:
 - `apps/task-worker/services/llm/startup.ts`
 - `apps/task-worker/services/llm/recommendations.ts`
 
-Ready-to-use environment recipes live under `examples/`:
+Ready-to-use environment recipes live under `examples/` (this archive folder):
 
-- `examples/local-vllm-tgi.md` — local vLLM or TGI.
-- `examples/huggingface-inference-endpoints.md` — HF Serverless / HF
+- [`examples/local-vllm-tgi.md`](./examples/local-vllm-tgi.md) — local vLLM or TGI.
+- [`examples/huggingface-inference-endpoints.md`](./examples/huggingface-inference-endpoints.md) — HF Serverless / HF
   Inference Endpoints.
-- `examples/amd-openai-compatible.md` — AMD-backed OpenAI-compatible
+- [`examples/amd-openai-compatible.md`](./examples/amd-openai-compatible.md) — AMD-backed OpenAI-compatible
   gateway.
-- `examples/amd-production-env.md` — full production-tuned env block.
+- [`examples/amd-production-env.md`](./examples/amd-production-env.md) — full production-tuned env block.
 
 ## Supported Providers (Provider Matrix)
 

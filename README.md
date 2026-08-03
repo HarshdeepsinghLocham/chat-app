@@ -2,7 +2,7 @@
 
 # Semantask
 
-**Autonomous task execution from conversation — production-grade, multi-provider, observable.**
+**AI-native work coordination — teams talk, AI extracts the work, managers stay in control. Autonomy is optional.**
 
 [semantask.com](https://semantask.com)
 
@@ -10,33 +10,33 @@
 [![Turborepo](https://img.shields.io/badge/monorepo-Turborepo-EF4444)](https://turbo.build/)
 [![Next.js](https://img.shields.io/badge/web-Next.js_15-black)](https://nextjs.org/)
 
-*Originally seeded as a real-time collaboration stack; evolved into an orchestration platform with async workers, workflow semantics, and provider abstraction.*
+*Originally a real-time collaboration stack; evolved into a coordination platform with suggest-first AI, approvals, org visibility, and optional autonomous execution.*
 
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/semantask-dashboard.png" alt="Semantask dashboard with conversations and Task Orchestration panel showing live execution steps" width="920" />
+  <img src="docs/screenshots/semantask-dashboard.png" alt="Semantask dashboard with conversations and work coordination surfaces" width="920" />
   <br />
-  <sub>Task-triggered workflows with live <strong>Task Orchestration</strong> — async execution, step visibility, and run metadata.</sub>
+  <sub>Natural conversation with live work visibility — suggestions, approvals, and optional run detail.</sub>
 </p>
 
 ---
 
 ## Overview
 
-**Semantask** coordinates long-running agent work across **OpenAI-compatible APIs**, **Hugging Face** inference (Inference API and OpenAI-compatible endpoints), and **AMD-hosted OpenAI-compatible** inference — behind a single **provider abstraction** in the task worker. Jobs run **asynchronously** with **leases**, **retries**, and bounded timeouts; progress and outcomes surface through **real-time channels** for operational visibility.
+**Semantask** is an AI-native work coordination platform. Teams communicate in realtime chat; AI extracts important work as suggestions; managers approve, assign, and see organization-wide status. **Autonomous tool execution** (async workers, leases, retries, multi-provider LLMs) is an **optional** capability behind policy — not the core experience.
 
-Use it as a hackathon-grade reference architecture or as a starting point for open-source agent orchestration on a familiar Node.js + MongoDB + Redis foundation.
+Product direction: [ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md) (roadmap lives in Notion, not this repo).
 
 ## Why Semantask
 
 | Theme | What you get |
 | --- | --- |
-| **Provider abstraction** | Swap models and hosts without rewriting orchestration — OpenAI, generic OpenAI-compatible servers, Hugging Face, AMD-compatible endpoints. |
-| **Async execution** | Work offloads to dedicated workers; APIs stay responsive while agents iterate. |
-| **Real-time observability** | Live updates over the existing Socket.IO layer — suited for task dashboards and run timelines. |
-| **Workflow orchestration** | Multi-step agent loops, tools, and structured outputs — built for dependable pipelines, not ad-hoc scripts. |
-| **Reliability** | Timeouts, retries, and lease-style execution reduce stuck runs and silent failures. |
+| **Suggest-first extraction** | Chat → intents / proposed work; review before side effects (including task creation and audit writes). |
+| **Manager control** | Approvals, tool grants, org policy, and audit trails. |
+| **Org visibility** | Personal workspace by default; optional organizations (ADR-004). |
+| **Realtime collaboration** | Socket.IO for messages, presence, and work updates. |
+| **Optional autonomy** | Multi-provider LLM worker when policy allows — see [archived operator docs](docs/archive/optional-autonomy/). |
 
 ## Architecture
 
@@ -67,14 +67,14 @@ flowchart LR
 ```
 
 1. **Next.js** serves the UI and HTTP APIs; shared packages enforce validation and persistence.
-2. **task-worker** runs autonomous tasks against the **LLM provider abstraction** (capabilities flags, structured outputs, tool calling where supported).
-3. **MongoDB** stores durable task and domain state.
+2. **task-worker** classifies messages and (when policy allows) runs optional autonomous tasks via the LLM provider layer.
+3. **MongoDB** stores durable conversations, suggestions/tasks, and domain state.
 4. **Redis** backs coordination, queues, and scalable socket fan-out.
-5. **Socket.IO** streams task and session updates for **real-time observability**.
+5. **Socket.IO** streams chat and work updates for realtime clients.
 
-For deeper LLM wiring (vLLM, TGI, HF endpoints, AMD), see [`apps/task-worker/OSS_INFERENCE_COMPATIBILITY.md`](apps/task-worker/OSS_INFERENCE_COMPATIBILITY.md) and [`docs/architecture/LLM_PROVIDER_ARCHITECTURE.md`](docs/architecture/LLM_PROVIDER_ARCHITECTURE.md). For the full system map (verified against runtime), see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Full system map: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Optional LLM/worker operator docs: [`docs/archive/optional-autonomy/`](docs/archive/optional-autonomy/).
 
-**Ingress note:** new chat messages are classified with **regex heuristics** in the task worker (`packages/services/task-intelligence.service.ts`), not an LLM. LLM providers are used during autonomous **task execution** (`task.execution.requested`).
+**Ingress note:** new chat messages are classified via `classifyMessage()` in `packages/services/task-intelligence.service.ts` using the current **regex/heuristic** path (`TASK_CLASSIFIER_MODE` defaults to `regex`). Product direction is **suggest-first** ([ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md)). LLM providers are used for optional **task execution** (`task.execution.requested`); LLM ingress classification (`shadow` / `llm` modes) is available but not the default.
 
 ## Platform stack
 
@@ -193,7 +193,7 @@ The Compose stack includes **nginx**, **nextapp** (Next.js), **socket**, **task-
 - **Ports 3000 / 3001 in use** — stop conflicting processes and restart dev servers.
 - **Auth failures** — verify `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, and cookie/domain settings.
 - **Socket / live updates** — check `ORIGIN`, `INTERNAL_SECRET`, and `NEXT_PUBLIC_SOCKET_URL`.
-- **Agent or LLM errors** — confirm `LLM_PROVIDER`, API keys, and base URLs; for OSS endpoints, match `LLM_SUPPORTS_*` flags to server capabilities (see `OSS_INFERENCE_COMPATIBILITY.md`).
+- **Agent or LLM errors** — confirm `LLM_PROVIDER`, API keys, and base URLs; for OSS endpoints, see [`docs/archive/optional-autonomy/oss-inference-compatibility.md`](docs/archive/optional-autonomy/oss-inference-compatibility.md).
 
 ## License
 

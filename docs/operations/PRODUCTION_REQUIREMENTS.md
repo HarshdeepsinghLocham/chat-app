@@ -2,8 +2,8 @@
 
 **Status:** Active runbook  
 **Last updated:** 2026-07-01  
-**Roadmap:** [Production Roadmap V1](../PRODUCTION_ROADMAP_V1.md) — Phase 0.3  
-**Related:** [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md), [ADR-002](../decisions/ADR-002-retry-orchestration-strategy.md), [gap audit](../architecture/adr-implementation-gap-audit.md)
+**Product contract:** [ADR-005](../decisions/ADR-005-suggest-first-work-coordination.md) (V1 roadmap [archived](../archive/PRODUCTION_ROADMAP_V1.md))  
+**Related:** [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md), [ADR-002](../decisions/ADR-002-retry-orchestration-strategy.md), [historical gap audit](../archive/adr-implementation-gap-audit.md)
 
 This document lists infrastructure and configuration that production deployments **must** satisfy. Missing items often fail **silently** (degraded mode) rather than preventing startup.
 
@@ -331,4 +331,4 @@ Prefer distinct `INTERNAL_SECRET_SOCKET` / `INTERNAL_SECRET_WORKER`. Legacy `INT
 - Deploy pipeline: [`.github/RELEASES.md`](../../.github/RELEASES.md)
 - Security detail: [`SECURITY_AUDIT.md`](./SECURITY_AUDIT.md)
 - Retry / replica set: [ADR-002](../decisions/ADR-002-retry-orchestration-strategy.md) §Scalability
-- Gap item P1-7 (replica-set documentation): [gap audit](../architecture/adr-implementation-gap-audit.md)
+- Gap item P1-7 (replica-set documentation): [historical gap audit](../archive/adr-implementation-gap-audit.md)

@@ -1,9 +1,11 @@
 # Production Roadmap V1
 
-**Status:** Accepted  
+> **Archived / superseded.** Product north star is now [ADR-005](../decisions/ADR-005-suggest-first-work-coordination.md). Phased product planning lives outside this repo (Notion). Kept for historical phase references.
+
+**Status:** Superseded (archived 2026-08-03)  
 **Last updated:** 2026-07-01  
 **Owner:** Lead Architecture  
-**North star:** Build a trustworthy autonomous collaboration platform — correct execution, honest intelligence, enforceable policy, observable operations.
+**North star (historical):** Build a trustworthy autonomous collaboration platform — correct execution, honest intelligence, enforceable policy, observable operations.
 
 **Baseline:** Architecture verification audit (current `main`, post-`f7886b5`). Lease-busy defer and run-independent tool idempotency are already fixed.
 

@@ -15,9 +15,9 @@ derived from chat messages. It does three things:
 
 This document describes the control flow, persistence boundaries, and
 operational properties. State-machine details live in
-[ADR-001](../decisions/ADR-001-task-lifecycle-state-machine.md); retry
+[ADR-001](../../decisions/ADR-001-task-lifecycle-state-machine.md); retry
 mechanics live in
-[ADR-002](../decisions/ADR-002-retry-orchestration-strategy.md).
+[ADR-002](../../decisions/ADR-002-retry-orchestration-strategy.md).
 
 ## Responsibilities
 
@@ -88,7 +88,7 @@ directly to inline `executeXxxAction` adapters in `apps/task-worker/index.ts`.
 
 ## End-to-End Data Flow
 
-```
+```text
 [Web/API] ──insert──▶ OutboxEvent { topic, payload, dedupeKey, status: pending }
                                 │
                                 ▼
@@ -227,7 +227,7 @@ Three tools ship in the registry by default:
 `AgentRunner.execute(payload, options)` (`agent-runner.ts:2844-2994`) is the
 sole entry point that runs a tool:
 
-1. `guardIdempotentToolExecution(payload)` — see [ADR-002](../decisions/ADR-002-retry-orchestration-strategy.md) §2.
+1. `guardIdempotentToolExecution(payload)` — see [ADR-002](../../decisions/ADR-002-retry-orchestration-strategy.md) §2.
    `buildToolIdempotencyKey` hashes `taskId | stepId | toolName | stableStringify(params)` — **run-independent**
    so the same logical tool call dedupes across lease handoffs. Returns cached success or marks the
    in-flight TaskAction.
@@ -439,12 +439,14 @@ The combination of layered failure handling means most failures are
 1. The legacy retry helper `RetryManager` and the schedule-based retry path
    live side-by-side. Removing the inline path requires removing the
    `buildExecutionPlan` block in `apps/task-worker/index.ts` and migrating
-   the email/meeting/github inline adapters to tools (already implemented in
+   the email/meeting/GitHub inline adapters to tools (already implemented in
    the tools/ directory).
 2. `processMessageTaskIntelligence` in `task-intelligence.service.ts` uses
-   regex-based classification (`classifyMessage`); this is the **current** ingress path
-   (`AI_VERSION = "intelligent-v3-preprocess"`). **Planned / Future:** LLM classifier
-   (Production Roadmap V1 Phase 2.1). Regex under-fires for task phrasing without imperative verbs.
+   regex/heuristic classification by default (`classifyMessage` via
+   `TASK_CLASSIFIER_MODE=regex`); this is the **current** ingress path
+   (`AI_VERSION = "intelligent-v3-preprocess"`). Phase 2.1 LLM classifier is
+   **complete** behind `TASK_CLASSIFIER_MODE=shadow|llm` (regex fallback on
+   failure). Regex under-fires for task phrasing without imperative verbs.
 3. `executeXxxAction` (legacy) and the tool counterparts (registry) duplicate
    transport logic. A regression in one will not surface in the other.
 4. `Task.iterationCount`, `step.attempts`, `Task.retryCount`,

@@ -3,7 +3,9 @@
 **Date:** 2026-07-01 (reconciled)  
 **Previous audit:** 2026-05-31  
 **Verified against commit:** `cff07cb887d7cde2b48069a3ca2d6da1dd63fca8`  
-**Roadmap:** [Production Roadmap V1](../PRODUCTION_ROADMAP_V1.md) — Phase 0.2  
+> **Archived.** Point-in-time audit (2026-07-01). Product contract: [ADR-005](../decisions/ADR-005-suggest-first-work-coordination.md).
+
+**Roadmap:** [Production Roadmap V1](./PRODUCTION_ROADMAP_V1.md) — Phase 0.2  
 **Scope:** [ADR-001](../decisions/ADR-001-task-lifecycle-state-machine.md) (task lifecycle FSM) and [ADR-002](../decisions/ADR-002-retry-orchestration-strategy.md) (retry orchestration)  
 **Method:** Re-read ADRs against runtime paths in `apps/task-worker`, `packages/types/task/execution-state.ts`, `packages/db/models/OutboxEvent.ts`, and related tests. Documentation only — no code changes in this pass.
 
@@ -37,19 +39,19 @@ Use the [status register](#status-register-p0p1) below as the single source for 
 |----|------|--------|-------|----------|
 | **P0-1** | Lease-busy + outbox completion | **FIXED** (`f7886b5`) | — | `index.ts:1641-1649`, `lease.service.ts:104-110`, `dispatch.lease-wrapper.test.ts` |
 | **P0-2** | Tool idempotency includes `runId` | **FIXED** (`f7886b5`) | — | `agent-runner.ts:2734-2745`, `idempotent-tool-execution.test.ts` |
-| **P0-3** | Legacy vs shadow divergence undetected | **OPEN** (detection in 1.1) | [Phase 1.1](../PRODUCTION_ROADMAP_V1.md) ✓, [Phase 5.2](../PRODUCTION_ROADMAP_V1.md) (enforce) | `TASK_STATE_DIVERGENCE_CHECK=1` logs `state_diverged`; projection at write deferred |
-| **P1-4** | Wire `RETRY_DUE` on retry scanner | **FIXED** (flagged) | [Phase 1.3](../PRODUCTION_ROADMAP_V1.md) ✓ | `emitRetryDueShadowState` (`retry-shadow.ts`) emits `RETRY_DUE` after scanner promote when `TASK_RETRY_SHADOW_EMIT=1` |
-| **P1-5** | `deriveLegacy*` at write time (projection) | **DEFERRED** | [Phase 5.2](../PRODUCTION_ROADMAP_V1.md) | `execution-state.ts:143-203`; only referenced in tests today |
-| **P1-6** | Policy/approval early exits — shadow FSM lag | **FIXED** (flagged) | [Phase 1.2](../PRODUCTION_ROADMAP_V1.md) ✓ | `emitPolicyShadowState` (`policy-shadow.ts`) emits `POLICY_BLOCKED` / `POLICY_APPROVAL_REQUIRED` and aligns `lifecycleState` on the blocked/approval early returns when `TASK_POLICY_SHADOW_EMIT=1`; approved re-run resumes via `APPROVAL_GRANTED` in `startShadowExecutionRun` |
-| **P1-7** | Replica-set assumption for retry scanner | **FIXED** | [Phase 0.3](../PRODUCTION_ROADMAP_V1.md) ✓, [Phase 1.3](../PRODUCTION_ROADMAP_V1.md) ✓ | `runRetryScannerOnce` falls back to non-transactional promote+enqueue via `isMongoTransactionUnsupported` (mirrors `message.service.ts`) |
-| **P2-8** | Dead `buildExecutionPlan` / `runExecutionPlan` | **OPEN** (debt) | [Phase 5.1](../PRODUCTION_ROADMAP_V1.md) | Defined `index.ts:969-1130`; zero callers |
+| **P0-3** | Legacy vs shadow divergence undetected | **OPEN** (detection in 1.1) | [Phase 1.1](./PRODUCTION_ROADMAP_V1.md) ✓, [Phase 5.2](./PRODUCTION_ROADMAP_V1.md) (enforce) | `TASK_STATE_DIVERGENCE_CHECK=1` logs `state_diverged`; projection at write deferred |
+| **P1-4** | Wire `RETRY_DUE` on retry scanner | **FIXED** (flagged) | [Phase 1.3](./PRODUCTION_ROADMAP_V1.md) ✓ | `emitRetryDueShadowState` (`retry-shadow.ts`) emits `RETRY_DUE` after scanner promote when `TASK_RETRY_SHADOW_EMIT=1` |
+| **P1-5** | `deriveLegacy*` at write time (projection) | **DEFERRED** | [Phase 5.2](./PRODUCTION_ROADMAP_V1.md) | `execution-state.ts:143-203`; only referenced in tests today |
+| **P1-6** | Policy/approval early exits — shadow FSM lag | **FIXED** (flagged) | [Phase 1.2](./PRODUCTION_ROADMAP_V1.md) ✓ | `emitPolicyShadowState` (`policy-shadow.ts`) emits `POLICY_BLOCKED` / `POLICY_APPROVAL_REQUIRED` and aligns `lifecycleState` on the blocked/approval early returns when `TASK_POLICY_SHADOW_EMIT=1`; approved re-run resumes via `APPROVAL_GRANTED` in `startShadowExecutionRun` |
+| **P1-7** | Replica-set assumption for retry scanner | **FIXED** | [Phase 0.3](./PRODUCTION_ROADMAP_V1.md) ✓, [Phase 1.3](./PRODUCTION_ROADMAP_V1.md) ✓ | `runRetryScannerOnce` falls back to non-transactional promote+enqueue via `isMongoTransactionUnsupported` (mirrors `message.service.ts`) |
+| **P2-8** | Dead `buildExecutionPlan` / `runExecutionPlan` | **OPEN** (debt) | [Phase 5.1](./PRODUCTION_ROADMAP_V1.md) | Defined `index.ts:969-1130`; zero callers |
 | **P2-9** | Unify `RetryManager` schedules | **DEFERRED** | Phase 5+ | Hard-coded in `agent-runner.ts`, `retry-manager.ts` |
 | **P2-10** | `RETRY_BUDGET_EXHAUSTED` vs `ERROR_OCCURRED` alignment | **OPEN** (debt) | Phase 1+ | `scheduleTaskRetry` sets legacy `failed` directly |
-| **P2-11** | Stuck detector log-only | **FIXED** | [Phase 1.5](../PRODUCTION_ROADMAP_V1.md) ✓ | `stuck-task-detector.ts` — `TASK_STUCK_REMEDIATION=fail\|retry\|log` (default `log`) |
-| **P3-12** | Cancellation wiring | **FIXED** | [Phase 1.4](../PRODUCTION_ROADMAP_V1.md) ✓ | `POST /api/tasks/:id/cancel` → `task.cancel.requested` outbox → `processTaskCancellation` + per-iteration checks in `AgentRunner` |
+| **P2-11** | Stuck detector log-only | **FIXED** | [Phase 1.5](./PRODUCTION_ROADMAP_V1.md) ✓ | `stuck-task-detector.ts` — `TASK_STUCK_REMEDIATION=fail\|retry\|log` (default `log`) |
+| **P3-12** | Cancellation wiring | **FIXED** | [Phase 1.4](./PRODUCTION_ROADMAP_V1.md) ✓ | `POST /api/tasks/:id/cancel` → `task.cancel.requested` outbox → `processTaskCancellation` + per-iteration checks in `AgentRunner` |
 | **P3-13** | `Retry-After` / circuit breaker | **DEFERRED** | Phase 4+ | Not implemented |
-| **P3-14** | Divergence audit job | **DEFERRED** | [Phase 1.1](../PRODUCTION_ROADMAP_V1.md) | Overlaps P0-3 |
-| **P3-15** | Retry scanner batching | **DEFERRED** | [Phase 6.2](../PRODUCTION_ROADMAP_V1.md) | One row per 5 s tick per worker |
+| **P3-14** | Divergence audit job | **DEFERRED** | [Phase 1.1](./PRODUCTION_ROADMAP_V1.md) | Overlaps P0-3 |
+| **P3-15** | Retry scanner batching | **DEFERRED** | [Phase 6.2](./PRODUCTION_ROADMAP_V1.md) | One row per 5 s tick per worker |
 
 ---
 
@@ -138,7 +140,7 @@ No material factual errors after reconciliation. Uncertain items (`optimisticCon
 
 ## Smallest safe implementation sequence
 
-Aligned with [Production Roadmap V1](../PRODUCTION_ROADMAP_V1.md). Items marked **DONE** shipped before this reconciliation.
+Aligned with [Production Roadmap V1](./PRODUCTION_ROADMAP_V1.md). Items marked **DONE** shipped before this reconciliation.
 
 ### Phase A — Stop losing work (ADR-002) — **DONE**
 

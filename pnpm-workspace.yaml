@@ -13,7 +13,10 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - brace-expansion@1.1.18
   - brace-expansion@2.1.4
-  - brace-expansion@5.0.8
+  - brace-expansion@3.0.6
+  - brace-expansion@5.0.9
+  - socket.io-parser@4.2.7
+  - ip-address@10.3.1
 
 # npm advisory range is still <=5.0.7 / >=5.0.8, so it falsely flags
 # patched 1.1.18 / 2.1.4 backports (GHSA-mh99-v99m-4gvg).
@@ -33,10 +36,15 @@ overrides:
   tar: "^7.5.19"
   sharp: "^0.35.0"
   axios: "^1.18.0"
-  # GHSA-mh99-v99m-4gvg — keep each major on its patched line for minimatch compat.
+  # GHSA-mh99-v99m-4gvg / GHSA-rgw5-rvv9-x895 — keep each major on its patched line for minimatch compat.
   "brace-expansion@<1.1.18": "1.1.18"
   "brace-expansion@>=2.0.0 <2.1.4": "2.1.4"
-  "brace-expansion@>=3.0.0 <5.0.8": "5.0.8"
+  "brace-expansion@>=3.0.0 <3.0.6": "3.0.6"
+  "brace-expansion@>=4.0.0 <5.0.9": "5.0.9"
+  # GHSA-2m8v-j782-fhvr — socket.io(-client) still pulls parser <4.2.7
+  "socket.io-parser@>=4.0.0 <4.2.7": "4.2.7"
+  # GHSA-mwp4-54f8-5fhr — socks → ip-address <=10.3.0
+  "ip-address@<=10.3.0": "10.3.1"
   "js-yaml@>=3 <3.15.0": "3.15.0"
   "js-yaml@>=4 <4.3.0": "4.3.0"
   "ws@>=6.0.0 <6.2.4": "^6.2.4"

@@ -1,5 +1,13 @@
 # @semantask/auth
 
+## 3.0.1
+
+### Patch Changes
+
+- 2a8828a: Enforce admin force-password-change via a persisted mustChangePassword flag: set on force, clear on password change, expose on login, and block refresh/Google OAuth until changed.
+- 8cbc661: Make step-up "Challenge expired" errors reachable, and create OTP-method challenges for Google-only / passwordless accounts on refresh drift.
+- 1cd1496: Revoke password step-up sessions on non-retryable user-state failures (missing user, inactive account, password auth unavailable), while keeping the session pending for incorrect-password retries.
+
 ## 3.0.0
 
 ### Major Changes

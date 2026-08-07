@@ -28,6 +28,8 @@
 
 Product direction: [ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md) (roadmap lives in Notion, not this repo).
 
+**Product contract:** Suggest → approve → coordinate. Autonomy is an optional, policy-gated capability — not the product promise. False tool side effects when execution mode is (or defaults to) `suggest_only` are a **P0** product bug. See [ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md).
+
 ## Why Semantask
 
 | Theme | What you get |
@@ -94,7 +96,7 @@ Full system map: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Optional LLM/wo
 ├── apps/
 │   ├── web/           # Next.js — UI, APIs, auth flows
 │   ├── socket/      # Socket.IO — real-time observability transport
-│   ├── task-worker/ # Agent execution — LLM providers, retries, orchestration
+│   ├── task-worker/ # Optional autonomy worker — LLM providers, retries (when policy allows)
 │   └── mobile/      # React Native client (optional)
 ├── packages/
 │   ├── auth/        # Shared auth utilities
@@ -121,7 +123,7 @@ Copy [`env.sample`](env.sample) to `.env` at the repository root and adjust for 
 
 **Core:** database, Redis, auth secrets, NextAuth, OAuth (optional), ImageKit (if media uploads are enabled), SMTP (optional).
 
-**Agents / task-worker — multi-provider:** set `LLM_PROVIDER` and either OpenAI-style keys or provider-specific variables. The worker supports **OpenAI**, **OpenAI-compatible** bases (including **AMD** OpenAI-compatible hosts), and **Hugging Face** (Inference API or OpenAI-compatible endpoints). See `env.sample` for `LLM_*`, `TASK_*`, and optional `AMD_*` / `HUGGINGFACE_*` overrides.
+**Optional autonomy / task-worker — multi-provider:** set `LLM_PROVIDER` and either OpenAI-style keys or provider-specific variables. The worker supports **OpenAI**, **OpenAI-compatible** bases (including **AMD** OpenAI-compatible hosts), and **Hugging Face** (Inference API or OpenAI-compatible endpoints). See `env.sample` for `LLM_*`, `TASK_*`, and optional `AMD_*` / `HUGGINGFACE_*` overrides.
 
 ```env
 # Core (abbreviated — see env.sample for full list)
@@ -133,7 +135,7 @@ ORIGIN=http://localhost:3000
 REDIS_URL=redis://localhost:6379
 NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
 
-# Agents — example multi-provider knobs (see env.sample)
+# Optional autonomy — example multi-provider knobs (see env.sample)
 LLM_PROVIDER=openai
 OPENAI_API_KEY=
 # OPENAI_BASE_URL=          # OpenAI-compatible / vLLM / custom gateway

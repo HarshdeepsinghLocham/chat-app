@@ -1,4 +1,8 @@
-import type { MessageSemanticType, TaskExecutionActionType } from "@semantask/types";
+import type { ExecutionMode, MessageSemanticType, TaskExecutionActionType } from "@semantask/types";
+import {
+    getEffectiveExecutionMode,
+    isExecutionModeEnforce,
+} from "@semantask/services/organization-policy.service";
 import {
     getExecutionConfidenceThreshold,
     GLOBAL_EXECUTION_CONFIDENCE_BASELINE,
@@ -17,6 +21,7 @@ export type OrganizationPolicyOverlay = {
     requireApprovalFor?: string[];
     toolDenyList?: string[];
     promptGuardMode?: PromptGuardMode | null;
+    executionMode?: ExecutionMode | null;
 };
 
 type RequestedPayload = {
@@ -32,6 +37,8 @@ type RequestedPayload = {
     taskId?: string;
     organizationId?: string | null;
     orgPolicy?: OrganizationPolicyOverlay | null;
+    /** Override env EXECUTION_MODE_ENFORCE for tests. */
+    executionModeEnforce?: boolean;
 };
 
 export type ExecutionPolicyOutcome = "auto_execute" | "approval_required" | "blocked";
@@ -46,6 +53,8 @@ export type ExecutionPolicyDecision = {
     confidence: number;
     threshold: number;
     orgPolicyVersion?: number | null;
+    executionMode?: ExecutionMode;
+    executionModeEnforced?: boolean;
 };
 
 function toStringArray(value: unknown): string[] {
@@ -120,6 +129,46 @@ function resolveSemanticType(payload: RequestedPayload): MessageSemanticType | u
     return undefined;
 }
 
+/** Apply workspace executionMode gate (ADR-005). Pure — used for enforce and shadow would-gate. */
+export function applyExecutionModeGate(
+    decision: ExecutionPolicyDecision,
+    mode: ExecutionMode,
+    enforce: boolean
+): ExecutionPolicyDecision {
+    const withMode: ExecutionPolicyDecision = {
+        ...decision,
+        executionMode: mode,
+        executionModeEnforced: enforce,
+    };
+
+    if (!enforce) {
+        return withMode;
+    }
+
+    if (mode === "suggest_only") {
+        return {
+            ...withMode,
+            outcome: "blocked",
+            riskLevel: "high",
+            reasons: ["execution_mode:suggest_only"],
+        };
+    }
+
+    if (mode === "require_approval" && decision.outcome === "auto_execute") {
+        return {
+            ...withMode,
+            outcome: "approval_required",
+            riskLevel: decision.riskLevel === "low" ? "medium" : decision.riskLevel,
+            reasons: [
+                ...decision.reasons,
+                "execution_mode:require_approval",
+            ],
+        };
+    }
+
+    return withMode;
+}
+
 export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPolicyDecision {
     const confidence = typeof payload.confidence === "number" ? payload.confidence : 0.5;
     const semanticType = resolveSemanticType(payload);
@@ -128,11 +177,30 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
     const intentLabel = semanticType ?? "unknown";
     const reasons: string[] = [];
     const orgPolicyVersion = orgPolicy ? orgPolicy.version : null;
+    const executionMode = getEffectiveExecutionMode({
+        organizationId: payload.organizationId,
+        executionMode: orgPolicy?.executionMode ?? null,
+    });
+    const enforce = payload.executionModeEnforce ?? isExecutionModeEnforce();
 
     const actionKey = String(payload.actionType).toLowerCase();
 
-    if (orgPolicy?.toolDenyList?.includes(actionKey)) {
+    if (enforce && executionMode === "suggest_only") {
         return {
+            outcome: "blocked",
+            riskLevel: "high",
+            reasons: ["execution_mode:suggest_only"],
+            semanticType,
+            confidence,
+            threshold,
+            orgPolicyVersion,
+            executionMode,
+            executionModeEnforced: true,
+        };
+    }
+
+    if (orgPolicy?.toolDenyList?.includes(actionKey)) {
+        return applyExecutionModeGate({
             outcome: "blocked",
             riskLevel: "high",
             reasons: [
@@ -142,7 +210,7 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
             confidence,
             threshold,
             orgPolicyVersion,
-        };
+        }, executionMode, enforce);
     }
 
     if (payload.needsApproval) {
@@ -170,7 +238,7 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
     if (payload.actionType === "send_email") {
         const recipients = toStringArray(parameters.to);
         if (recipients.length === 0) {
-            return {
+            return applyExecutionModeGate({
                 outcome: "blocked",
                 riskLevel: "high",
                 reasons: ["Email action has no valid recipients."],
@@ -178,7 +246,7 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
                 confidence,
                 threshold,
                 orgPolicyVersion,
-            };
+            }, executionMode, enforce);
         }
 
         const allowedDomains = resolveAllowedEmailDomains(orgPolicy);
@@ -235,7 +303,7 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
         });
 
         if (!guardValidation.ok && promptGuardMode === "enforce" && !guardDecision.allow) {
-            return {
+            return applyExecutionModeGate({
                 outcome: "blocked",
                 riskLevel: "high",
                 reasons: guardValidation.reasons,
@@ -243,7 +311,7 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
                 confidence,
                 threshold,
                 orgPolicyVersion,
-            };
+            }, executionMode, enforce);
         }
 
         if (!guardValidation.ok && promptGuardMode === "monitor") {
@@ -256,7 +324,7 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
             ? `Policy passed for intent "${intentLabel}" (confidence ${confidence.toFixed(2)} ≥ ${threshold.toFixed(2)}); agent-runner will decide the next tool.`
             : `Policy passed for intent "${intentLabel}" (confidence ${confidence.toFixed(2)} ≥ ${threshold.toFixed(2)}).`;
 
-        return {
+        return applyExecutionModeGate({
             outcome: "auto_execute",
             riskLevel: "low",
             reasons: [passReason],
@@ -264,7 +332,7 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
             confidence,
             threshold,
             orgPolicyVersion,
-        };
+        }, executionMode, enforce);
     }
 
     const highRiskReason = reasons.some((reason) =>
@@ -273,7 +341,7 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
         || reason.includes("No executable action")
     );
 
-    return {
+    return applyExecutionModeGate({
         outcome: "approval_required",
         riskLevel: highRiskReason ? "high" : "medium",
         reasons,
@@ -281,7 +349,7 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
         confidence,
         threshold,
         orgPolicyVersion,
-    };
+    }, executionMode, enforce);
 }
 
 export { GLOBAL_EXECUTION_CONFIDENCE_BASELINE };

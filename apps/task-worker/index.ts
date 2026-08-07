@@ -14,7 +14,11 @@ import AgentRunner from "./services/agent-runner.js";
 import { WorkflowRegistry } from "./services/workflow/workflow-registry.js";
 import { DefaultAgentLoopTemplate } from "./services/workflow/default-agent-loop.template.js";
 import { evaluateExecutionPolicy } from "./services/execution-policy.js";
-import { resolveOrganizationPolicy } from "@semantask/services/organization-policy.service";
+import {
+    getEffectiveExecutionMode,
+    isExecutionModeEnforce,
+    resolveOrganizationPolicy,
+} from "@semantask/services/organization-policy.service";
 import { assertExecutionQuotas, OrgQuotaExceededError } from "@semantask/services/organization-quota.service";
 import { getOrganizationById } from "@semantask/services/organization.service";
 import { GLOBAL_EXECUTION_CONFIDENCE_BASELINE } from "./services/execution-confidence.js";
@@ -586,6 +590,7 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
             requireApprovalFor: orgPolicyResolved.requireApprovalFor,
             toolDenyList: orgPolicyResolved.toolDenyList,
             promptGuardMode: orgPolicyResolved.promptGuardMode,
+            executionMode: orgPolicyResolved.executionMode,
         }
         : null;
 
@@ -693,6 +698,12 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
         organizationId,
         orgPolicy: orgPolicyOverlay,
     });
+    const effectiveExecutionMode = policyDecision.executionMode
+        ?? getEffectiveExecutionMode({
+            organizationId,
+            executionMode: orgPolicyOverlay?.executionMode ?? null,
+        });
+    const executionModeEnforce = policyDecision.executionModeEnforced ?? isExecutionModeEnforce();
     const safePolicyDecision = {
         outcome: policyDecision.outcome,
         riskLevel: policyDecision.riskLevel,
@@ -701,6 +712,8 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
         confidence: policyDecision.confidence,
         threshold: policyDecision.threshold,
         orgPolicyVersion: policyDecision.orgPolicyVersion ?? null,
+        executionMode: effectiveExecutionMode,
+        executionModeEnforced: executionModeEnforce,
     };
 
     logExecution("info", {
@@ -715,7 +728,34 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
         outcome: policyDecision.outcome,
         riskLevel: policyDecision.riskLevel,
         reasons: safePolicyDecision.reasons,
+        "execution.mode": effectiveExecutionMode,
+        "execution.mode.enforce": executionModeEnforce,
     });
+
+    if (!executionModeEnforce) {
+        const enforcedWould = evaluateExecutionPolicy({
+            ...payload,
+            participantEmails: promptGuardContext.participantEmails,
+            contactEmails: promptGuardContext.contactEmails,
+            taskId: payload.taskId,
+            organizationId,
+            orgPolicy: orgPolicyOverlay,
+            executionModeEnforce: true,
+        });
+        if (enforcedWould.outcome !== policyDecision.outcome) {
+            logExecution("info", {
+                event: "execution.mode.shadow",
+                workerId: WORKER_ID,
+                taskId: payload.taskId,
+                conversationId: payload.conversationId,
+                actionType: payload.actionType,
+                "execution.mode": effectiveExecutionMode,
+                currentOutcome: policyDecision.outcome,
+                wouldOutcome: enforcedWould.outcome,
+                wouldReasons: enforcedWould.reasons.slice(0, 3),
+            });
+        }
+    }
 
     if (
         policyDecision.outcome === "auto_execute"
@@ -744,6 +784,9 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
     const requiresApproval = policyDecision.outcome === "approval_required";
 
     if (policyDecision.outcome === "blocked" || unsafe) {
+        const modeDenied = policyDecision.reasons.some((reason) =>
+            reason.includes("execution_mode:suggest_only")
+        );
         const blockedReason = unsafe
             ? "Execution blocked by policy: action marked unsafe."
             : (policyDecision.reasons.join(" ") || "Execution blocked by policy.");
@@ -759,7 +802,11 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
             toolName: payload.actionType,
             action: "denied",
             parameters: payload.parameters ?? {},
-            decision: unsafe ? "POLICY_UNSAFE" : "POLICY_BLOCKED",
+            decision: unsafe
+                ? "POLICY_UNSAFE"
+                : modeDenied
+                    ? "EXECUTION_MODE_DENIED"
+                    : "POLICY_BLOCKED",
             reason: blockedReason,
         });
 

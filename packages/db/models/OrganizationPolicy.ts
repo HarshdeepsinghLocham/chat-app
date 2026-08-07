@@ -3,6 +3,10 @@ import mongoose, { Document, Model, Schema } from "mongoose";
 export const PROMPT_GUARD_MODES = ["off", "monitor", "enforce"] as const;
 export type PromptGuardMode = (typeof PROMPT_GUARD_MODES)[number];
 
+/** Mirrors `@semantask/types` ExecutionMode — kept local so `@semantask/db` stays types-free. */
+export const EXECUTION_MODES = ["suggest_only", "require_approval", "auto_execute"] as const;
+export type OrganizationExecutionMode = (typeof EXECUTION_MODES)[number];
+
 export interface IOrganizationPolicy extends Document {
     _id: mongoose.Types.ObjectId;
     organizationId: mongoose.Types.ObjectId;
@@ -18,6 +22,10 @@ export interface IOrganizationPolicy extends Document {
     /** Default high-risk tools granted to all members when ToolGrant missing. */
     defaultToolGrants?: string[] | null;
     promptGuardMode?: PromptGuardMode | null;
+    /** Workspace execution mode; missing → treat as suggest_only on read. */
+    executionMode?: OrganizationExecutionMode | null;
+    executionModeUpdatedAt?: Date | null;
+    executionModeUpdatedBy?: mongoose.Types.ObjectId | null;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -38,6 +46,17 @@ const OrganizationPolicySchema = new Schema<IOrganizationPolicy>(
         promptGuardMode: {
             type: String,
             enum: PROMPT_GUARD_MODES,
+            default: null,
+        },
+        executionMode: {
+            type: String,
+            enum: EXECUTION_MODES,
+            default: null,
+        },
+        executionModeUpdatedAt: { type: Date, default: null },
+        executionModeUpdatedBy: {
+            type: Schema.Types.ObjectId,
+            ref: "User",
             default: null,
         },
     },

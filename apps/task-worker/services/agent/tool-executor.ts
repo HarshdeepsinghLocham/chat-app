@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import mongoose from "mongoose";
-import type { TaskExecutionActionType } from "@semantask/types";
+import type { ExecutionMode, TaskExecutionActionType } from "@semantask/types";
 import { createTaskAction } from "@semantask/services/repositories/task.repo";
 import TaskActionModel from "@semantask/db/models/TaskAction";
 import { logExecution } from "../execution-logger.js";
@@ -15,6 +15,11 @@ import { loadPromptGuardEmailContext } from "../prompt-guard-context.js";
 import { assertToolGrant } from "@semantask/services/tool-grant.service";
 import { AuthorizationError } from "@semantask/services/authorization.service";
 import { appendExecutionAudit } from "@semantask/services/execution-audit.service";
+import {
+    getEffectiveExecutionMode,
+    isExecutionModeEnforce,
+    resolveOrganizationPolicy,
+} from "@semantask/services/organization-policy.service";
 import type { AgentContext } from "./context.js";
 import { combineAbortSignals } from "./types.js";
 import type {
@@ -341,6 +346,51 @@ export class ToolExecutor {
                 evidence: { toolName: payload.toolName },
                 error: `No tool registered for name ${payload.toolName}`,
             };
+        }
+
+        if (isExecutionModeEnforce()) {
+            const organizationId = options?.organizationId ?? null;
+            let storedMode: ExecutionMode | null = null;
+            if (organizationId) {
+                const orgPolicy = await resolveOrganizationPolicy(organizationId);
+                storedMode = orgPolicy?.executionMode ?? null;
+            }
+            const mode = getEffectiveExecutionMode({
+                organizationId,
+                executionMode: storedMode,
+            });
+            if (mode === "suggest_only") {
+                const message = "Tool execution denied: execution_mode is suggest_only.";
+                logExecution("warn", {
+                    event: "execution.mode.tool_denied",
+                    runId,
+                    taskId: payload.taskId,
+                    toolName: payload.toolName,
+                    "execution.mode": mode,
+                });
+                await appendExecutionAudit({
+                    taskId: payload.taskId,
+                    conversationId: payload.conversationId,
+                    organizationId,
+                    actorId: options?.userId ?? null,
+                    runId,
+                    toolName: payload.toolName,
+                    action: "denied",
+                    parameters: payload.parameters ?? {},
+                    decision: "EXECUTION_MODE_DENIED",
+                    reason: message,
+                });
+                return {
+                    summary: message,
+                    adapterSuccess: false,
+                    evidence: {
+                        toolName: payload.toolName,
+                        reason: "EXECUTION_MODE_DENIED",
+                        executionMode: mode,
+                    },
+                    error: message,
+                };
+            }
         }
 
         try {

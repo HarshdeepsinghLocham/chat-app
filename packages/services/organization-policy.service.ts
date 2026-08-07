@@ -1,13 +1,21 @@
 import { Types } from "mongoose";
 import { connectToDatabase } from "@semantask/db";
 import OrganizationPolicyModel, {
+    EXECUTION_MODES,
     PROMPT_GUARD_MODES,
     type IOrganizationPolicy,
+    type OrganizationExecutionMode,
     type PromptGuardMode,
 } from "@semantask/db/models/OrganizationPolicy";
+import type { ExecutionMode } from "@semantask/types";
 import { assertCanManageMembers, assertMembership } from "./organization.service";
 import { AuthorizationError } from "./authorization-errors";
 import { ValidationError } from "./organization-errors";
+
+function isExecutionModeValue(value: unknown): value is ExecutionMode {
+    return typeof value === "string"
+        && (EXECUTION_MODES as readonly string[]).includes(value);
+}
 
 export type ResolvedOrganizationPolicy = {
     organizationId: string;
@@ -18,6 +26,7 @@ export type ResolvedOrganizationPolicy = {
     toolDenyList: string[];
     defaultToolGrants: string[];
     promptGuardMode: PromptGuardMode | null;
+    executionMode: ExecutionMode | null;
 };
 
 function isValidObjectId(value: string | null | undefined): value is string {
@@ -52,6 +61,54 @@ function normalizeConfidenceThresholds(
     return normalized;
 }
 
+function normalizeStoredExecutionMode(
+    value: OrganizationExecutionMode | null | undefined
+): ExecutionMode | null {
+    if (value == null) return null;
+    return isExecutionModeValue(value) ? value : null;
+}
+
+/** Parse DEFAULT_EXECUTION_MODE (default suggest_only). */
+export function parseDefaultExecutionMode(raw?: string | null): ExecutionMode {
+    const value = (raw ?? process.env.DEFAULT_EXECUTION_MODE ?? "suggest_only").trim().toLowerCase();
+    return isExecutionModeValue(value) ? value : "suggest_only";
+}
+
+/** EXECUTION_MODE_ENFORCE=0|1 (default 0 / shadow). */
+export function isExecutionModeEnforce(raw?: string | null): boolean {
+    const value = (raw ?? process.env.EXECUTION_MODE_ENFORCE ?? "0").trim().toLowerCase();
+    return value === "1" || value === "true" || value === "enforce";
+}
+
+export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {
+    const source = raw ?? process.env.GRANDFATHER_AUTO_TENANTS ?? "";
+    return new Set(
+        source
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter((entry) => entry.length > 0)
+    );
+}
+
+/**
+ * Resolve effective workspace execution mode.
+ * Grandfather list → org field → DEFAULT_EXECUTION_MODE / suggest_only.
+ * Missing org field is treated as suggest_only via the default env path.
+ */
+export function getEffectiveExecutionMode(args: {
+    organizationId?: string | null;
+    executionMode?: ExecutionMode | null;
+}): ExecutionMode {
+    const organizationId = args.organizationId ?? null;
+    if (organizationId && parseGrandfatherAutoTenants().has(organizationId)) {
+        return "auto_execute";
+    }
+    if (args.executionMode && isExecutionModeValue(args.executionMode)) {
+        return args.executionMode;
+    }
+    return parseDefaultExecutionMode();
+}
+
 export async function getOrganizationPolicy(
     organizationId: string
 ): Promise<IOrganizationPolicy | null> {
@@ -83,6 +140,7 @@ export async function resolveOrganizationPolicy(
             toolDenyList: [],
             defaultToolGrants: [],
             promptGuardMode: null,
+            executionMode: null,
         };
     }
 
@@ -97,6 +155,7 @@ export async function resolveOrganizationPolicy(
         toolDenyList: (doc.toolDenyList ?? []).map((t) => t.toLowerCase()),
         defaultToolGrants: (doc.defaultToolGrants ?? []).map((t) => t.toLowerCase()),
         promptGuardMode: doc.promptGuardMode ?? null,
+        executionMode: normalizeStoredExecutionMode(doc.executionMode),
     };
 }
 
@@ -109,6 +168,7 @@ export type UpsertOrganizationPolicyInput = {
     toolDenyList?: string[] | null;
     defaultToolGrants?: string[] | null;
     promptGuardMode?: PromptGuardMode | null;
+    executionMode?: ExecutionMode | null;
 };
 
 export async function upsertOrganizationPolicy(
@@ -123,7 +183,19 @@ export async function upsertOrganizationPolicy(
         throw new ValidationError("Invalid promptGuardMode");
     }
 
+    if (
+        input.executionMode != null
+        && !(EXECUTION_MODES as readonly string[]).includes(input.executionMode)
+    ) {
+        throw new ValidationError("Invalid executionMode");
+    }
+
     await connectToDatabase();
+
+    const previous = input.executionMode !== undefined
+        ? await getOrganizationPolicy(input.organizationId)
+        : null;
+    const previousMode = normalizeStoredExecutionMode(previous?.executionMode);
 
     const $set: Record<string, unknown> = {};
     if (input.confidenceThresholds !== undefined) {
@@ -145,6 +217,18 @@ export async function upsertOrganizationPolicy(
         $set.promptGuardMode = input.promptGuardMode;
     }
 
+    let executionModeChanged = false;
+    if (input.executionMode !== undefined) {
+        $set.executionMode = input.executionMode;
+        if (previousMode !== input.executionMode) {
+            executionModeChanged = true;
+            $set.executionModeUpdatedAt = new Date();
+            if (isValidObjectId(input.actorUserId)) {
+                $set.executionModeUpdatedBy = new Types.ObjectId(input.actorUserId);
+            }
+        }
+    }
+
     const updated = await OrganizationPolicyModel.findOneAndUpdate(
         { organizationId: new Types.ObjectId(input.organizationId) },
         {
@@ -159,6 +243,17 @@ export async function upsertOrganizationPolicy(
 
     if (!updated) {
         throw new Error("Failed to upsert organization policy");
+    }
+
+    if (executionModeChanged) {
+        console.info(JSON.stringify({
+            event: "policy.execution_mode.changed",
+            organizationId: input.organizationId,
+            actorUserId: input.actorUserId,
+            previousMode,
+            executionMode: input.executionMode,
+            version: updated.version,
+        }));
     }
 
     return updated;
@@ -183,8 +278,12 @@ export function serializeOrganizationPolicy(doc: IOrganizationPolicy | null, org
             toolDenyList: [],
             defaultToolGrants: [],
             promptGuardMode: null,
+            executionMode: null,
+            effectiveExecutionMode: getEffectiveExecutionMode({ organizationId, executionMode: null }),
         };
     }
+
+    const executionMode = normalizeStoredExecutionMode(doc.executionMode);
 
     return {
         organizationId: doc.organizationId.toString(),
@@ -195,6 +294,12 @@ export function serializeOrganizationPolicy(doc: IOrganizationPolicy | null, org
         toolDenyList: doc.toolDenyList ?? [],
         defaultToolGrants: doc.defaultToolGrants ?? [],
         promptGuardMode: doc.promptGuardMode ?? null,
+        executionMode,
+        effectiveExecutionMode: getEffectiveExecutionMode({
+            organizationId: doc.organizationId.toString(),
+            executionMode,
+        }),
+        executionModeUpdatedAt: doc.executionModeUpdatedAt?.toISOString?.() ?? null,
         updatedAt: doc.updatedAt?.toISOString?.() ?? null,
     };
 }

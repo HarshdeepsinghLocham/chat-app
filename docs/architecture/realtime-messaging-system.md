@@ -6,8 +6,10 @@
 signals, presence, message lifecycle events (delivered/seen/edit/delete/
 reaction), and task lifecycle events. It is a Node Express + Socket.IO
 process that is intentionally **persistence-free for chat state**: it owns
-only ephemeral state in Redis and forwards all reads/writes to either the web
-app (authoritative MongoDB) or the task worker (autonomous execution).
+only ephemeral state in Redis. Chat/authz reads and writes go to the Next.js
+API boundary; the task-worker pushes lifecycle events through socket
+`/internal/*` endpoints (it does not receive forwarded reads or execution
+requests from `apps/socket`).
 
 This document describes the topology, delivery semantics, and operational
 properties. Authorization specifics live in

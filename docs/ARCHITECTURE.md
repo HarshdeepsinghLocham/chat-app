@@ -9,9 +9,10 @@
 
 | Field | Value |
 |-------|-------|
-| **Verification date** | 2026-07-01 |
+| **Verification date** | 2026-08-07 |
 | **Verified against commit** | `cff07cb887d7cde2b48069a3ca2d6da1dd63fca8` |
 | **Product contract** | [ADR-005](./decisions/ADR-005-suggest-first-work-coordination.md) — suggest-first; autonomy optional |
+| **Eng rule** | False auto-execute under suggest-first defaults (`suggest_only`) is a **P0** product bug ([ADR-005](./decisions/ADR-005-suggest-first-work-coordination.md) Consequences) |
 | **Historical roadmap** | [V1 archived](./archive/PRODUCTION_ROADMAP_V1.md) (V2 product roadmap is tracked outside the repo) |
 
 Statements in this file describe **current runtime behavior** unless labeled **Planned / Future**.
@@ -81,7 +82,7 @@ flowchart LR
         INTHTTP["Internal HTTP bridge<br/>/internal/* INTERNAL_SECRET"]
     end
 
-    WORKER["apps/task-worker<br/>outbox poller + AI agent runner"]
+    WORKER["apps/task-worker<br/>outbox poller + optional AgentRunner"]
 
     subgraph Data["Datastores"]
         MONGO[("MongoDB<br/>Mongoose models + Outbox")]
@@ -212,7 +213,7 @@ flow.
   - **`task.execution.requested`** / **`task.execution.approved`** → policy gate
     (`apps/task-worker/services/execution-policy.ts`), human-approval handling (`TaskAction`),
     distributed leases (`apps/task-worker/services/lease.service.ts` + Mongo `Task.leaseOwner`),
-    and the autonomous `AgentRunner` (`apps/task-worker/services/agent-runner.ts`). **LLM providers**
+    and the optional `AgentRunner` (`apps/task-worker/services/agent-runner.ts`) when policy allows. **LLM providers**
     (`apps/task-worker/services/llm/*`, OpenAI / HuggingFace / OpenAI-compatible) are used here for
     planning, step decisions, reflection — not at message ingress.
   - **Lease-busy defer:** when `withExecutionLease` cannot acquire the mutex,

@@ -114,8 +114,8 @@ export default function AdminTaskApprovalsPage() {
         <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold">Task Approvals</h1>
-                    <p className="text-sm text-muted-foreground">Review and govern high-risk execution requests.</p>
+                    <h1 className="text-2xl font-bold">Approval queue</h1>
+                    <p className="text-sm text-muted-foreground">Review high-risk tool actions that need approval.</p>
                 </div>
                 <Link href="/admin" className="text-sm underline">Back to admin dashboard</Link>
             </div>

@@ -241,7 +241,7 @@ function TaskInlineCard({ task, onStatusChange, onCancel }: TaskInlineCardProps)
                 <div className="min-w-0 flex-1">
                     <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
                         <span className="rounded-full border border-border bg-muted/60 px-2.5 py-1 text-foreground">
-                            {task.source === "ai" ? "AI task" : task.source === "manual" ? "Manual task" : "Imported task"}
+                            {task.source === "ai" ? "From chat" : task.source === "manual" ? "Manual task" : "Imported task"}
                         </span>
                         <span className="rounded-full border border-border bg-muted/60 px-2.5 py-1 text-foreground">
                             {task.status.replace("_", " ")}
@@ -299,7 +299,7 @@ function TaskInlineCard({ task, onStatusChange, onCancel }: TaskInlineCardProps)
                             transition={{ duration: 1.4, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
                             className="inline-flex h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.55)] dark:bg-blue-400 dark:shadow-[0_0_16px_rgba(96,165,250,0.8)]"
                         />
-                        <span className="font-medium">AI is thinking...</span>
+                        <span className="font-medium">Updating…</span>
                         <span className="flex items-center gap-0.5 text-blue-700/80 dark:text-blue-200/70">
                             <motion.span
                                 animate={shouldReduceMotion ? undefined : { opacity: [0.2, 1, 0.2] }}
@@ -362,7 +362,7 @@ function TaskInlineCard({ task, onStatusChange, onCancel }: TaskInlineCardProps)
                     )}
                     <span className="inline-flex items-center gap-1">
                         <Sparkles className="h-3 w-3 text-primary" />
-                        Real-time execution
+                        Run detail
                     </span>
                 </div>
             </div>
@@ -502,8 +502,8 @@ export default function TaskPanel({ conversationId }: TaskPanelProps) {
             <div className="border-b border-border px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <h3 className="text-sm font-semibold tracking-tight text-foreground">Tasks</h3>
-                        <p className="mt-1 text-xs text-muted-foreground">Actionable work for this conversation</p>
+                        <h3 className="text-sm font-semibold tracking-tight text-foreground">Suggested work</h3>
+                        <p className="mt-1 text-xs text-muted-foreground">Reviewable work extracted from this conversation</p>
                     </div>
                     <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] text-primary">
                         Live

@@ -192,71 +192,98 @@ export async function upsertOrganizationPolicy(
 
     await connectToDatabase();
 
-    const previous = input.executionMode !== undefined
-        ? await getOrganizationPolicy(input.organizationId)
-        : null;
-    const previousMode = normalizeStoredExecutionMode(previous?.executionMode);
+    const organizationObjectId = new Types.ObjectId(input.organizationId);
+    const maxAttempts = 5;
 
-    const $set: Record<string, unknown> = {};
-    if (input.confidenceThresholds !== undefined) {
-        $set.confidenceThresholds = normalizeConfidenceThresholds(input.confidenceThresholds);
-    }
-    if (input.allowedEmailDomains !== undefined) {
-        $set.allowedEmailDomains = asStringArray(input.allowedEmailDomains);
-    }
-    if (input.requireApprovalFor !== undefined) {
-        $set.requireApprovalFor = asStringArray(input.requireApprovalFor) ?? [];
-    }
-    if (input.toolDenyList !== undefined) {
-        $set.toolDenyList = asStringArray(input.toolDenyList) ?? [];
-    }
-    if (input.defaultToolGrants !== undefined) {
-        $set.defaultToolGrants = asStringArray(input.defaultToolGrants) ?? [];
-    }
-    if (input.promptGuardMode !== undefined) {
-        $set.promptGuardMode = input.promptGuardMode;
-    }
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const previous = await OrganizationPolicyModel.findOne({
+            organizationId: organizationObjectId,
+        }).lean<IOrganizationPolicy>();
+        const previousMode = normalizeStoredExecutionMode(previous?.executionMode);
 
-    let executionModeChanged = false;
-    if (input.executionMode !== undefined) {
-        $set.executionMode = input.executionMode;
-        if (previousMode !== input.executionMode) {
-            executionModeChanged = true;
-            $set.executionModeUpdatedAt = new Date();
-            if (isValidObjectId(input.actorUserId)) {
-                $set.executionModeUpdatedBy = new Types.ObjectId(input.actorUserId);
+        const $set: Record<string, unknown> = {};
+        if (input.confidenceThresholds !== undefined) {
+            $set.confidenceThresholds = normalizeConfidenceThresholds(input.confidenceThresholds);
+        }
+        if (input.allowedEmailDomains !== undefined) {
+            $set.allowedEmailDomains = asStringArray(input.allowedEmailDomains);
+        }
+        if (input.requireApprovalFor !== undefined) {
+            $set.requireApprovalFor = asStringArray(input.requireApprovalFor) ?? [];
+        }
+        if (input.toolDenyList !== undefined) {
+            $set.toolDenyList = asStringArray(input.toolDenyList) ?? [];
+        }
+        if (input.defaultToolGrants !== undefined) {
+            $set.defaultToolGrants = asStringArray(input.defaultToolGrants) ?? [];
+        }
+        if (input.promptGuardMode !== undefined) {
+            $set.promptGuardMode = input.promptGuardMode;
+        }
+
+        let executionModeChanged = false;
+        if (input.executionMode !== undefined) {
+            $set.executionMode = input.executionMode;
+            if (previousMode !== input.executionMode) {
+                executionModeChanged = true;
+                $set.executionModeUpdatedAt = new Date();
+                if (isValidObjectId(input.actorUserId)) {
+                    $set.executionModeUpdatedBy = new Types.ObjectId(input.actorUserId);
+                }
             }
+        }
+
+        const filter: Record<string, unknown> = {
+            organizationId: organizationObjectId,
+        };
+        if (previous) {
+            filter.version = previous.version;
+        }
+
+        try {
+            const updated = await OrganizationPolicyModel.findOneAndUpdate(
+                filter,
+                {
+                    $set,
+                    $inc: { version: 1 },
+                    $setOnInsert: {
+                        organizationId: organizationObjectId,
+                    },
+                },
+                {
+                    upsert: !previous,
+                    new: true,
+                }
+            ).lean<IOrganizationPolicy>();
+
+            if (!updated) {
+                // Version compare-and-swap miss — another writer won; retry.
+                continue;
+            }
+
+            if (executionModeChanged) {
+                console.info(JSON.stringify({
+                    event: "policy.execution_mode.changed",
+                    organizationId: input.organizationId,
+                    actorUserId: input.actorUserId,
+                    previousMode,
+                    executionMode: normalizeStoredExecutionMode(updated.executionMode)
+                        ?? input.executionMode,
+                    version: updated.version,
+                }));
+            }
+
+            return updated;
+        } catch (error) {
+            const maybeMongo = error as { code?: number };
+            if (maybeMongo?.code === 11000) {
+                continue;
+            }
+            throw error;
         }
     }
 
-    const updated = await OrganizationPolicyModel.findOneAndUpdate(
-        { organizationId: new Types.ObjectId(input.organizationId) },
-        {
-            $set,
-            $inc: { version: 1 },
-            $setOnInsert: {
-                organizationId: new Types.ObjectId(input.organizationId),
-            },
-        },
-        { upsert: true, new: true }
-    ).lean<IOrganizationPolicy>();
-
-    if (!updated) {
-        throw new Error("Failed to upsert organization policy");
-    }
-
-    if (executionModeChanged) {
-        console.info(JSON.stringify({
-            event: "policy.execution_mode.changed",
-            organizationId: input.organizationId,
-            actorUserId: input.actorUserId,
-            previousMode,
-            executionMode: input.executionMode,
-            version: updated.version,
-        }));
-    }
-
-    return updated;
+    throw new Error("Failed to upsert organization policy after concurrent retries");
 }
 
 export async function getOrganizationPolicyForViewer(

@@ -1,16 +1,35 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import {
     applyExecutionModeGate,
     evaluateExecutionPolicy,
 } from "../services/execution-policy.js";
 import { getExecutionConfidenceThreshold } from "../services/execution-confidence.js";
 
+const ENV_KEYS = [
+    "TASK_EXECUTION_CONFIDENCE_THRESHOLDS",
+    "EXECUTION_MODE_ENFORCE",
+    "DEFAULT_EXECUTION_MODE",
+    "GRANDFATHER_AUTO_TENANTS",
+] as const;
+
+const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
+
+beforeEach(() => {
+    for (const key of ENV_KEYS) {
+        originalEnv[key] = process.env[key];
+    }
+});
+
 afterEach(() => {
-    delete process.env.TASK_EXECUTION_CONFIDENCE_THRESHOLDS;
-    delete process.env.EXECUTION_MODE_ENFORCE;
-    delete process.env.DEFAULT_EXECUTION_MODE;
-    delete process.env.GRANDFATHER_AUTO_TENANTS;
+    for (const key of ENV_KEYS) {
+        const value = originalEnv[key];
+        if (value === undefined) {
+            delete process.env[key];
+        } else {
+            process.env[key] = value;
+        }
+    }
 });
 
 test("actionType none with low confidence requires approval and cites intent", () => {

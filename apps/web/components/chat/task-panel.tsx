@@ -502,8 +502,8 @@ export default function TaskPanel({ conversationId }: TaskPanelProps) {
             <div className="border-b border-border px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <h3 className="text-sm font-semibold tracking-tight text-foreground">Suggested work</h3>
-                        <p className="mt-1 text-xs text-muted-foreground">Reviewable work extracted from this conversation</p>
+                        <h3 className="text-sm font-semibold tracking-tight text-foreground">Work</h3>
+                        <p className="mt-1 text-xs text-muted-foreground">Tasks for this conversation</p>
                     </div>
                     <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] text-primary">
                         Live

@@ -12,7 +12,7 @@
 | **Verification date** | 2026-08-07 |
 | **Verified against commit** | `cff07cb887d7cde2b48069a3ca2d6da1dd63fca8` |
 | **Product contract** | [ADR-005](./decisions/ADR-005-suggest-first-work-coordination.md) — suggest-first; autonomy optional |
-| **Eng rule** | False auto-execute under suggest-first defaults (`suggest_only`) is a **P0** product bug ([ADR-005](./decisions/ADR-005-suggest-first-work-coordination.md) Consequences) |
+| **Eng rule** | With `EXECUTION_MODE_ENFORCE=1`, false auto-execute under effective `suggest_only` is a **P0** product bug ([ADR-005](./decisions/ADR-005-suggest-first-work-coordination.md) Consequences). Default `EXECUTION_MODE_ENFORCE=0` is shadow-only (logs would-gate; legacy auto-execute may continue). |
 | **Historical roadmap** | [V1 archived](./archive/PRODUCTION_ROADMAP_V1.md) (V2 product roadmap is tracked outside the repo) |
 
 Statements in this file describe **current runtime behavior** unless labeled **Planned / Future**.

@@ -1,10 +1,35 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
-import { evaluateExecutionPolicy } from "../services/execution-policy.js";
+import { afterEach, beforeEach, test } from "node:test";
+import {
+    applyExecutionModeGate,
+    evaluateExecutionPolicy,
+} from "../services/execution-policy.js";
 import { getExecutionConfidenceThreshold } from "../services/execution-confidence.js";
 
+const ENV_KEYS = [
+    "TASK_EXECUTION_CONFIDENCE_THRESHOLDS",
+    "EXECUTION_MODE_ENFORCE",
+    "DEFAULT_EXECUTION_MODE",
+    "GRANDFATHER_AUTO_TENANTS",
+] as const;
+
+const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
+
+beforeEach(() => {
+    for (const key of ENV_KEYS) {
+        originalEnv[key] = process.env[key];
+    }
+});
+
 afterEach(() => {
-    delete process.env.TASK_EXECUTION_CONFIDENCE_THRESHOLDS;
+    for (const key of ENV_KEYS) {
+        const value = originalEnv[key];
+        if (value === undefined) {
+            delete process.env[key];
+        } else {
+            process.env[key] = value;
+        }
+    }
 });
 
 test("actionType none with low confidence requires approval and cites intent", () => {
@@ -12,6 +37,7 @@ test("actionType none with low confidence requires approval and cites intent", (
         actionType: "none",
         confidence: 0.5,
         semanticType: "task",
+        executionModeEnforce: false,
     });
 
     assert.equal(decision.outcome, "approval_required");
@@ -27,6 +53,7 @@ test("incident at 0.72 requires approval under default 0.75 threshold", () => {
         actionType: "none",
         confidence: 0.72,
         semanticType: "incident",
+        executionModeEnforce: false,
     });
 
     assert.equal(decision.outcome, "approval_required");
@@ -38,6 +65,7 @@ test("task at 0.72 auto-executes under default 0.7 threshold", () => {
         actionType: "none",
         confidence: 0.72,
         semanticType: "task",
+        executionModeEnforce: false,
     });
 
     assert.equal(decision.outcome, "auto_execute");
@@ -53,6 +81,7 @@ test("env overlay raises task threshold", () => {
         actionType: "none",
         confidence: 0.8,
         semanticType: "task",
+        executionModeEnforce: false,
     });
 
     assert.equal(decision.outcome, "approval_required");
@@ -65,8 +94,105 @@ test("send_email without recipients is blocked", () => {
         confidence: 0.95,
         semanticType: "task",
         parameters: { to: [] },
+        executionModeEnforce: false,
     });
 
     assert.equal(decision.outcome, "blocked");
     assert.equal(decision.riskLevel, "high");
+});
+
+test("enforce + missing executionMode (suggest_only) blocks tools", () => {
+    const decision = evaluateExecutionPolicy({
+        actionType: "none",
+        confidence: 0.95,
+        semanticType: "task",
+        executionModeEnforce: true,
+    });
+
+    assert.equal(decision.outcome, "blocked");
+    assert.equal(decision.executionMode, "suggest_only");
+    assert.equal(decision.executionModeEnforced, true);
+    assert.ok(decision.reasons.includes("execution_mode:suggest_only"));
+});
+
+test("shadow mode keeps auto_execute for missing executionMode", () => {
+    const decision = evaluateExecutionPolicy({
+        actionType: "none",
+        confidence: 0.95,
+        semanticType: "task",
+        executionModeEnforce: false,
+    });
+
+    assert.equal(decision.outcome, "auto_execute");
+    assert.equal(decision.executionMode, "suggest_only");
+    assert.equal(decision.executionModeEnforced, false);
+});
+
+test("enforce + require_approval caps auto_execute", () => {
+    const decision = evaluateExecutionPolicy({
+        actionType: "none",
+        confidence: 0.95,
+        semanticType: "task",
+        organizationId: "507f1f77bcf86cd799439011",
+        orgPolicy: {
+            version: 1,
+            executionMode: "require_approval",
+        },
+        executionModeEnforce: true,
+    });
+
+    assert.equal(decision.outcome, "approval_required");
+    assert.equal(decision.executionMode, "require_approval");
+    assert.ok(decision.reasons.some((reason) => reason.includes("execution_mode:require_approval")));
+});
+
+test("enforce + auto_execute org mode allows tools", () => {
+    const decision = evaluateExecutionPolicy({
+        actionType: "none",
+        confidence: 0.95,
+        semanticType: "task",
+        organizationId: "507f1f77bcf86cd799439011",
+        orgPolicy: {
+            version: 1,
+            executionMode: "auto_execute",
+        },
+        executionModeEnforce: true,
+    });
+
+    assert.equal(decision.outcome, "auto_execute");
+    assert.equal(decision.executionMode, "auto_execute");
+});
+
+test("grandfather org resolves to auto_execute under enforce", () => {
+    process.env.GRANDFATHER_AUTO_TENANTS = "507f1f77bcf86cd799439011";
+    const decision = evaluateExecutionPolicy({
+        actionType: "none",
+        confidence: 0.95,
+        semanticType: "task",
+        organizationId: "507f1f77bcf86cd799439011",
+        orgPolicy: {
+            version: 0,
+            executionMode: null,
+        },
+        executionModeEnforce: true,
+    });
+
+    assert.equal(decision.outcome, "auto_execute");
+    assert.equal(decision.executionMode, "auto_execute");
+});
+
+test("applyExecutionModeGate is pure for suggest_only enforce", () => {
+    const gated = applyExecutionModeGate(
+        {
+            outcome: "auto_execute",
+            riskLevel: "low",
+            reasons: ["ok"],
+            confidence: 0.9,
+            threshold: 0.7,
+        },
+        "suggest_only",
+        true
+    );
+    assert.equal(gated.outcome, "blocked");
+    assert.deepEqual(gated.reasons, ["execution_mode:suggest_only"]);
 });

@@ -4,7 +4,7 @@ import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
   title: "Semantask",
-  description: "AI-native work coordination — suggest-first work from conversation; managers approve; autonomy optional.",
+  description: "AI-native work coordination — suggest-first work from conversation; managers approve when policy requires; autonomy optional.",
   icons: {
     icon: [{ url: "/favicon.png?v=2", type: "image/png" }],
     shortcut: "/favicon.png?v=2",

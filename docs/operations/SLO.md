@@ -1,6 +1,6 @@
 # Service Level Objectives (SLOs)
 
-Operational SLIs and targets for Semantask's optional task-worker / tool-execution capability (when policy allows). Metrics are scraped from Prometheus endpoints listed below.
+Operational SLIs and targets for the Semantask **task-worker** service (classification, outbox, leases). Tool execution via AgentRunner is optional and policy-gated. Metrics are scraped from Prometheus endpoints listed below.
 
 ## Scrape endpoints
 

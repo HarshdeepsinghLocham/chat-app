@@ -13,6 +13,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useConversationPresence } from "@/lib/hooks/useConversationPresence";
 import { useMessageDelivery } from "@/lib/hooks/useMessageDelivery";
 import { recordApiTiming } from "@/lib/utils/performance";
+import { useConversationWorkSuggestions } from "@/hooks/useConversationWorkSuggestions";
 
 interface MessageContainerProps {
     conversationId: string;
@@ -36,6 +37,7 @@ const MessageContainer = ({ conversationId }: MessageContainerProps) => {
 
     useConversationPresence(conversationId);
     useMessageDelivery({ conversationId, currentUserId });
+    const { getSuggestionId } = useConversationWorkSuggestions(conversationId);
 
     const fetchMessages = useCallback(async (cursor?: string, signal?: AbortSignal) => {
         if (!sel) return;
@@ -194,6 +196,7 @@ const MessageContainer = ({ conversationId }: MessageContainerProps) => {
                                     onReact={handleReact}
                                     showAvatar={group.showAvatar && i === 0}
                                     showUsername={group.showUsername && i === 0}
+                                    suggestionId={getSuggestionId(String(msg._id))}
                                 />
                             ))}
                         </motion.div>

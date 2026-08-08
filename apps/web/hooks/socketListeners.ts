@@ -1,6 +1,7 @@
 import { SocketEvents, type MessageSemanticUpdatedPayload, type TaskCreatedPayload, type TaskExecutionUpdatedPayload, type TaskLinkedToMessagePayload, type TaskUpdatedPayload } from "@semantask/types";
 import useChatStore from "@/store/chat-store";
 import useTaskStore from "@/store/task-store";
+import useWorkSuggestionStore from "@/store/work-suggestion-store";
 import type { TypedSocket } from "@/hooks/socketClient";
 
 function patchMessageSemanticState(payload: MessageSemanticUpdatedPayload) {
@@ -52,5 +53,7 @@ export function registerTaskSocketListeners(socket: TypedSocket) {
 	socket.on(SocketEvents.MESSAGE_SEMANTIC_UPDATED, (payload: MessageSemanticUpdatedPayload) => {
 		useTaskStore.getState().setMessageSemanticState(payload);
 		patchMessageSemanticState(payload);
+		// Refresh conversation suggestion index (ingress may have created a WorkSuggestion).
+		void useWorkSuggestionStore.getState().refreshConversation(payload.conversationId);
 	});
 }

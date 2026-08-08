@@ -32,7 +32,7 @@ overrides:
   form-data: ^4.0.6
   undici: ^6.27.0
   nanoid@<3.3.17: 3.3.18
-  nanoid@>=4.0.0 <5.1.6: 5.1.6
+  nanoid@>=4.0.0 <5.1.16: 5.1.16
 
 importers:
 

@@ -1,4 +1,10 @@
-import type { ClientConversation, ClientUser, UIMessage } from "@semantask/types";
+import type {
+    ClientConversation,
+    ClientUser,
+    UIMessage,
+    WorkSuggestionRecord,
+    WorkSuggestionStatus,
+} from "@semantask/types";
 import {
     AuthSessionPendingError,
     isStepUpResponse,
@@ -8,6 +14,16 @@ import {
     refreshSession,
 } from "@/lib/utils/auth/client-session";
 import { ensureAuthReady, authReady, isAuthenticated } from "@/lib/auth/authBootstrap";
+
+export class ApiHttpError extends Error {
+    status: number;
+
+    constructor(status: number, message: string) {
+        super(message);
+        this.name = "ApiHttpError";
+        this.status = status;
+    }
+}
 
 type ApiErrorPayload = {
     error?: string;
@@ -339,6 +355,59 @@ export async function revokeAdminToolGrant(grantId: string): Promise<void> {
 export async function getTaskApprovals(conversationId?: string): Promise<TaskApprovalsResponse> {
     const query = conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : "";
     return request<TaskApprovalsResponse>(`/api/task-approvals${query}`);
+}
+
+export type WorkSuggestionListResult = {
+    items: WorkSuggestionRecord[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+};
+
+export async function listWorkSuggestions(params: {
+    conversationId?: string;
+    organizationId?: string;
+    status?: WorkSuggestionStatus;
+    page?: number;
+    limit?: number;
+}): Promise<WorkSuggestionListResult> {
+    const searchParams = new URLSearchParams();
+    if (params.conversationId) searchParams.set("conversationId", params.conversationId);
+    if (params.organizationId) searchParams.set("organizationId", params.organizationId);
+    if (params.status) searchParams.set("status", params.status);
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+
+    const query = searchParams.toString();
+    const data = await request<{ success: boolean; data: WorkSuggestionListResult }>(
+        `/api/work-suggestions${query ? `?${query}` : ""}`
+    );
+    return data.data;
+}
+
+export async function getWorkSuggestion(id: string): Promise<WorkSuggestionRecord> {
+    const response = await authenticatedFetch(`/api/work-suggestions/${encodeURIComponent(id)}`);
+    const rawText = await response.text();
+    const payload = parseAuthPayload(rawText) as ApiErrorPayload & {
+        success?: boolean;
+        data?: WorkSuggestionRecord;
+    } | null;
+
+    if (!response.ok) {
+        throw new ApiHttpError(
+            response.status,
+            payload?.error || rawText || `Request failed with status ${response.status}`
+        );
+    }
+
+    if (!payload?.data) {
+        throw new ApiHttpError(500, "Invalid work suggestion response");
+    }
+
+    return payload.data;
 }
 
 export async function decideTaskApproval(input: {

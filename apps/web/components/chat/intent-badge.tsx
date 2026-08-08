@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { MessageSemanticType } from "@semantask/types";
 import { normalizeSemanticTypeForClient } from "@semantask/types";
 
@@ -38,9 +39,11 @@ const INTENT_BADGE_STYLES: Record<
 interface IntentBadgeProps {
     semanticType?: string | null;
     confidence?: number;
+    /** Deep link to an existing WorkSuggestion detail. Absent ⇒ badge-only (no fabricated CTA). */
+    reviewHref?: string | null;
 }
 
-export function IntentBadge({ semanticType, confidence }: IntentBadgeProps) {
+export function IntentBadge({ semanticType, confidence, reviewHref }: IntentBadgeProps) {
     const normalized = normalizeSemanticTypeForClient(semanticType);
 
     if (normalized === "chat") {
@@ -53,12 +56,24 @@ export function IntentBadge({ semanticType, confidence }: IntentBadgeProps) {
         : null;
 
     return (
-        <span
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${config.className}`}
-            title={confidenceLabel ? `Confidence: ${confidenceLabel}` : config.label}
-        >
-            {config.label}
-            {confidenceLabel ? <span className="normal-case opacity-70">{confidenceLabel}</span> : null}
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+            <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${config.className}`}
+                title={confidenceLabel ? `Confidence: ${confidenceLabel}` : config.label}
+                data-testid="intent-badge"
+            >
+                {config.label}
+                {confidenceLabel ? <span className="normal-case opacity-70">{confidenceLabel}</span> : null}
+            </span>
+            {reviewHref ? (
+                <Link
+                    href={reviewHref}
+                    className="text-[10px] font-medium text-[hsl(var(--foreground))] underline underline-offset-2 opacity-80 hover:opacity-100"
+                    data-testid="review-suggestion-cta"
+                >
+                    Review suggestion
+                </Link>
+            ) : null}
         </span>
     );
 }

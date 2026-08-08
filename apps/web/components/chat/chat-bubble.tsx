@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { UIMessage } from "@semantask/types";
 import ChatBubbleAvatar from "../home/chat-bubble-avatar";
 import { IntentBadge } from "./intent-badge";
+import { reviewSuggestionHref } from "@/lib/work-suggestions/map";
 
 interface ChatBubbleProps {
     message: UIMessage;
@@ -30,6 +31,8 @@ interface ChatBubbleProps {
     onReact: (msg: UIMessage, emoji: string) => void;
     showAvatar?: boolean;
     showUsername?: boolean;
+    /** Existing WorkSuggestion id for this message, if any. */
+    suggestionId?: string | null;
 }
 
 // --------- Small helpers ---------
@@ -69,6 +72,7 @@ const ChatBubble = ({
     onReact,
     showAvatar = true,
     showUsername = true,
+    suggestionId = null,
 }: ChatBubbleProps) => {
     const selectedConversation = useChatStore((s) => s.selectedConversation);
     const setEditingMessage = useChatStore((s) => s.setEditingMessage);
@@ -276,6 +280,7 @@ const ChatBubble = ({
                         <IntentBadge
                             semanticType={message.semanticType}
                             confidence={message.semanticConfidence}
+                            reviewHref={reviewSuggestionHref(suggestionId)}
                         />
                     </div>
                 ) : null}

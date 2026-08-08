@@ -254,3 +254,55 @@ export async function assertOrganizationMemberAccess(
     await assertOrganizationActive(organizationId);
     await assertMembership(organizationId, userId);
 }
+
+export type WorkSuggestionAccessTarget = {
+    conversationId: string;
+    organizationId?: string | null;
+};
+
+/**
+ * Allow access when the user can access the source conversation, OR when the
+ * suggestion is org-scoped and the user is an active organization member.
+ *
+ * Active membership = an OrganizationMembership row for (org, user). Removed /
+ * inactive members have no row (hard-delete); there is no soft status field.
+ * Organization must also be active (`assertOrganizationActive`).
+ * Does not change assertConversationAccess (org chats remain member AND participant).
+ */
+export async function canAccessWorkSuggestion(
+    userId: string,
+    suggestion: WorkSuggestionAccessTarget,
+    options?: ConversationAccessOptions
+): Promise<boolean> {
+    if (!isValidObjectId(userId) || !isValidObjectId(suggestion.conversationId)) {
+        return false;
+    }
+
+    if (await canAccessConversation(userId, suggestion.conversationId, options)) {
+        return true;
+    }
+
+    const organizationId = suggestion.organizationId ?? null;
+    if (!organizationId || !isValidObjectId(organizationId)) {
+        return false;
+    }
+
+    try {
+        await assertOrganizationActive(organizationId);
+        await assertMembership(organizationId, userId);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export async function assertWorkSuggestionAccess(
+    userId: string,
+    suggestion: WorkSuggestionAccessTarget,
+    options?: ConversationAccessOptions
+): Promise<void> {
+    const allowed = await canAccessWorkSuggestion(userId, suggestion, options);
+    if (!allowed) {
+        throw new AuthorizationError("FORBIDDEN", "Forbidden");
+    }
+}

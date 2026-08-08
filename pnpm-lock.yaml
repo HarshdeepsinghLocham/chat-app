@@ -409,6 +409,19 @@ importers:
       mongoose:
         specifier: ^8.16.2
         version: 8.24.0(@aws-sdk/credential-providers@3.1048.0)(socks@2.8.9)
+    devDependencies:
+      '@jest/globals':
+        specifier: 30.4.1
+        version: 30.4.1
+      '@types/jest':
+        specifier: ^30.0.0
+        version: 30.0.0
+      jest:
+        specifier: ^30.4.1
+        version: 30.4.1(@types/node@20.19.41)(ts-node@10.9.2(@types/node@20.19.41)(typescript@5.9.3))
+      ts-jest:
+        specifier: ^29.4.4
+        version: 29.4.9(@babel/core@7.29.0)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.0))(jest-util@30.4.1)(jest@30.4.1(@types/node@20.19.41)(ts-node@10.9.2(@types/node@20.19.41)(typescript@5.9.3)))(typescript@5.9.3)
 
   packages/observability:
     dependencies:

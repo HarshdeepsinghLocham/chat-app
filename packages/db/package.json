@@ -33,11 +33,18 @@
     },
     "scripts": {
         "build": "tsc -p tsconfig.build.json",
-        "typecheck": "tsc --noEmit"
+        "typecheck": "tsc --noEmit",
+        "test": "NODE_OPTIONS='--experimental-vm-modules' jest --config ./jest.config.cjs"
     },
     "dependencies": {
         "dexie": "^4.2.1",
         "mongoose": "^8.16.2",
         "mongodb": "^4.17.2"
+    },
+    "devDependencies": {
+        "@jest/globals": "30.4.1",
+        "@types/jest": "^30.0.0",
+        "jest": "^30.4.1",
+        "ts-jest": "^29.4.4"
     }
 }

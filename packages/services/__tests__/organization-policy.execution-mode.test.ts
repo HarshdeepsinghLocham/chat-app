@@ -25,7 +25,10 @@ jest.mock("../organization.service", () => ({
 import {
     getEffectiveExecutionMode,
     isExecutionModeEnforce,
+    isSuggestionBlockExecEnabled,
+    isSuggestionIngressEnabled,
     parseDefaultExecutionMode,
+    shouldBlockExecutionEnqueue,
     upsertOrganizationPolicy,
 } from "../organization-policy.service";
 
@@ -33,6 +36,8 @@ const ENV_KEYS = [
     "DEFAULT_EXECUTION_MODE",
     "EXECUTION_MODE_ENFORCE",
     "GRANDFATHER_AUTO_TENANTS",
+    "SUGGESTION_INGRESS",
+    "SUGGESTION_BLOCK_EXEC",
 ] as const;
 
 const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
@@ -93,6 +98,28 @@ describe("execution mode flags", () => {
         expect(isExecutionModeEnforce()).toBe(false);
         expect(isExecutionModeEnforce("1")).toBe(true);
         expect(isExecutionModeEnforce("enforce")).toBe(true);
+    });
+});
+
+describe("suggestion ingress flags", () => {
+    it("isSuggestionIngressEnabled defaults off", () => {
+        delete process.env.SUGGESTION_INGRESS;
+        expect(isSuggestionIngressEnabled()).toBe(false);
+        expect(isSuggestionIngressEnabled("1")).toBe(true);
+    });
+
+    it("isSuggestionBlockExecEnabled defaults on", () => {
+        delete process.env.SUGGESTION_BLOCK_EXEC;
+        expect(isSuggestionBlockExecEnabled()).toBe(true);
+        expect(isSuggestionBlockExecEnabled("0")).toBe(false);
+    });
+
+    it("shouldBlockExecutionEnqueue requires suggest_only and block flag", () => {
+        process.env.SUGGESTION_BLOCK_EXEC = "1";
+        expect(shouldBlockExecutionEnqueue("suggest_only")).toBe(true);
+        expect(shouldBlockExecutionEnqueue("auto_execute")).toBe(false);
+        process.env.SUGGESTION_BLOCK_EXEC = "0";
+        expect(shouldBlockExecutionEnqueue("suggest_only")).toBe(false);
     });
 });
 

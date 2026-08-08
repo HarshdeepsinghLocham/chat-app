@@ -11,5 +11,10 @@ module.exports = {
             },
         ],
     },
+    moduleNameMapper: {
+        "^(\\.{1,2}/.*)\\.js$": "$1",
+        "^@semantask/observability/metrics$": "<rootDir>/../observability/metrics.ts",
+        "^@semantask/observability$": "<rootDir>/../observability/index.ts",
+    },
     clearMocks: true,
 };

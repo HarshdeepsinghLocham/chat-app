@@ -30,6 +30,11 @@ export type CreateWorkSuggestionInput = {
     extractorVersion: string;
 };
 
+export type CreateWorkSuggestionResult = {
+    suggestion: WorkSuggestionRecord;
+    created: boolean;
+};
+
 export type ListWorkSuggestionsInput = {
     conversationId?: string;
     organizationId?: string;
@@ -91,7 +96,7 @@ async function findProposedByMessageId(messageId: string): Promise<IWorkSuggesti
 
 export async function createWorkSuggestion(
     input: CreateWorkSuggestionInput
-): Promise<WorkSuggestionRecord> {
+): Promise<CreateWorkSuggestionResult> {
     await connectToDatabase();
 
     if (!isValidObjectId(input.messageId) || !isValidObjectId(input.conversationId)) {
@@ -134,7 +139,10 @@ export async function createWorkSuggestion(
     if (status === "proposed") {
         const existing = await findProposedByMessageId(input.messageId);
         if (existing) {
-            return normalizeWorkSuggestion(existing);
+            return {
+                suggestion: normalizeWorkSuggestion(existing),
+                created: false,
+            };
         }
     }
 
@@ -177,12 +185,18 @@ export async function createWorkSuggestion(
             extractorVersion: doc.extractorVersion,
         }));
 
-        return normalizeWorkSuggestion(doc);
+        return {
+            suggestion: normalizeWorkSuggestion(doc),
+            created: true,
+        };
     } catch (error) {
         if (status === "proposed" && isDuplicateKeyError(error)) {
             const raced = await findProposedByMessageId(input.messageId);
             if (raced) {
-                return normalizeWorkSuggestion(raced);
+                return {
+                    suggestion: normalizeWorkSuggestion(raced),
+                    created: false,
+                };
             }
         }
         throw error;

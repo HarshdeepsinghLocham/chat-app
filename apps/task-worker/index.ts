@@ -19,6 +19,10 @@ import {
     isExecutionModeEnforce,
     resolveOrganizationPolicy,
 } from "@semantask/services/organization-policy.service";
+import {
+    recordSuggestOnlyExecutionEnqueueAttempt,
+    shouldFailClosedOnLeakedExecution,
+} from "@semantask/services/task-execution-enqueue.service";
 import { assertExecutionQuotas, OrgQuotaExceededError } from "@semantask/services/organization-quota.service";
 import { getOrganizationById } from "@semantask/services/organization.service";
 import { GLOBAL_EXECUTION_CONFIDENCE_BASELINE } from "./services/execution-confidence.js";
@@ -46,7 +50,10 @@ import {
     runWithRemoteTraceparent,
     withSpan,
 } from "@semantask/observability";
-import { taskExecutionCounter } from "@semantask/observability/metrics";
+import {
+    classifierDisagreementCounter,
+    taskExecutionCounter,
+} from "@semantask/observability/metrics";
 import { refreshOutboxMetrics } from "@semantask/services/outbox-metrics.service";
 import { bootstrapWorkerObservability } from "./services/observability-bootstrap.js";
 import { startWorkerMetricsServer } from "./services/metrics-server.js";
@@ -80,6 +87,7 @@ for (let depth = 0; depth < 8; depth += 1) {
 configureMessageClassifier({
     llmClassify: classifyMessageWithLlm,
     onDisagreement: (payload) => {
+        classifierDisagreementCounter.inc();
         logExecution("warn", {
             event: "classifier.shadow.disagreement",
             regexSemanticType: payload.regex.semanticType,
@@ -731,6 +739,81 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
         "execution.mode": effectiveExecutionMode,
         "execution.mode.enforce": executionModeEnforce,
     });
+
+    // Defense-in-depth: with suggestion ingress, refuse tools if a leaked
+    // task.execution.requested arrives under suggest_only + SUGGESTION_BLOCK_EXEC.
+    if (shouldFailClosedOnLeakedExecution(effectiveExecutionMode)) {
+        const blockedReason = "Execution blocked: suggest_only ingress forbids tool execution.";
+        recordSuggestOnlyExecutionEnqueueAttempt({
+            taskId: payload.taskId,
+            conversationId: payload.conversationId,
+            triggerMessageId: payload.triggerMessageId,
+            executionMode: effectiveExecutionMode,
+            source: "processTaskExecutionRequested.leaked",
+        });
+        logExecution("error", {
+            event: "execution.enqueue.suggest_only_invariant",
+            workerId: WORKER_ID,
+            taskId: payload.taskId,
+            conversationId: payload.conversationId,
+            actionType: payload.actionType,
+            "execution.mode": effectiveExecutionMode,
+            leakedOutboxEvent: true,
+        });
+
+        await appendExecutionAudit({
+            taskId: payload.taskId,
+            conversationId: payload.conversationId,
+            organizationId,
+            actorId: ownerUserId,
+            runId: provisionalRun,
+            toolName: payload.actionType,
+            action: "denied",
+            parameters: payload.parameters ?? {},
+            decision: "EXECUTION_MODE_DENIED",
+            reason: blockedReason,
+        });
+
+        await updateTaskLifecycle({
+            taskId: payload.taskId,
+            conversationId: payload.conversationId,
+            status: "failed",
+            result: {
+                success: false,
+                confidence: clampConfidence(confidence),
+                evidence: {
+                    reason: "suggest_only_ingress_block",
+                    policyDecision: safePolicyDecision,
+                },
+                error: blockedReason,
+            },
+        });
+
+        await emitTaskExecutionUpdate({
+            taskId: payload.taskId,
+            conversationId: payload.conversationId,
+            state: "blocked",
+            actionType: payload.actionType,
+            summary: "Execution blocked by suggest_only ingress guard.",
+            error: blockedReason,
+            updatedAt: new Date().toISOString(),
+            runId: provisionalRun,
+            phase: "policy",
+            step: "suggest_only_ingress_blocked",
+            progress: 100,
+            structuredOutput: {
+                status: "failed",
+                confidence: clampConfidence(confidence),
+                summary: "Execution blocked by suggest_only ingress guard.",
+                error: blockedReason,
+                evidence: {
+                    policyDecision: safePolicyDecision,
+                },
+            },
+        });
+        taskExecutionCounter.inc({ outcome: "blocked" });
+        return;
+    }
 
     if (!executionModeEnforce) {
         const enforcedWould = evaluateExecutionPolicy({

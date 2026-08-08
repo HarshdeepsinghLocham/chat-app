@@ -34,3 +34,14 @@ groups:
         annotations:
           summary: Task failure rate above 10%
           description: Failed task executions exceed 10% of terminal outcomes over 15 minutes.
+
+      - alert: ExecutionEnqueueWhileSuggestOnly
+        expr: increase(execution_enqueue_attempted_while_suggest_only_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: Execution enqueue attempted while suggest_only
+          description: >
+            task.execution.requested was attempted (or a leaked outbox event was consumed)
+            while SUGGESTION_BLOCK_EXEC is active and effective mode is suggest_only.
+            This is a P0 product invariant violation (ADR-005 / Phase 1 suggest-only ingress).

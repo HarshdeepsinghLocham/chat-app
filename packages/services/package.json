@@ -45,6 +45,11 @@
             "types": "./dist/services/work-suggestion.service.d.ts",
             "default": "./dist/services/work-suggestion.service.js"
         },
+        "./task-execution-enqueue.service": {
+            "import": "./dist/services/task-execution-enqueue.service.js",
+            "types": "./dist/services/task-execution-enqueue.service.d.ts",
+            "default": "./dist/services/task-execution-enqueue.service.js"
+        },
         "./authorization.service": {
             "import": "./dist/services/authorization.service.js",
             "types": "./dist/services/authorization.service.d.ts",

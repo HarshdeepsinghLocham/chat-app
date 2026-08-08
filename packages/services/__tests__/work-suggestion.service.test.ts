@@ -96,7 +96,7 @@ describe("work-suggestion.service", () => {
             findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
             create.mockResolvedValue(buildDoc());
 
-            const created = await createWorkSuggestion({
+            const result = await createWorkSuggestion({
                 messageId,
                 conversationId,
                 organizationId,
@@ -106,7 +106,8 @@ describe("work-suggestion.service", () => {
                 summary: "Suggested from chat",
             });
 
-            expect(created._id).toBe(suggestionId);
+            expect(result.created).toBe(true);
+            expect(result.suggestion._id).toBe(suggestionId);
             expect(create).toHaveBeenCalled();
             expect(infoSpy).toHaveBeenCalled();
             const payload = JSON.parse(String(infoSpy.mock.calls[0]?.[0]));
@@ -133,7 +134,9 @@ describe("work-suggestion.service", () => {
                 extractorVersion: "v2",
             });
 
-            expect(first._id).toBe(second._id);
+            expect(first.created).toBe(false);
+            expect(second.created).toBe(false);
+            expect(first.suggestion._id).toBe(second.suggestion._id);
             expect(create).not.toHaveBeenCalled();
             expect(infoSpy).not.toHaveBeenCalled();
         });
@@ -144,7 +147,7 @@ describe("work-suggestion.service", () => {
                 .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(buildDoc()) });
             create.mockRejectedValue({ code: 11000 });
 
-            const created = await createWorkSuggestion({
+            const result = await createWorkSuggestion({
                 messageId,
                 conversationId,
                 title: "Follow up with the team",
@@ -152,7 +155,8 @@ describe("work-suggestion.service", () => {
                 extractorVersion: "v1",
             });
 
-            expect(created._id).toBe(suggestionId);
+            expect(result.created).toBe(false);
+            expect(result.suggestion._id).toBe(suggestionId);
             expect(infoSpy).not.toHaveBeenCalled();
         });
 

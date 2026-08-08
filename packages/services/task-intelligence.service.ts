@@ -6,6 +6,7 @@ import {
 } from "@semantask/types";
 import MessageModel from "@semantask/db/models/Message";
 import TaskModel from "@semantask/db/models/Task";
+import { Conversation } from "@semantask/db/models/Conversation";
 import {
     buildTaskActionIdempotencyKey,
     createTaskAction,
@@ -21,6 +22,18 @@ import {
     isActionableClassification,
 } from "./message-classifier.service.js";
 import { upsertMessageIntent } from "./message-intent.service.js";
+import { createWorkSuggestion } from "./work-suggestion.service.js";
+import {
+    getEffectiveExecutionMode,
+    isSuggestionIngressEnabled,
+    resolveOrganizationPolicy,
+    shouldBlockExecutionEnqueue,
+} from "./organization-policy.service.js";
+import { enqueueTaskExecutionRequested } from "./task-execution-enqueue.service.js";
+import {
+    suggestionLatencyMs,
+    suggestionsCreatedCounter,
+} from "@semantask/observability/metrics";
 
 const AI_VERSION = "intelligent-v6-message-intent";
 
@@ -70,6 +83,24 @@ function preprocessMessage(content: string) {
     };
 }
 
+async function resolveConversationOrganizationId(conversationId: string): Promise<string | null> {
+    const conversation = await Conversation.findById(conversationId)
+        .select("organizationId")
+        .lean();
+    const organizationId = conversation?.organizationId;
+    return organizationId ? organizationId.toString() : null;
+}
+
+async function resolveEffectiveModeForConversation(organizationId: string | null) {
+    const orgPolicy = organizationId
+        ? await resolveOrganizationPolicy(organizationId)
+        : null;
+    return getEffectiveExecutionMode({
+        organizationId,
+        executionMode: orgPolicy?.executionMode ?? null,
+    });
+}
+
 export async function processMessageTaskIntelligence(
     input: ProcessMessageTaskIntelligenceInput
 ): Promise<ProcessMessageTaskIntelligenceResult | null> {
@@ -77,6 +108,7 @@ export async function processMessageTaskIntelligence(
         return null;
     }
 
+    const startedAt = Date.now();
     await connectToDatabase();
 
     const existing = await MessageModel.findById(input.messageId).select(
@@ -165,7 +197,69 @@ export async function processMessageTaskIntelligence(
         };
     }
 
-    // Create task for actionable intents (task, scheduling, incident, automation)
+    const organizationId = await resolveConversationOrganizationId(input.conversationId);
+    const executionMode = await resolveEffectiveModeForConversation(organizationId);
+    const suggestionIngress = isSuggestionIngressEnabled();
+    const blockExecution = suggestionIngress && shouldBlockExecutionEnqueue(executionMode);
+
+    const intent = await upsertMessageIntent({
+        messageId: input.messageId,
+        conversationId: input.conversationId,
+        semanticType,
+        content: input.content,
+        confidence: classification.confidence,
+        rawSummary: classification.reasoning,
+        extractorVersion: AI_VERSION,
+    });
+
+    if (suggestionIngress) {
+        const { created } = await createWorkSuggestion({
+            messageId: input.messageId,
+            conversationId: input.conversationId,
+            organizationId,
+            intentId: intent._id,
+            title: preprocessed.title,
+            summary: preprocessed.description,
+            confidence: classification.confidence,
+            extractorVersion: AI_VERSION,
+            candidates: {
+                assigneeCandidates: intent.entities.assigneeUserIds,
+                dueAtCandidate: intent.entities.dueAtCandidate,
+                priorityCandidate: intent.entities.priorityCandidate,
+            },
+        });
+
+        suggestionLatencyMs.observe(Date.now() - startedAt);
+        if (created) {
+            suggestionsCreatedCounter.inc();
+        }
+    }
+
+    if (blockExecution) {
+        await updateMessageSemanticState(input.messageId, {
+            semanticType,
+            semanticConfidence: classification.confidence,
+            aiStatus: "classified",
+            aiVersion: AI_VERSION,
+            linkedTaskIds: [],
+            semanticProcessedAt: processedAt,
+        });
+
+        return {
+            semanticPayload: {
+                messageId: input.messageId,
+                conversationId: input.conversationId,
+                semanticType,
+                semanticConfidence: classification.confidence,
+                aiStatus: "classified",
+                aiVersion: AI_VERSION,
+                linkedTaskIds: [],
+                semanticProcessedAt: processedAt.toISOString(),
+            },
+        };
+    }
+
+    // Legacy / non-blocked path: create task and request execution
     const dedupeKey = deriveTaskDedupeKey({
         conversationId: input.conversationId,
         title: preprocessed.title,
@@ -235,38 +329,43 @@ export async function processMessageTaskIntelligence(
         semanticProcessedAt: processedAt,
     });
 
-    await upsertMessageIntent({
-        messageId: input.messageId,
+    const executionPayload = {
+        taskId: task._id.toString(),
         conversationId: input.conversationId,
-        semanticType,
-        content: input.content,
-        confidence: classification.confidence,
-        rawSummary: classification.reasoning,
-        extractorVersion: AI_VERSION,
-    });
-
-    await enqueueOutboxEvent({
-        topic: "task.execution.requested",
-        dedupeKey: `task.execution.requested:${task._id.toString()}:${input.messageId}:none`,
-        payload: {
-            taskId: task._id.toString(),
-            conversationId: input.conversationId,
-            triggerMessageId: input.messageId,
-            requestedByType: "agent",
-            requestedById: null,
-            actionType: "none",
-            parameters: {
-                messageId: input.messageId,
-                content: preprocessed.normalized,
-                titleHint: preprocessed.title,
-                descriptionHint: preprocessed.description,
-                semanticType,
-            },
-            confidence: classification.confidence,
-            needsApproval: false,
+        triggerMessageId: input.messageId,
+        requestedByType: "agent",
+        requestedById: null,
+        actionType: "none",
+        parameters: {
+            messageId: input.messageId,
+            content: preprocessed.normalized,
+            titleHint: preprocessed.title,
+            descriptionHint: preprocessed.description,
             semanticType,
         },
-    });
+        confidence: classification.confidence,
+        needsApproval: false,
+        semanticType,
+    };
+
+    const executionDedupeKey =
+        `task.execution.requested:${task._id.toString()}:${input.messageId}:none`;
+
+    if (suggestionIngress) {
+        // Guarded boundary: classifier bugs cannot enqueue under suggest_only+block
+        await enqueueTaskExecutionRequested({
+            dedupeKey: executionDedupeKey,
+            payload: executionPayload,
+            executionMode,
+        });
+    } else {
+        // Preserve legacy behavior when SUGGESTION_INGRESS=0
+        await enqueueOutboxEvent({
+            topic: "task.execution.requested",
+            dedupeKey: executionDedupeKey,
+            payload: executionPayload,
+        });
+    }
 
     try {
         await createTaskAction({

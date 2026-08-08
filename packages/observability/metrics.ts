@@ -56,6 +56,31 @@ export const taskStuckDetectedCounter = new Counter({
     registers: [metricsRegistry],
 });
 
+export const suggestionsCreatedCounter = new Counter({
+    name: "suggestions_created_total",
+    help: "Work suggestions created from classifier ingress",
+    registers: [metricsRegistry],
+});
+
+export const suggestionLatencyMs = new Histogram({
+    name: "suggestion_latency_ms",
+    help: "Latency from intelligence start to work suggestion write (ms)",
+    buckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 8000],
+    registers: [metricsRegistry],
+});
+
+export const classifierDisagreementCounter = new Counter({
+    name: "classifier_disagreement_total",
+    help: "Shadow classifier disagreements between regex and LLM",
+    registers: [metricsRegistry],
+});
+
+export const executionEnqueueAttemptedWhileSuggestOnlyCounter = new Counter({
+    name: "execution_enqueue_attempted_while_suggest_only_total",
+    help: "Attempts to enqueue task.execution.requested while suggest_only block is active",
+    registers: [metricsRegistry],
+});
+
 export const llmRequestDurationSeconds = new Histogram({
     name: "llm_request_duration_seconds",
     help: "LLM request latency in seconds",

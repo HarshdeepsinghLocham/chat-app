@@ -80,6 +80,36 @@ export function isExecutionModeEnforce(raw?: string | null): boolean {
     return value === "1" || value === "true" || value === "enforce";
 }
 
+function isEnvFlagEnabled(raw: string | null | undefined, defaultEnabled: boolean): boolean {
+    const source = raw ?? (defaultEnabled ? "1" : "0");
+    const value = source.trim().toLowerCase();
+    if (value === "1" || value === "true" || value === "on") {
+        return true;
+    }
+    if (value === "0" || value === "false" || value === "off") {
+        return false;
+    }
+    return defaultEnabled;
+}
+
+/** SUGGESTION_INGRESS=0|1 (default 0). Dual-write WorkSuggestion on classify. */
+export function isSuggestionIngressEnabled(raw?: string | null): boolean {
+    return isEnvFlagEnabled(raw ?? process.env.SUGGESTION_INGRESS, false);
+}
+
+/**
+ * SUGGESTION_BLOCK_EXEC=0|1 (default 1).
+ * When enabled with effective suggest_only, hard-block execution enqueue.
+ */
+export function isSuggestionBlockExecEnabled(raw?: string | null): boolean {
+    return isEnvFlagEnabled(raw ?? process.env.SUGGESTION_BLOCK_EXEC, true);
+}
+
+/** True when execution enqueue must be refused for the given effective mode. */
+export function shouldBlockExecutionEnqueue(executionMode: ExecutionMode): boolean {
+    return isSuggestionBlockExecEnabled() && executionMode === "suggest_only";
+}
+
 export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {
     const source = raw ?? process.env.GRANDFATHER_AUTO_TENANTS ?? "";
     return new Set(

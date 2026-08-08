@@ -25,12 +25,16 @@ export type EnqueueTaskExecutionRequestedResult = {
 
 /**
  * Enqueue boundary for task.execution.requested.
- * Refuse writes when suggest_only + SUGGESTION_BLOCK_EXEC (invariant).
+ * Refuse writes when suggestion ingress is on and suggest_only + SUGGESTION_BLOCK_EXEC.
+ * When ingress is disabled, enqueue proceeds (legacy path).
  */
 export async function enqueueTaskExecutionRequested(
     input: EnqueueTaskExecutionRequestedInput
 ): Promise<EnqueueTaskExecutionRequestedResult> {
-    if (shouldBlockExecutionEnqueue(input.executionMode)) {
+    if (
+        isSuggestionIngressEnabled()
+        && shouldBlockExecutionEnqueue(input.executionMode)
+    ) {
         executionEnqueueAttemptedWhileSuggestOnlyCounter.inc();
         console.error(JSON.stringify({
             event: "execution.enqueue.suggest_only_invariant",

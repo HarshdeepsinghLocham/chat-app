@@ -602,98 +602,8 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
         }
         : null;
 
-    if (ownerUserId && isHighRiskToolName(payload.actionType)) {
-        try {
-            await assertToolGrant(
-                ownerUserId,
-                payload.actionType,
-                payload.conversationId,
-                organizationId
-            );
-        } catch (error) {
-            if (!(error instanceof AuthorizationError)) {
-                logExecution("error", {
-                    event: "tool_grant.check_failed",
-                    workerId: WORKER_ID,
-                    taskId: payload.taskId,
-                    conversationId: payload.conversationId,
-                    actionType: payload.actionType,
-                    userId: ownerUserId,
-                    error: error instanceof Error ? error.message : String(error),
-                });
-                await appendExecutionAudit({
-                    taskId: payload.taskId,
-                    conversationId: payload.conversationId,
-                    organizationId,
-                    actorId: ownerUserId,
-                    runId: provisionalRun,
-                    toolName: payload.actionType,
-                    action: "denied",
-                    parameters: payload.parameters ?? {},
-                    decision: "TOOL_GRANT_CHECK_ERROR",
-                    reason: error instanceof Error ? error.message : "Tool grant check failed",
-                });
-                // Fail-closed but retryable — do not permanently fail the task.
-                throw error;
-            }
-
-            const denyReason = error instanceof Error ? error.message : "Tool grant denied";
-
-            logExecution("warn", {
-                event: "tool_grant.deny",
-                workerId: WORKER_ID,
-                taskId: payload.taskId,
-                conversationId: payload.conversationId,
-                actionType: payload.actionType,
-                userId: ownerUserId,
-                reason: denyReason,
-            });
-
-            await appendExecutionAudit({
-                taskId: payload.taskId,
-                conversationId: payload.conversationId,
-                organizationId,
-                actorId: ownerUserId,
-                runId: provisionalRun,
-                toolName: payload.actionType,
-                action: "denied",
-                parameters: payload.parameters ?? {},
-                decision: "TOOL_GRANT_DENIED",
-                reason: denyReason,
-            });
-
-            await updateTaskLifecycle({
-                taskId: payload.taskId,
-                conversationId: payload.conversationId,
-                status: "failed",
-                result: {
-                    success: false,
-                    confidence: clampConfidence(confidence),
-                    evidence: {
-                        reason: "TOOL_GRANT_DENIED",
-                        toolName: payload.actionType,
-                    },
-                    error: denyReason,
-                },
-            });
-
-            await emitTaskExecutionUpdate({
-                taskId: payload.taskId,
-                conversationId: payload.conversationId,
-                state: "failed",
-                actionType: payload.actionType,
-                summary: denyReason,
-                error: denyReason,
-                updatedAt: new Date().toISOString(),
-                runId: provisionalRun,
-                phase: "finalize",
-                step: "tool_grant_denied",
-                progress: 100,
-            });
-            return;
-        }
-    }
-
+    // Resolve execution mode and fail-closed leak guard before tool-grant checks so
+    // dependency errors cannot bypass suggest_only ingress denial recording.
     const promptGuardContext = await loadPromptGuardEmailContext({
         conversationId: payload.conversationId,
         ownerUserId,
@@ -813,6 +723,98 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
         });
         taskExecutionCounter.inc({ outcome: "blocked" });
         return;
+    }
+
+    if (ownerUserId && isHighRiskToolName(payload.actionType)) {
+        try {
+            await assertToolGrant(
+                ownerUserId,
+                payload.actionType,
+                payload.conversationId,
+                organizationId
+            );
+        } catch (error) {
+            if (!(error instanceof AuthorizationError)) {
+                logExecution("error", {
+                    event: "tool_grant.check_failed",
+                    workerId: WORKER_ID,
+                    taskId: payload.taskId,
+                    conversationId: payload.conversationId,
+                    actionType: payload.actionType,
+                    userId: ownerUserId,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+                await appendExecutionAudit({
+                    taskId: payload.taskId,
+                    conversationId: payload.conversationId,
+                    organizationId,
+                    actorId: ownerUserId,
+                    runId: provisionalRun,
+                    toolName: payload.actionType,
+                    action: "denied",
+                    parameters: payload.parameters ?? {},
+                    decision: "TOOL_GRANT_CHECK_ERROR",
+                    reason: error instanceof Error ? error.message : "Tool grant check failed",
+                });
+                // Fail-closed but retryable — do not permanently fail the task.
+                throw error;
+            }
+
+            const denyReason = error instanceof Error ? error.message : "Tool grant denied";
+
+            logExecution("warn", {
+                event: "tool_grant.deny",
+                workerId: WORKER_ID,
+                taskId: payload.taskId,
+                conversationId: payload.conversationId,
+                actionType: payload.actionType,
+                userId: ownerUserId,
+                reason: denyReason,
+            });
+
+            await appendExecutionAudit({
+                taskId: payload.taskId,
+                conversationId: payload.conversationId,
+                organizationId,
+                actorId: ownerUserId,
+                runId: provisionalRun,
+                toolName: payload.actionType,
+                action: "denied",
+                parameters: payload.parameters ?? {},
+                decision: "TOOL_GRANT_DENIED",
+                reason: denyReason,
+            });
+
+            await updateTaskLifecycle({
+                taskId: payload.taskId,
+                conversationId: payload.conversationId,
+                status: "failed",
+                result: {
+                    success: false,
+                    confidence: clampConfidence(confidence),
+                    evidence: {
+                        reason: "TOOL_GRANT_DENIED",
+                        toolName: payload.actionType,
+                    },
+                    error: denyReason,
+                },
+            });
+
+            await emitTaskExecutionUpdate({
+                taskId: payload.taskId,
+                conversationId: payload.conversationId,
+                state: "failed",
+                actionType: payload.actionType,
+                summary: denyReason,
+                error: denyReason,
+                updatedAt: new Date().toISOString(),
+                runId: provisionalRun,
+                phase: "finalize",
+                step: "tool_grant_denied",
+                progress: 100,
+            });
+            return;
+        }
     }
 
     if (!executionModeEnforce) {

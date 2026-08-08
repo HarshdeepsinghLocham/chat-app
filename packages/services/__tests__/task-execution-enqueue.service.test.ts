@@ -61,7 +61,8 @@ afterEach(() => {
 });
 
 describe("enqueueTaskExecutionRequested", () => {
-    it("blocks enqueue under suggest_only when SUGGESTION_BLOCK_EXEC is on", async () => {
+    it("blocks enqueue under suggest_only when ingress and SUGGESTION_BLOCK_EXEC are on", async () => {
+        process.env.SUGGESTION_INGRESS = "1";
         process.env.SUGGESTION_BLOCK_EXEC = "1";
         const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
 
@@ -83,7 +84,24 @@ describe("enqueueTaskExecutionRequested", () => {
         errorSpy.mockRestore();
     });
 
+    it("enqueues suggest_only when ingress is disabled even if SUGGESTION_BLOCK_EXEC is on", async () => {
+        process.env.SUGGESTION_INGRESS = "0";
+        process.env.SUGGESTION_BLOCK_EXEC = "1";
+        enqueueOutboxEvent.mockResolvedValue({ _id: "evt-1" });
+
+        const result = await enqueueTaskExecutionRequested({
+            dedupeKey: "task.execution.requested:t1:m1:none",
+            payload: { taskId: "t1", conversationId: "c1" },
+            executionMode: "suggest_only",
+        });
+
+        expect(result).toEqual({ enqueued: true, blocked: false });
+        expect(enqueueOutboxEvent).toHaveBeenCalled();
+        expect(executionEnqueueAttemptedWhileSuggestOnlyCounter.inc).not.toHaveBeenCalled();
+    });
+
     it("enqueues when mode is auto_execute", async () => {
+        process.env.SUGGESTION_INGRESS = "1";
         process.env.SUGGESTION_BLOCK_EXEC = "1";
         enqueueOutboxEvent.mockResolvedValue({ _id: "evt-1" });
 
@@ -104,6 +122,7 @@ describe("enqueueTaskExecutionRequested", () => {
     });
 
     it("allows enqueue under suggest_only when SUGGESTION_BLOCK_EXEC=0", async () => {
+        process.env.SUGGESTION_INGRESS = "1";
         process.env.SUGGESTION_BLOCK_EXEC = "0";
         enqueueOutboxEvent.mockResolvedValue({ _id: "evt-1" });
 

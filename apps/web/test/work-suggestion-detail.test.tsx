@@ -70,6 +70,22 @@ describe("WorkSuggestionDetailView", () => {
         expect(screen.getByTestId("work-suggestion-not-found")).toBeInTheDocument();
     });
 
+    it("shows generic error state for 500 (page-assigned unexpected failures)", () => {
+        render(
+            <WorkSuggestionDetailView
+                loading={false}
+                errorStatus={500}
+                errorMessage="Failed to load suggestion"
+                suggestion={null}
+            />
+        );
+        expect(screen.getByTestId("work-suggestion-error")).toHaveTextContent(
+            "Failed to load suggestion"
+        );
+        expect(screen.queryByTestId("work-suggestion-not-found")).not.toBeInTheDocument();
+        expect(screen.getByRole("link", { name: /back to chat/i })).toHaveAttribute("href", "/");
+    });
+
     it("renders suggestion detail on success", () => {
         render(
             <WorkSuggestionDetailView

@@ -46,12 +46,26 @@ export function WorkSuggestionDetailView({
         );
     }
 
-    if (errorStatus === 404 || (!suggestion && errorMessage)) {
+    if (errorStatus === 404) {
         return (
             <div className="mx-auto max-w-2xl space-y-4 p-6" data-testid="work-suggestion-not-found">
                 <h1 className="text-2xl font-bold">Suggestion not found</h1>
                 <p className="text-sm text-muted-foreground">
                     {errorMessage || "This work suggestion does not exist or is no longer available."}
+                </p>
+                <Button asChild variant="outline">
+                    <Link href="/">Back to chat</Link>
+                </Button>
+            </div>
+        );
+    }
+
+    if (errorStatus != null) {
+        return (
+            <div className="mx-auto max-w-2xl space-y-4 p-6" data-testid="work-suggestion-error">
+                <h1 className="text-2xl font-bold">Unable to load suggestion</h1>
+                <p className="text-sm text-muted-foreground">
+                    {errorMessage || "Something went wrong while loading this work suggestion."}
                 </p>
                 <Button asChild variant="outline">
                     <Link href="/">Back to chat</Link>

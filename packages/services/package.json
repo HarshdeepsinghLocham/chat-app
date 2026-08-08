@@ -40,6 +40,11 @@
             "types": "./dist/services/message-intent.service.d.ts",
             "default": "./dist/services/message-intent.service.js"
         },
+        "./work-suggestion.service": {
+            "import": "./dist/services/work-suggestion.service.js",
+            "types": "./dist/services/work-suggestion.service.d.ts",
+            "default": "./dist/services/work-suggestion.service.js"
+        },
         "./authorization.service": {
             "import": "./dist/services/authorization.service.js",
             "types": "./dist/services/authorization.service.d.ts",

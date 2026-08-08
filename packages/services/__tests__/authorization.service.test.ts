@@ -2,8 +2,10 @@ import { Types } from "mongoose";
 import {
     assertConversationAccess,
     assertTaskAccess,
+    assertWorkSuggestionAccess,
     AuthorizationError,
     canAccessConversation,
+    canAccessWorkSuggestion,
 } from "../authorization.service";
 
 jest.mock("@semantask/db", () => ({
@@ -160,5 +162,73 @@ describe("authorization.service", () => {
         });
 
         await expect(assertTaskAccess(userId, taskId)).rejects.toBeInstanceOf(AuthorizationError);
+    });
+
+    describe("work suggestion access", () => {
+        it("allows conversation participants", async () => {
+            (Conversation.findById as jest.Mock).mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue({
+                        _id: new Types.ObjectId(conversationId),
+                        participants: [new Types.ObjectId(userId)],
+                        organizationId: null,
+                    }),
+                }),
+            });
+
+            await expect(
+                canAccessWorkSuggestion(userId, {
+                    conversationId,
+                    organizationId: null,
+                })
+            ).resolves.toBe(true);
+        });
+
+        it("allows org members for org-scoped suggestions without conversation participation", async () => {
+            (Conversation.findById as jest.Mock).mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue({
+                        _id: new Types.ObjectId(conversationId),
+                        participants: [new Types.ObjectId(otherUserId)],
+                        organizationId: new Types.ObjectId(organizationId),
+                    }),
+                }),
+            });
+            (assertOrganizationActive as jest.Mock).mockResolvedValue({ status: "active" });
+            (getMembership as jest.Mock).mockResolvedValue({
+                role: "member",
+                organizationId: new Types.ObjectId(organizationId),
+                userId: new Types.ObjectId(userId),
+            });
+
+            await expect(
+                canAccessWorkSuggestion(userId, {
+                    conversationId,
+                    organizationId,
+                })
+            ).resolves.toBe(true);
+        });
+
+        it("denies unrelated users without leaking existence", async () => {
+            (Conversation.findById as jest.Mock).mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue({
+                        _id: new Types.ObjectId(conversationId),
+                        participants: [new Types.ObjectId(otherUserId)],
+                        organizationId: null,
+                    }),
+                }),
+            });
+
+            await expect(
+                assertWorkSuggestionAccess(userId, {
+                    conversationId,
+                    organizationId: null,
+                })
+            ).rejects.toMatchObject({
+                code: "FORBIDDEN",
+                message: "Forbidden",
+            });
+        });
     });
 });

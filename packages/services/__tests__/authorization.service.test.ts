@@ -33,7 +33,11 @@ jest.mock("../organization.service", () => ({
 
 import { Conversation } from "@semantask/db/models/Conversation";
 import TaskModel from "@semantask/db/models/Task";
-import { getMembership, assertOrganizationActive } from "../organization.service";
+import {
+    assertMembership,
+    assertOrganizationActive,
+    getMembership,
+} from "../organization.service";
 
 const userId = new Types.ObjectId().toString();
 const otherUserId = new Types.ObjectId().toString();
@@ -195,7 +199,7 @@ describe("authorization.service", () => {
                 }),
             });
             (assertOrganizationActive as jest.Mock).mockResolvedValue({ status: "active" });
-            (getMembership as jest.Mock).mockResolvedValue({
+            (assertMembership as jest.Mock).mockResolvedValue({
                 role: "member",
                 organizationId: new Types.ObjectId(organizationId),
                 userId: new Types.ObjectId(userId),
@@ -207,6 +211,35 @@ describe("authorization.service", () => {
                     organizationId,
                 })
             ).resolves.toBe(true);
+            expect(assertMembership).toHaveBeenCalledWith(organizationId, userId);
+        });
+
+        it("denies org members when organization is inactive", async () => {
+            (Conversation.findById as jest.Mock).mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue({
+                        _id: new Types.ObjectId(conversationId),
+                        participants: [new Types.ObjectId(otherUserId)],
+                        organizationId: new Types.ObjectId(organizationId),
+                    }),
+                }),
+            });
+            (assertOrganizationActive as jest.Mock).mockRejectedValue(
+                new AuthorizationError("FORBIDDEN", "Organization is suspended")
+            );
+            (assertMembership as jest.Mock).mockResolvedValue({
+                role: "member",
+                organizationId: new Types.ObjectId(organizationId),
+                userId: new Types.ObjectId(userId),
+            });
+
+            await expect(
+                canAccessWorkSuggestion(userId, {
+                    conversationId,
+                    organizationId,
+                })
+            ).resolves.toBe(false);
+            expect(assertMembership).not.toHaveBeenCalled();
         });
 
         it("denies unrelated users without leaking existence", async () => {

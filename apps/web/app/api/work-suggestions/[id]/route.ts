@@ -39,6 +39,13 @@ export async function GET(_req: Request, context: RouteContext) {
         });
     } catch (error) {
         if (error instanceof AuthorizationError) {
+            // FORBIDDEN must not reveal that a suggestion exists.
+            if (error.code === "FORBIDDEN") {
+                return NextResponse.json(
+                    { success: false, error: "Work suggestion not found" },
+                    { status: 404 }
+                );
+            }
             return NextResponse.json(
                 { success: false, error: error.message },
                 { status: error.code === "NOT_FOUND" ? 404 : 403 }

@@ -155,6 +155,103 @@ describe("work-suggestion.service", () => {
             expect(created._id).toBe(suggestionId);
             expect(infoSpy).not.toHaveBeenCalled();
         });
+
+        it("rejects short title", async () => {
+            await expect(
+                createWorkSuggestion({
+                    messageId,
+                    conversationId,
+                    title: "ab",
+                    confidence: 0.9,
+                    extractorVersion: "v1",
+                })
+            ).rejects.toBeInstanceOf(ValidationError);
+            expect(create).not.toHaveBeenCalled();
+        });
+
+        it("rejects out-of-range confidence", async () => {
+            await expect(
+                createWorkSuggestion({
+                    messageId,
+                    conversationId,
+                    title: "Follow up with the team",
+                    confidence: 1.5,
+                    extractorVersion: "v1",
+                })
+            ).rejects.toBeInstanceOf(ValidationError);
+            expect(create).not.toHaveBeenCalled();
+        });
+
+        it("rejects blank extractorVersion", async () => {
+            await expect(
+                createWorkSuggestion({
+                    messageId,
+                    conversationId,
+                    title: "Follow up with the team",
+                    confidence: 0.9,
+                    extractorVersion: "   ",
+                })
+            ).rejects.toBeInstanceOf(ValidationError);
+            expect(create).not.toHaveBeenCalled();
+        });
+
+        it("rejects malformed organizationId and intentId", async () => {
+            await expect(
+                createWorkSuggestion({
+                    messageId,
+                    conversationId,
+                    organizationId: "not-an-id",
+                    title: "Follow up with the team",
+                    confidence: 0.9,
+                    extractorVersion: "v1",
+                })
+            ).rejects.toBeInstanceOf(ValidationError);
+
+            await expect(
+                createWorkSuggestion({
+                    messageId,
+                    conversationId,
+                    intentId: "bad",
+                    title: "Follow up with the team",
+                    confidence: 0.9,
+                    extractorVersion: "v1",
+                })
+            ).rejects.toBeInstanceOf(ValidationError);
+            expect(create).not.toHaveBeenCalled();
+        });
+
+        it("normalizes title, clamps confidence, and filters invalid assignees on write", async () => {
+            findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
+            create.mockResolvedValue(buildDoc());
+            const validAssignee = new Types.ObjectId().toString();
+            const longTitle = `Follow up ${"x".repeat(250)}`;
+
+            await createWorkSuggestion({
+                messageId,
+                conversationId,
+                organizationId,
+                title: `  ${longTitle}  `,
+                confidence: 0.9,
+                extractorVersion: "v1",
+                candidates: {
+                    assigneeCandidates: [validAssignee, "not-an-id", ""],
+                },
+            });
+
+            expect(create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    title: longTitle.trim().slice(0, 200),
+                    confidence: 0.9,
+                    organizationId: expect.any(Types.ObjectId),
+                    candidates: expect.objectContaining({
+                        assigneeCandidates: [expect.any(Types.ObjectId)],
+                    }),
+                })
+            );
+            const written = create.mock.calls[0]?.[0];
+            expect(written.candidates.assigneeCandidates).toHaveLength(1);
+            expect(written.candidates.assigneeCandidates[0].toString()).toBe(validAssignee);
+        });
     });
 
     describe("getWorkSuggestion", () => {
@@ -177,27 +274,29 @@ describe("work-suggestion.service", () => {
 
         it("filters by conversation/status and paginates", async () => {
             countDocuments.mockResolvedValue(25);
+            const limitMock = jest.fn().mockReturnValue({
+                exec: jest.fn().mockResolvedValue([buildDoc()]),
+            });
+            const skipMock = jest.fn().mockReturnValue({ limit: limitMock });
             find.mockReturnValue({
                 sort: jest.fn().mockReturnValue({
-                    skip: jest.fn().mockReturnValue({
-                        limit: jest.fn().mockReturnValue({
-                            exec: jest.fn().mockResolvedValue([buildDoc()]),
-                        }),
-                    }),
+                    skip: skipMock,
                 }),
             });
 
             const result = await listWorkSuggestions({
                 conversationId,
                 status: "proposed",
-                page: 2,
-                limit: 10,
+                page: 2.9,
+                limit: 10.7,
             });
 
             expect(countDocuments).toHaveBeenCalledWith({
                 conversationId: expect.any(Types.ObjectId),
                 status: "proposed",
             });
+            expect(skipMock).toHaveBeenCalledWith(10);
+            expect(limitMock).toHaveBeenCalledWith(10);
             expect(result.items).toHaveLength(1);
             expect(result.pagination).toEqual({
                 page: 2,

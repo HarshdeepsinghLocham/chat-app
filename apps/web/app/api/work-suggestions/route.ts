@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { connectToDatabase } from "@/lib/Db/db";
 import { requireAuthUser } from "@/lib/utils/auth/requireAuthUser";
 import { requireConversationAccess } from "@/lib/utils/auth/requireConversationAccess";
 import {
@@ -10,23 +9,18 @@ import {
     assertOrganizationActive,
 } from "@semantask/services/organization.service";
 import {
+    isSuggestionStatus,
     listWorkSuggestions,
-    WORK_SUGGESTION_STATUSES,
 } from "@semantask/services/work-suggestion.service";
 import {
     organizationApiErrorStatus,
     ValidationError,
 } from "@semantask/services/organization-errors";
-import type { WorkSuggestionStatus } from "@semantask/types";
 
 function parsePositiveInt(value: string | null, fallback: number): number {
     if (!value) return fallback;
     const parsed = Number.parseInt(value, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function isSuggestionStatus(value: string | null): value is WorkSuggestionStatus {
-    return Boolean(value && (WORK_SUGGESTION_STATUSES as readonly string[]).includes(value));
 }
 
 export async function GET(req: Request) {
@@ -57,8 +51,6 @@ export async function GET(req: Request) {
     }
 
     try {
-        await connectToDatabase();
-
         if (conversationId) {
             const access = await requireConversationAccess(conversationId, guard.user);
             if (access.response) {

@@ -36,6 +36,9 @@ jest.mock("@semantask/services/work-suggestion.service", () => ({
     listWorkSuggestions: jest.fn(),
     getWorkSuggestion: jest.fn(),
     WORK_SUGGESTION_STATUSES: ["proposed", "accepted", "dismissed", "converted"],
+    isSuggestionStatus: (value: unknown) =>
+        typeof value === "string"
+        && ["proposed", "accepted", "dismissed", "converted"].includes(value),
 }));
 
 import { requireAuthUser } from "@/lib/utils/auth/requireAuthUser";
@@ -133,24 +136,46 @@ describe("GET /api/work-suggestions", () => {
     it("returns { success, data } list contract", async () => {
         (listWorkSuggestions as jest.Mock).mockResolvedValue({
             items: [suggestion],
-            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+            pagination: { page: 2, limit: 10, total: 1, totalPages: 1 },
         });
 
         const response = await listGET(
             new Request(
-                "http://localhost/api/work-suggestions?conversationId=507f1f77bcf86cd799439014&status=proposed"
+                "http://localhost/api/work-suggestions?conversationId=507f1f77bcf86cd799439014&status=proposed&page=2&limit=10"
             )
         );
         const body = await response.json();
 
         expect(response.status).toBe(200);
+        expect(listWorkSuggestions).toHaveBeenCalledWith({
+            conversationId: "507f1f77bcf86cd799439014",
+            organizationId: undefined,
+            status: "proposed",
+            page: 2,
+            limit: 10,
+        });
         expect(body).toEqual({
             success: true,
             data: {
                 items: [suggestion],
-                pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+                pagination: { page: 2, limit: 10, total: 1, totalPages: 1 },
             },
         });
+    });
+
+    it("returns 400 for invalid status and does not list", async () => {
+        const response = await listGET(
+            new Request(
+                "http://localhost/api/work-suggestions?conversationId=507f1f77bcf86cd799439014&status=bogus"
+            )
+        );
+
+        expect(response.status).toBe(400);
+        await expect(response.json()).resolves.toMatchObject({
+            success: false,
+            error: "Invalid status",
+        });
+        expect(listWorkSuggestions).not.toHaveBeenCalled();
     });
 });
 
@@ -184,7 +209,7 @@ describe("GET /api/work-suggestions/[id]", () => {
         expect(response.status).toBe(404);
     });
 
-    it("returns 403 for unauthorized get", async () => {
+    it("returns 404 for unauthorized get (same body as missing)", async () => {
         (getWorkSuggestion as jest.Mock).mockResolvedValue(suggestion);
         (assertWorkSuggestionAccess as jest.Mock).mockRejectedValue(
             new MockAuthorizationError("FORBIDDEN", "Forbidden")
@@ -194,7 +219,11 @@ describe("GET /api/work-suggestions/[id]", () => {
             new Request("http://localhost/api/work-suggestions/507f1f77bcf86cd799439012"),
             { params: Promise.resolve({ id: suggestion._id }) }
         );
-        expect(response.status).toBe(403);
+        expect(response.status).toBe(404);
+        await expect(response.json()).resolves.toEqual({
+            success: false,
+            error: "Work suggestion not found",
+        });
     });
 
     it("returns { success, data } get contract", async () => {

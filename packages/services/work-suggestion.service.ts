@@ -12,7 +12,7 @@ import WorkSuggestionModel, {
 } from "@semantask/db/models/WorkSuggestion";
 import { ValidationError } from "./organization-errors";
 
-function isSuggestionStatus(value: unknown): value is WorkSuggestionStatus {
+export function isSuggestionStatus(value: unknown): value is WorkSuggestionStatus {
     return typeof value === "string"
         && (WORK_SUGGESTION_STATUSES as readonly string[]).includes(value);
 }
@@ -96,6 +96,22 @@ export async function createWorkSuggestion(
 
     if (!isValidObjectId(input.messageId) || !isValidObjectId(input.conversationId)) {
         throw new ValidationError("Invalid messageId or conversationId");
+    }
+
+    if (
+        input.organizationId != null
+        && String(input.organizationId).trim() !== ""
+        && !isValidObjectId(input.organizationId)
+    ) {
+        throw new ValidationError("Invalid organizationId");
+    }
+
+    if (
+        input.intentId != null
+        && String(input.intentId).trim() !== ""
+        && !isValidObjectId(input.intentId)
+    ) {
+        throw new ValidationError("Invalid intentId");
     }
 
     if (!input.title || input.title.trim().length < 3) {
@@ -212,9 +228,11 @@ export async function listWorkSuggestions(
         throw new ValidationError("Invalid status");
     }
 
-    const page = Number.isFinite(input.page) ? Math.max(1, Number(input.page)) : 1;
+    const page = Number.isFinite(input.page)
+        ? Math.max(1, Math.trunc(Number(input.page)))
+        : 1;
     const limit = Number.isFinite(input.limit)
-        ? Math.min(100, Math.max(1, Number(input.limit)))
+        ? Math.min(100, Math.max(1, Math.trunc(Number(input.limit))))
         : 20;
 
     const query: Record<string, unknown> = {};

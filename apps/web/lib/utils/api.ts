@@ -1,6 +1,8 @@
 import type {
     ClientConversation,
     ClientUser,
+    TaskPriority,
+    TaskRecord,
     UIMessage,
     WorkSuggestionRecord,
     WorkSuggestionStatus,
@@ -408,6 +410,77 @@ export async function getWorkSuggestion(id: string): Promise<WorkSuggestionRecor
     }
 
     return payload.data;
+}
+
+async function mutateWorkSuggestion<T>(
+    id: string,
+    action: "accept" | "dismiss" | "assign",
+    body?: Record<string, unknown>
+): Promise<T> {
+    const response = await authenticatedFetch(
+        `/api/work-suggestions/${encodeURIComponent(id)}/${action}`,
+        {
+            method: "POST",
+            body: JSON.stringify(body ?? {}),
+        }
+    );
+    const rawText = await response.text();
+    const payload = parseAuthPayload(rawText) as ApiErrorPayload & {
+        success?: boolean;
+        data?: T;
+    } | null;
+
+    if (!response.ok) {
+        throw new ApiHttpError(
+            response.status,
+            payload?.error || rawText || `Request failed with status ${response.status}`
+        );
+    }
+
+    if (!payload?.data) {
+        throw new ApiHttpError(500, `Invalid work suggestion ${action} response`);
+    }
+
+    return payload.data;
+}
+
+export type AcceptWorkSuggestionResponse = {
+    suggestion: WorkSuggestionRecord;
+    task: TaskRecord;
+};
+
+export async function acceptWorkSuggestionApi(
+    id: string,
+    input?: {
+        assignees?: string[];
+        dueAt?: string | null;
+        priority?: TaskPriority;
+    }
+): Promise<AcceptWorkSuggestionResponse> {
+    return mutateWorkSuggestion<AcceptWorkSuggestionResponse>(id, "accept", input);
+}
+
+export async function dismissWorkSuggestionApi(
+    id: string,
+    reason: string
+): Promise<WorkSuggestionRecord> {
+    return mutateWorkSuggestion<WorkSuggestionRecord>(id, "dismiss", { reason });
+}
+
+export type AssignWorkSuggestionResponse = {
+    suggestion: WorkSuggestionRecord;
+    task: TaskRecord;
+};
+
+export async function assignWorkSuggestionApi(
+    id: string,
+    input: {
+        assignees?: string[];
+        dueAt?: string | null;
+        priority?: TaskPriority;
+    }
+): Promise<AssignWorkSuggestionResponse> {
+    return mutateWorkSuggestion<AssignWorkSuggestionResponse>(id, "assign", input);
 }
 
 export async function decideTaskApproval(input: {

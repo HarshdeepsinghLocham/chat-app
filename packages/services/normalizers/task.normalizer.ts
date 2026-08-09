@@ -6,6 +6,7 @@ export function normalizeTask(doc: ITask): TaskRecord {
         _id: doc._id.toString(),
         conversationId: doc.conversationId.toString(),
         parentTaskId: doc.parentTaskId ? doc.parentTaskId.toString() : null,
+        suggestionId: doc.suggestionId ? doc.suggestionId.toString() : null,
         title: doc.title,
         description: doc.description,
         status: doc.status,

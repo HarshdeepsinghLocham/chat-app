@@ -19,6 +19,7 @@ export const CreateTaskSchema = z.object({
     conversationId: z.string().min(1),
     organizationId: z.string().min(1).nullable().optional(),
     parentTaskId: z.string().min(1).nullable().optional().default(null),
+    suggestionId: z.string().min(1).nullable().optional(),
     title: z.string().min(3).max(200),
     description: z.string().max(8000).optional().default(""),
     assignees: z.array(z.string().min(1)).max(32).optional().default([]),

@@ -10,7 +10,7 @@ import OrganizationPolicyModel, {
 import type { ExecutionMode } from "@semantask/types";
 import { assertCanManageMembers, assertMembership } from "./organization.service";
 import { AuthorizationError } from "./authorization-errors";
-import { ValidationError } from "./organization-errors";
+import { ConflictError, ValidationError } from "./organization-errors";
 
 function isExecutionModeValue(value: unknown): value is ExecutionMode {
     return typeof value === "string"
@@ -108,6 +108,23 @@ export function isSuggestionBlockExecEnabled(raw?: string | null): boolean {
 /** True when execution enqueue must be refused for the given effective mode. */
 export function shouldBlockExecutionEnqueue(executionMode: ExecutionMode): boolean {
     return isSuggestionBlockExecEnabled() && executionMode === "suggest_only";
+}
+
+/**
+ * ACCEPT_CREATES_EXECUTION=0|1 (default 0).
+ * Must stay 0 so suggestion accept creates coordination Tasks only.
+ */
+export function isAcceptCreatesExecutionEnabled(raw?: string | null): boolean {
+    return isEnvFlagEnabled(raw ?? process.env.ACCEPT_CREATES_EXECUTION, false);
+}
+
+/** Fail closed when accept would be allowed to enqueue execution. */
+export function assertAcceptCreatesCoordinationOnly(raw?: string | null): void {
+    if (isAcceptCreatesExecutionEnabled(raw)) {
+        throw new ConflictError(
+            "ACCEPT_CREATES_EXECUTION is enabled; coordination-only accept is refused"
+        );
+    }
 }
 
 export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {

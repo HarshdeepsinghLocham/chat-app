@@ -5,6 +5,7 @@ import TaskModel from "@semantask/db/models/Task";
 import {
     assertMembership,
     assertOrganizationActive,
+    canManageMembers,
     getMembership,
 } from "./organization.service";
 import { AuthorizationError } from "./authorization-errors";
@@ -302,6 +303,52 @@ export async function assertWorkSuggestionAccess(
     options?: ConversationAccessOptions
 ): Promise<void> {
     const allowed = await canAccessWorkSuggestion(userId, suggestion, options);
+    if (!allowed) {
+        throw new AuthorizationError("FORBIDDEN", "Forbidden");
+    }
+}
+
+/**
+ * Mutation AuthZ (accept/dismiss/assign): conversation participant, OR org
+ * owner/admin for org-scoped suggestions. Plain org members without
+ * conversation access cannot mutate (stricter than read access).
+ */
+export async function canMutateWorkSuggestion(
+    userId: string,
+    suggestion: WorkSuggestionAccessTarget,
+    options?: ConversationAccessOptions
+): Promise<boolean> {
+    if (!isValidObjectId(userId) || !isValidObjectId(suggestion.conversationId)) {
+        return false;
+    }
+
+    if (await canAccessConversation(userId, suggestion.conversationId, options)) {
+        return true;
+    }
+
+    const organizationId = suggestion.organizationId ?? null;
+    if (!organizationId || !isValidObjectId(organizationId)) {
+        return false;
+    }
+
+    try {
+        await assertOrganizationActive(organizationId);
+        const membership = await getMembership(organizationId, userId);
+        if (!membership) {
+            return false;
+        }
+        return canManageMembers(membership.role);
+    } catch {
+        return false;
+    }
+}
+
+export async function assertWorkSuggestionMutationAccess(
+    userId: string,
+    suggestion: WorkSuggestionAccessTarget,
+    options?: ConversationAccessOptions
+): Promise<void> {
+    const allowed = await canMutateWorkSuggestion(userId, suggestion, options);
     if (!allowed) {
         throw new AuthorizationError("FORBIDDEN", "Forbidden");
     }

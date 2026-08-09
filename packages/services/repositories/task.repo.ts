@@ -137,6 +137,7 @@ export async function createTask(input: CreateTaskInput): Promise<ITask> {
         conversationId: toObjectId(input.conversationId),
         organizationId,
         parentTaskId: input.parentTaskId ? toObjectId(input.parentTaskId) : null,
+        suggestionId: input.suggestionId ? toObjectId(input.suggestionId) : null,
         title: input.title,
         description: input.description ?? "",
         status: "pending",
@@ -191,6 +192,7 @@ export async function upsertTaskByDedupeKey(input: CreateTaskInput): Promise<ITa
             $setOnInsert: {
                 conversationId: toObjectId(input.conversationId),
                 parentTaskId: input.parentTaskId ? toObjectId(input.parentTaskId) : null,
+                suggestionId: input.suggestionId ? toObjectId(input.suggestionId) : null,
                 title: input.title,
                 description: input.description ?? "",
                 status: "pending",

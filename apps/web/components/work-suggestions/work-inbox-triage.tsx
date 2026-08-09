@@ -21,6 +21,7 @@ export type WorkInboxTriageProps = {
     onAccept: (assignees: string[]) => void | Promise<void>;
     onAssign: (assignees: string[]) => void | Promise<void>;
     onDismiss: (reason: string) => void | Promise<void>;
+    onAllowAiTools?: () => void | Promise<void>;
 };
 
 function parseAssigneeInput(value: string): string[] {
@@ -44,6 +45,7 @@ export function WorkInboxTriage({
     onAccept,
     onAssign,
     onDismiss,
+    onAllowAiTools,
 }: WorkInboxTriageProps) {
     const isProposed = suggestion.status === "proposed";
     const isConverted = suggestion.status === "converted";
@@ -171,10 +173,26 @@ export function WorkInboxTriage({
                 >
                     Dismiss
                 </Button>
+                {isConverted && suggestion.convertedTaskId ? (
+                    <Button
+                        data-testid="suggestion-allow-ai-tools"
+                        size="sm"
+                        variant="outline"
+                        disabled={actionPending || !onAllowAiTools}
+                        onClick={() => void onAllowAiTools?.()}
+                    >
+                        Allow AI tools
+                    </Button>
+                ) : null}
             </div>
 
             {!canAssign && isProposed ? (
                 <p className="text-xs text-muted-foreground">Assign is available after Accept converts the suggestion.</p>
+            ) : null}
+            {isConverted ? (
+                <p className="text-xs text-muted-foreground">
+                    Allow AI tools requests execution approval — separate from accepting a suggestion.
+                </p>
             ) : null}
 
             {actionError ? (

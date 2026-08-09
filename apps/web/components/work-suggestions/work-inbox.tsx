@@ -14,6 +14,7 @@ import {
     dismissWorkSuggestionApi,
     getOrganizationMembers,
     listWorkSuggestions,
+    requestTaskExecutionApi,
     type WorkSuggestionListResult,
 } from "@/lib/utils/api";
 import useWorkSuggestionStore from "@/store/work-suggestion-store";
@@ -250,6 +251,28 @@ export function WorkInboxView() {
         }
     }
 
+    async function handleAllowAiTools(item: WorkSuggestionRecord) {
+        if (!item.convertedTaskId) return;
+        setActingId(item._id);
+        setRowError(item._id, null);
+        try {
+            await requestTaskExecutionApi(item.convertedTaskId, {
+                reason: "Manager requested AI tool execution from work inbox",
+            });
+        } catch (actionError) {
+            setRowError(
+                item._id,
+                actionError instanceof ApiHttpError
+                    ? actionError.message
+                    : actionError instanceof Error
+                      ? actionError.message
+                      : "Allow AI tools failed"
+            );
+        } finally {
+            setActingId(null);
+        }
+    }
+
     async function handleAssign(item: WorkSuggestionRecord, assignees: string[]) {
         const previousOwners = ownerById[item._id] ?? item.candidates.assigneeCandidates ?? [];
         setActingId(item._id);
@@ -473,6 +496,7 @@ export function WorkInboxView() {
                                         onAccept={(assignees) => handleAccept(item, assignees)}
                                         onAssign={(assignees) => handleAssign(item, assignees)}
                                         onDismiss={(reason) => handleDismiss(item, reason)}
+                                        onAllowAiTools={() => handleAllowAiTools(item)}
                                     />
                                 ) : null}
                             </CardContent>

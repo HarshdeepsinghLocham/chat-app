@@ -355,9 +355,58 @@ export async function revokeAdminToolGrant(grantId: string): Promise<void> {
     });
 }
 
-export async function getTaskApprovals(conversationId?: string): Promise<TaskApprovalsResponse> {
-    const query = conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : "";
+export async function getTaskApprovals(options?: {
+    conversationId?: string;
+    organizationId?: string;
+}): Promise<TaskApprovalsResponse> {
+    const params = new URLSearchParams();
+    if (options?.conversationId) {
+        params.set("conversationId", options.conversationId);
+    }
+    if (options?.organizationId) {
+        params.set("organizationId", options.organizationId);
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
     return request<TaskApprovalsResponse>(`/api/task-approvals${query}`);
+}
+
+export async function requestTaskExecutionApi(
+    taskId: string,
+    input?: { reason?: string }
+): Promise<{
+    taskAction: TaskApprovalRecord;
+    enqueued: boolean;
+    alreadyPending: boolean;
+}> {
+    const response = await authenticatedFetch(
+        `/api/tasks/${encodeURIComponent(taskId)}/request-execution`,
+        {
+            method: "POST",
+            body: JSON.stringify(input ?? {}),
+        }
+    );
+    const rawText = await response.text();
+    const payload = parseAuthPayload(rawText) as ApiErrorPayload & {
+        success?: boolean;
+        data?: {
+            taskAction: TaskApprovalRecord;
+            enqueued: boolean;
+            alreadyPending: boolean;
+        };
+    } | null;
+
+    if (!response.ok) {
+        throw new ApiHttpError(
+            response.status,
+            payload?.error || rawText || `Request failed with status ${response.status}`
+        );
+    }
+
+    if (!payload?.data) {
+        throw new ApiHttpError(500, "Invalid request-execution response");
+    }
+
+    return payload.data;
 }
 
 export type WorkSuggestionListResult = {

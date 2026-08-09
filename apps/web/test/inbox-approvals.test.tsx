@@ -55,6 +55,8 @@ describe("InboxApprovalsView", () => {
     beforeEach(() => {
         getTaskApprovals.mockReset();
         decideTaskApproval.mockReset();
+        window.localStorage.clear();
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
     });
 
     it("shows loading then empty state", async () => {
@@ -74,9 +76,15 @@ describe("InboxApprovalsView", () => {
         expect(screen.queryByTestId("suggestion-accept")).not.toBeInTheDocument();
         expect(screen.queryByTestId("suggestion-dismiss")).not.toBeInTheDocument();
         expect(screen.queryByTestId("suggestion-assign")).not.toBeInTheDocument();
+        await waitFor(() => {
+            expect(getTaskApprovals).toHaveBeenCalledWith({
+                conversationId: undefined,
+                organizationId: "507f1f77bcf86cd799439015",
+            });
+        });
     });
 
-    it("lists approvals and calls decideTaskApproval on approve", async () => {
+    it("lists approvals and calls decideTaskApproval on Allow AI tools", async () => {
         getTaskApprovals.mockResolvedValue({ approvals: [buildApproval()] });
         decideTaskApproval.mockResolvedValue({ approval: buildApproval({ executionState: "approved" }) });
 
@@ -84,6 +92,7 @@ describe("InboxApprovalsView", () => {
 
         expect(await screen.findByTestId("inbox-approvals-list")).toBeInTheDocument();
         expect(screen.getByText("send_email")).toBeInTheDocument();
+        expect(screen.getByTestId("inbox-approvals-approve")).toHaveTextContent("Allow AI tools");
 
         fireEvent.click(screen.getByTestId("inbox-approvals-approve"));
 
@@ -114,12 +123,12 @@ describe("InboxApprovalsView", () => {
         expect(await screen.findByTestId("inbox-approvals-empty")).toBeInTheDocument();
     });
 
-    it("surfaces forbidden access clearly for non-admin callers", async () => {
+    it("surfaces forbidden access clearly for unauthorized callers", async () => {
         getTaskApprovals.mockRejectedValue(new ApiHttpError(403, "Forbidden"));
 
         render(<InboxApprovalsView />);
 
         const error = await screen.findByTestId("inbox-approvals-error");
-        expect(error).toHaveTextContent(/platform admin/i);
+        expect(error).toHaveTextContent(/permission/i);
     });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { TaskExecutionEventRecord, TaskRecord, TaskStatus } from "@semantask/types";
 import { authenticatedFetch } from "@/lib/utils/api";
@@ -280,7 +281,14 @@ function TaskInlineCard({ task, onStatusChange, onCancel }: TaskInlineCardProps)
                     <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">{executionView.retryStatus}</p>
                 )}
                 {executionView.approvalPending && (
-                    <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">Awaiting human approval</p>
+                    <div className="mb-2 space-y-1">
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                            Awaiting human approval to allow AI tools
+                        </p>
+                        <Button asChild size="sm" variant="outline" data-testid="task-panel-allow-ai-tools">
+                            <Link href="/inbox/approvals">Allow AI tools</Link>
+                        </Button>
+                    </div>
                 )}
                 {task.cancelRequestedAt && task.status !== "failed" && task.status !== "completed" && (
                     <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">Cancellation requested…</p>

@@ -2,8 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { withRequestCorrelation } from "@/lib/observability/with-correlation";
 import { z } from "zod";
 import { enqueueOutboxEvent } from "@/lib/services/outbox.service";
-import { getPendingApprovalTaskActions, getTaskActionById, updateTaskActionExecutionState } from "@/lib/services/repositories/task.repo";
-import { requireAdminUser } from "@/lib/utils/auth/requireAdminUser";
+import {
+    getPendingApprovalTaskActions,
+    getPendingApprovalTaskActionsForOrganization,
+    getTaskActionById,
+    updateTaskActionExecutionState,
+} from "@/lib/services/repositories/task.repo";
+import { requireAuthUser } from "@/lib/utils/auth/requireAuthUser";
+import {
+    AuthorizationError,
+    assertCanDecideTaskExecutionApproval,
+} from "@semantask/services/authorization.service";
+import {
+    assertOrganizationActive,
+    canManageMembers,
+    getMembership,
+} from "@semantask/services/organization.service";
+import { Conversation } from "@/models/Conversation";
+import TaskModel from "@/models/Task";
 
 const decisionSchema = z.object({
     taskActionId: z.string().min(1),
@@ -42,20 +58,85 @@ function asRecord(value: unknown): Record<string, unknown> {
     return {};
 }
 
+async function resolveOrganizationIdForAction(action: {
+    conversationId: { toString(): string };
+    taskId: { toString(): string };
+}): Promise<string | null> {
+    const conversationId = action.conversationId.toString();
+    const conversation = await Conversation.findById(conversationId)
+        .select("organizationId")
+        .lean<{ organizationId?: { toString(): string } | null }>();
+    if (conversation?.organizationId) {
+        return conversation.organizationId.toString();
+    }
+
+    const task = await TaskModel.findById(action.taskId.toString())
+        .select("organizationId")
+        .lean<{ organizationId?: { toString(): string } | null }>();
+    return task?.organizationId ? task.organizationId.toString() : null;
+}
+
 export async function GET(req: NextRequest) {
-    const guard = await requireAdminUser();
+    const guard = await requireAuthUser();
     if (guard.response) return guard.response;
 
     const { searchParams } = new URL(req.url);
     const conversationId = searchParams.get("conversationId") ?? undefined;
+    const organizationId = searchParams.get("organizationId") ?? undefined;
+    const isPlatformAdmin = guard.user.role === "admin";
 
-    const actions = await getPendingApprovalTaskActions(conversationId);
-    return NextResponse.json({ approvals: actions.map(serializeTaskAction) }, { status: 200 });
+    try {
+        if (isPlatformAdmin && !conversationId && !organizationId) {
+            const actions = await getPendingApprovalTaskActions();
+            return NextResponse.json({ approvals: actions.map(serializeTaskAction) }, { status: 200 });
+        }
+
+        if (conversationId) {
+            const conversation = await Conversation.findById(conversationId)
+                .select("organizationId")
+                .lean<{ organizationId?: { toString(): string } | null }>();
+            const orgId = conversation?.organizationId?.toString() ?? null;
+            await assertCanDecideTaskExecutionApproval(
+                guard.user.id,
+                { conversationId, organizationId: orgId },
+                { userRole: guard.user.role, allowAdminBypass: true }
+            );
+            const actions = await getPendingApprovalTaskActions(conversationId);
+            return NextResponse.json({ approvals: actions.map(serializeTaskAction) }, { status: 200 });
+        }
+
+        if (organizationId) {
+            await assertOrganizationActive(organizationId);
+            if (!isPlatformAdmin) {
+                const membership = await getMembership(organizationId, guard.user.id);
+                if (!membership || !canManageMembers(membership.role)) {
+                    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+                }
+            }
+
+            const actions = await getPendingApprovalTaskActionsForOrganization(organizationId);
+            return NextResponse.json({ approvals: actions.map(serializeTaskAction) }, { status: 200 });
+        }
+
+        return NextResponse.json(
+            { error: "organizationId or conversationId is required" },
+            { status: 400 }
+        );
+    } catch (error) {
+        if (error instanceof AuthorizationError) {
+            return NextResponse.json(
+                { error: error.code === "NOT_FOUND" ? "Not found" : "Forbidden" },
+                { status: error.code === "NOT_FOUND" ? 404 : 403 }
+            );
+        }
+        console.error("GET /api/task-approvals error", error);
+        return NextResponse.json({ error: "Failed to load approvals" }, { status: 500 });
+    }
 }
 
 export async function POST(req: NextRequest) {
     return withRequestCorrelation(req, async () => {
-        const guard = await requireAdminUser();
+        const guard = await requireAuthUser();
         if (guard.response) return guard.response;
 
         const parse = decisionSchema.safeParse(await req.json());
@@ -71,7 +152,27 @@ export async function POST(req: NextRequest) {
         }
 
         if (action.executionState !== "approval_pending") {
-            return NextResponse.json({ error: `Approval request is not pending (state=${action.executionState ?? "null"})` }, { status: 409 });
+            return NextResponse.json(
+                { error: `Approval request is not pending (state=${action.executionState ?? "null"})` },
+                { status: 409 }
+            );
+        }
+
+        try {
+            const organizationId = await resolveOrganizationIdForAction(action);
+            await assertCanDecideTaskExecutionApproval(
+                guard.user.id,
+                {
+                    conversationId: action.conversationId.toString(),
+                    organizationId,
+                },
+                { userRole: guard.user.role, allowAdminBypass: true }
+            );
+        } catch (error) {
+            if (error instanceof AuthorizationError) {
+                return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            }
+            throw error;
         }
 
         if (body.decision === "reject") {
@@ -104,6 +205,7 @@ export async function POST(req: NextRequest) {
                     approvedParameters,
                     reviewerComment,
                     approvedAt: new Date().toISOString(),
+                    humanApprovedExecution: true,
                 },
             },
         });
@@ -118,10 +220,10 @@ export async function POST(req: NextRequest) {
                 approvedByType: guard.user.role === "admin" ? "system" : "user",
                 approvedById: guard.user.id,
                 reason: reviewerComment,
+                humanApprovedExecution: true,
             },
         });
 
         return NextResponse.json({ approval: updated ? serializeTaskAction(updated) : null }, { status: 200 });
-
     });
 }

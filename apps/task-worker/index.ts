@@ -23,6 +23,10 @@ import {
     recordSuggestOnlyExecutionEnqueueAttempt,
     shouldFailClosedOnLeakedExecution,
 } from "@semantask/services/task-execution-enqueue.service";
+import {
+    resolveSuggestOnlyPolicyOverride,
+    shouldSkipSuggestOnlyIngressFailClosed,
+} from "./services/suggest-only-execution-gate.js";
 import { assertExecutionQuotas, OrgQuotaExceededError } from "@semantask/services/organization-quota.service";
 import { getOrganizationById } from "@semantask/services/organization.service";
 import { GLOBAL_EXECUTION_CONFIDENCE_BASELINE } from "./services/execution-confidence.js";
@@ -237,6 +241,8 @@ type TaskExecutionRequestedPayload = {
     confidence?: number;
     needsApproval?: boolean;
     semanticType?: MessageSemanticType;
+    explicitManagerRequest?: boolean;
+    humanApprovedExecution?: boolean;
 };
 
 type TaskExecutionApprovedPayload = {
@@ -246,6 +252,7 @@ type TaskExecutionApprovedPayload = {
     approvedByType?: "user" | "agent" | "system";
     approvedById?: string | null;
     reason?: string;
+    humanApprovedExecution?: boolean;
 };
 
 type TaskSocketBridgePayload = {
@@ -336,6 +343,8 @@ function normalizeTaskExecutionRequestedPayload(payload: Record<string, unknown>
         needsApproval: typeof payload.needsApproval === "boolean"
             ? payload.needsApproval
             : false,
+        explicitManagerRequest: payload.explicitManagerRequest === true,
+        humanApprovedExecution: payload.humanApprovedExecution === true,
     };
 }
 
@@ -655,7 +664,10 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
 
     // Defense-in-depth: with suggestion ingress, refuse tools if a leaked
     // task.execution.requested arrives under suggest_only + SUGGESTION_BLOCK_EXEC.
-    if (shouldFailClosedOnLeakedExecution(effectiveExecutionMode)) {
+    // Explicit manager request / human-approved re-entry are not leaks (S2.4).
+    const skipSuggestOnlyFailClosed = shouldSkipSuggestOnlyIngressFailClosed(payload);
+
+    if (shouldFailClosedOnLeakedExecution(effectiveExecutionMode) && !skipSuggestOnlyFailClosed) {
         const blockedReason = "Execution blocked: suggest_only ingress forbids tool execution.";
         recordSuggestOnlyExecutionEnqueueAttempt({
             taskId: payload.taskId,
@@ -869,12 +881,24 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
             || reason.includes("no valid recipients")
             || reason.includes("No executable action")
         );
-    const requiresApproval = policyDecision.outcome === "approval_required";
+    const modeDeniedBySuggestOnly = policyDecision.reasons.some((reason) =>
+        reason.includes("execution_mode:suggest_only")
+    );
+    // Explicit manager request under suggest_only → approval_required (not hard block).
+    // Human-approved re-entry under suggest_only may proceed past mode denial.
+    const { forceApprovalForExplicit, bypassSuggestOnlyAfterHumanApproval } =
+        resolveSuggestOnlyPolicyOverride({
+            policyOutcome: policyDecision.outcome,
+            modeDeniedBySuggestOnly,
+            explicitManagerRequest: payload.explicitManagerRequest,
+            needsApproval: payload.needsApproval,
+            humanApprovedExecution: payload.humanApprovedExecution,
+        });
 
-    if (policyDecision.outcome === "blocked" || unsafe) {
-        const modeDenied = policyDecision.reasons.some((reason) =>
-            reason.includes("execution_mode:suggest_only")
-        );
+    const requiresApproval = policyDecision.outcome === "approval_required" || forceApprovalForExplicit;
+
+    if ((policyDecision.outcome === "blocked" || unsafe) && !forceApprovalForExplicit && !bypassSuggestOnlyAfterHumanApproval) {
+        const modeDenied = modeDeniedBySuggestOnly;
         const blockedReason = unsafe
             ? "Execution blocked by policy: action marked unsafe."
             : (policyDecision.reasons.join(" ") || "Execution blocked by policy.");
@@ -1209,6 +1233,9 @@ async function processTaskExecutionApproved(payload: TaskExecutionApprovedPayloa
             : 1,
         // Human approval satisfies the approval requirement gate, but policy is still evaluated before execution.
         needsApproval: false,
+        // S2.4: approved re-entry is always an explicit human grant for this action.
+        humanApprovedExecution: true,
+        explicitManagerRequest: patchAfter.explicitManagerRequest === true,
     };
 
     await processTaskExecutionRequested(normalizedPayload);

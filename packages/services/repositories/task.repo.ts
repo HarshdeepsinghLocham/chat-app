@@ -365,6 +365,38 @@ export async function getPendingApprovalTaskActions(conversationId?: string): Pr
         .exec();
 }
 
+export async function getPendingApprovalTaskActionForTask(taskId: string): Promise<ITaskAction | null> {
+    await connectToDatabase();
+    return TaskActionModel.findOne({
+        taskId: toObjectId(taskId),
+        executionState: "approval_pending",
+    })
+        .sort({ createdAt: -1 })
+        .exec();
+}
+
+export async function getPendingApprovalTaskActionsForOrganization(
+    organizationId: string
+): Promise<ITaskAction[]> {
+    await connectToDatabase();
+
+    const conversations = await Conversation.find({ organizationId: toObjectId(organizationId) })
+        .select("_id")
+        .lean<{ _id: Types.ObjectId }[]>();
+
+    const conversationIds = conversations.map((conversation) => conversation._id);
+    if (conversationIds.length === 0) {
+        return [];
+    }
+
+    return TaskActionModel.find({
+        executionState: "approval_pending",
+        conversationId: { $in: conversationIds },
+    })
+        .sort({ createdAt: -1 })
+        .exec();
+}
+
 export async function updateTaskActionExecutionState(input: {
     taskActionId: string;
     executionState: ITaskAction["executionState"];

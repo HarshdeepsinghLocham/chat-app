@@ -23,6 +23,9 @@ const enqueueOutboxEvent = jest.fn();
 const executionEnqueueAttemptedWhileSuggestOnlyCounter = {
     inc: jest.fn(),
 };
+const acceptExecutionEnqueueAttemptedWhileDisabledCounter = {
+    inc: jest.fn(),
+};
 
 jest.mock("../outbox.service", () => ({
     enqueueOutboxEvent: (...args: unknown[]) => enqueueOutboxEvent(...args),
@@ -30,15 +33,21 @@ jest.mock("../outbox.service", () => ({
 
 jest.mock("@semantask/observability/metrics", () => ({
     executionEnqueueAttemptedWhileSuggestOnlyCounter,
+    acceptExecutionEnqueueAttemptedWhileDisabledCounter,
 }));
 
 import {
     enqueueTaskExecutionRequested,
     recordSuggestOnlyExecutionEnqueueAttempt,
     shouldFailClosedOnLeakedExecution,
+    SUGGESTION_ACCEPT_EXECUTION_SOURCE,
 } from "../task-execution-enqueue.service";
 
-const ENV_KEYS = ["SUGGESTION_INGRESS", "SUGGESTION_BLOCK_EXEC"] as const;
+const ENV_KEYS = [
+    "SUGGESTION_INGRESS",
+    "SUGGESTION_BLOCK_EXEC",
+    "ACCEPT_CREATES_EXECUTION",
+] as const;
 const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
 
 beforeEach(() => {
@@ -47,6 +56,7 @@ beforeEach(() => {
     }
     enqueueOutboxEvent.mockReset();
     executionEnqueueAttemptedWhileSuggestOnlyCounter.inc.mockReset();
+    acceptExecutionEnqueueAttemptedWhileDisabledCounter.inc.mockReset();
 });
 
 afterEach(() => {
@@ -156,6 +166,32 @@ describe("enqueueTaskExecutionRequested", () => {
         expect(result).toEqual({ enqueued: true, blocked: false });
         expect(enqueueOutboxEvent).toHaveBeenCalled();
         expect(executionEnqueueAttemptedWhileSuggestOnlyCounter.inc).not.toHaveBeenCalled();
+    });
+
+    it("blocks suggestion.accept enqueue while ACCEPT_CREATES_EXECUTION is disabled and records metric", async () => {
+        delete process.env.ACCEPT_CREATES_EXECUTION;
+        process.env.SUGGESTION_INGRESS = "0";
+        const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+
+        const result = await enqueueTaskExecutionRequested({
+            dedupeKey: "task.execution.requested:t1:accept-leak",
+            payload: {
+                taskId: "t1",
+                conversationId: "c1",
+                source: SUGGESTION_ACCEPT_EXECUTION_SOURCE,
+            },
+            executionMode: "auto_execute",
+            source: SUGGESTION_ACCEPT_EXECUTION_SOURCE,
+        });
+
+        expect(result).toEqual({ enqueued: false, blocked: true });
+        expect(enqueueOutboxEvent).not.toHaveBeenCalled();
+        expect(acceptExecutionEnqueueAttemptedWhileDisabledCounter.inc).toHaveBeenCalledTimes(1);
+        expect(executionEnqueueAttemptedWhileSuggestOnlyCounter.inc).not.toHaveBeenCalled();
+        const log = JSON.parse(String(errorSpy.mock.calls[0]?.[0]));
+        expect(log.event).toBe("execution.enqueue.accept_while_disabled_invariant");
+        expect(log.source).toBe(SUGGESTION_ACCEPT_EXECUTION_SOURCE);
+        errorSpy.mockRestore();
     });
 });
 

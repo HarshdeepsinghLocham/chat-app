@@ -45,3 +45,14 @@ groups:
             task.execution.requested was attempted (or a leaked outbox event was consumed)
             while SUGGESTION_BLOCK_EXEC is active and effective mode is suggest_only.
             This is a P0 product invariant violation (ADR-005 / Phase 1 suggest-only ingress).
+
+      - alert: AcceptExecutionEnqueueWhileDisabled
+        expr: increase(accept_execution_enqueue_attempted_while_disabled_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: Accept path attempted execution enqueue while flag disabled
+          description: >
+            task.execution.requested was attempted with source=suggestion.accept while
+            ACCEPT_CREATES_EXECUTION=0. Accept must create coordination Tasks only
+            (Phase 2 product invariant).

@@ -100,13 +100,14 @@ export function WorkInboxView() {
     const totalPages = pagination?.totalPages ?? 1;
 
     return (
-        <div className="mx-auto max-w-3xl space-y-6 p-6" data-testid="work-inbox">
+        <div className="space-y-6" data-testid="work-inbox">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-bold">Work inbox</h1>
                     <p className="text-sm text-muted-foreground">
                         Reviewable work suggestions for your workspace. Opening this page never starts
-                        autonomous execution.
+                        autonomous execution. Accepting a suggestion is not the same as approving tool
+                        execution.
                     </p>
                 </div>
                 <Button asChild variant="outline">

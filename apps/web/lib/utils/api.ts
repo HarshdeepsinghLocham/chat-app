@@ -65,6 +65,7 @@ export type TaskApprovalRecord = {
     actorType: "user" | "agent" | "system";
     actorId: string | null;
     actionType: string;
+    toolName: string | null;
     messageId: string | null;
     parameters: Record<string, unknown>;
     executionState: string | null;

@@ -24,7 +24,6 @@ export { logoutService } from "./services/logout.service";
 export { revokeUserAuthSessions } from "./services/revoke-user-auth.service";
 export { changePasswordService, forcePasswordChangeService } from "./services/change-password.service";
 export { logAuthEventBestEffort } from "./services/auth-audit.service";
-export { logSecurityEvent } from "./services/security-event-logger";
 export { listAuthEvents } from "./services/list-auth-events.service";
 export {
     createGoogleOAuthState,

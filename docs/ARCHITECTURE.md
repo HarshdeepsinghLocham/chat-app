@@ -153,16 +153,18 @@ flowchart LR
 ### Backend API surface (Next.js route handlers, `apps/web/app/api`)
 
 - **Auth** (`api/auth/*`): `login`, `register`, `refresh`, `logout`, `revoke-all-tokens`,
-  `change-password`, `sendOtp`, `verify-otp`, `imagekit-auth`, Google OAuth `google/start` +
-  `google/callback`, and step-up `challenge/{password,otp}` flows.
+  `change-password`, `sendOtp`, `verify-otp` (account verification OTP only), `imagekit-auth`,
+  Google OAuth `google/start` + `google/callback`. Session refresh never creates OTP/step-up
+  challenges.
 - **Messaging** (`api/messages/*`): `POST/GET /api/messages` plus per-message `edit`, `delete`,
   `react`, `seen`, `delivered`, `semantic` (`apps/web/app/api/messages/route.ts`).
 - **Conversations / users** (`api/conversations`, `api/users`, `api/user/[email]`, `api/me`).
 - **Tasks** (`api/tasks/*`, `api/task-approvals`): task list/detail, execution events, approvals.
 - **Admin** (`api/admin/*`): dashboard, users, toggle ban, change role, auth events.
 - **Internal — socket → web authorization** (`api/internal/socket/*`):
-  `authorize-identity`, `authorize-conversation-access`, `authorize-message-action`; plus
-  `api/internal/auth/step-up-status`. These are how the stateless socket server makes trust decisions.
+  `authorize-identity`, `authorize-conversation-access`, `authorize-message-action`,
+  `presence-peers`. These are how the stateless socket server makes trust decisions (no
+  step-up-status bridge).
 
 ## 3. Realtime layer (`apps/socket`)
 
@@ -241,7 +243,7 @@ Product contract: [ADR-005](./decisions/ADR-005-suggest-first-work-coordination.
 
 - **MongoDB via Mongoose** is the system of record. Models live in `packages/db/models/*`:
   `User`, `Conversation`, `Message`, `Task`, `TaskAction`, `TaskPlan`, `TaskMemory`,
-  `TaskExecutionEvent`, `TaskReflection`, `OutboxEvent`, `OTP`, `StepUpChallenge`,
+  `TaskExecutionEvent`, `TaskReflection`, `OutboxEvent`, `OTP`,
   `Devices`, `Contact`, `TempMessage`. Auth-specific collections (`AuthSession`, auth events) are in
   `packages/auth/repositories/*`.
   - **`MessageIntent`** (`packages/db/models/MessageIntent.ts`) — written by
@@ -357,9 +359,10 @@ erDiagram
   a TTL index (`packages/auth/repositories/sessionModel.ts`, `packages/auth/session/*`).
 - **Login**: `loginUser` (`packages/auth/services/login.service.ts`) verifies bcrypt password
   (`packages/auth/password/*`), checks account status, then issues tokens + creates a session.
-- **Additional flows**: Google OAuth (`packages/auth/services/google-oauth.service.ts`), OTP and
-  step-up challenges (`otp.service.ts`, `step-up-otp.service.ts`, `step-up-password.service.ts`),
-  token-version revocation, and audit logging (`auth-audit.service.ts`, `security-event-logger.ts`).
+- **Additional flows**: Google OAuth (`packages/auth/services/google-oauth.service.ts`),
+  login/register account-verification OTP (`otp.service.ts` — unrelated to session refresh),
+  token-version revocation, and audit logging (`auth-audit.service.ts`). Normal refresh,
+  bootstrap, middleware, API usage, and socket auth do not trigger step-up OTP.
 - **Web request guard**: `requireAuthUser` → `validateAuthUser` (Redis-cached user state)
   (`apps/web/lib/utils/auth/*`), plus `requireConversationAccess` and `requireAdminUser`.
 - **Socket guard**: JWT verify + `authorizeSocketIdentity`; never trusts JWT claims alone — it

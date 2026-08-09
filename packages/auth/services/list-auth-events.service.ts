@@ -1,6 +1,7 @@
 import { FilterQuery, Types } from "mongoose";
 import { AuthEventModel, AuthEventType, IAuthEvent } from "../repositories/authEventModel";
 
+/** STEP_UP filters historical audit rows only; the app no longer emits step-up events. */
 export type AdminAuthEventGroup = "LOGIN" | "REFRESH" | "REVOKE" | "STEP_UP";
 
 type ListAuthEventsInput = {

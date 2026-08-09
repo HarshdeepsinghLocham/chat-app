@@ -2614,16 +2614,11 @@ test("role changes immediately visible in all layers", async () => {
 - ✅ Implemented: auth rate limiting now uses Redis-backed global counters (with in-memory fallback if Redis is unavailable).
 - ✅ Implemented: universal protected-route auth guard centralized via reusable auth/admin helpers and applied across protected API endpoints.
 - ✅ Implemented: structured auth event logging for login/register/refresh/logout/Google callback success/failure paths with reason/IP/user-agent context.
-- ✅ Implemented: refresh flow now validates session device fingerprint (user-agent + IP bucket) and rejects mismatches.
-- ✅ Implemented: refresh token/session/cookie TTL hardened from 7 days to 24 hours.
-- ✅ Implemented: suspicious refresh attempts now trigger step-up-required response (`AUTH_STEP_UP_REQUIRED`) and session revocation.
+- ✅ Implemented: refresh token/session cookie rotation with hashed session storage.
 - ✅ Implemented: tokenVersion-based emergency revocation (token claims + verification gates + session purge on admin ban).
-- ✅ Implemented: client-side step-up recovery detection and graceful redirect with context (api.ts, UserContext.tsx, login/page.tsx).
-- ✅ Implemented: full step-up challenge flow (challenge model + challenge verification endpoint + middleware enforcement + `/auth/challenge` page).
-- ✅ Implemented: step-up integration tests for refresh/challenge success/failure/expiry/reuse scenarios.
-- ✅ Implemented: dedicated best-effort security event logger utility for step-up events.
 - ✅ Implemented: provider-aware OAuth identity resolution (Google subject-first, controlled email fallback, strict mismatch rejection).
-- ✅ Implemented: admin auth-events visibility expansion for revocation + step-up events with event name, outcome, and reason details.
+- ✅ Implemented: admin auth-events visibility for login/refresh/revoke families (and historical `STEP_UP` audit rows if present).
+- ↩️ **Rolled back from MVP session path**: automatic step-up OTP on refresh fingerprint drift, `/auth/challenge` UI, middleware `step-up-status` gate, and `StepUpChallenge` model. Current contract: valid refresh → rotate tokens → continue; invalid refresh → 401 → login recovery. Login/register email OTP remains for account verification only. See [`authentication-and-session-model.md`](../architecture/authentication-and-session-model.md).
 
 ## Critical Issues (Fix Immediately)
 
@@ -2634,8 +2629,8 @@ test("role changes immediately visible in all layers", async () => {
 | 3 | **DoS** | No rate limiting on auth endpoints | ✅ Mitigated on core auth endpoints | LOW-MEDIUM |
 | 4 | **Access Control** | No universal protected-route auth guard | ✅ Mitigated via centralized route guards | LOW |
 | 5 | **Visibility** | No audit logging | ✅ Mitigated with structured auth-event logging | LOW-MEDIUM |
-| 6 | **Visibility** | No device fingerprinting | ✅ Mitigated on refresh path with mismatch rejection | LOW-MEDIUM |
-| 7 | **Token Management** | Risk-based step-up challenge UX | ✅ Implemented end-to-end challenge flow with middleware enforcement | LOW |
+| 6 | **Visibility** | No device fingerprinting | ✅ Device fingerprint metadata stored on session create; not used to gate refresh in MVP | LOW-MEDIUM |
+| 7 | **Token Management** | Risk-based step-up challenge UX | ↩️ Removed from normal session/refresh path (MVP); reintroduce only around explicit sensitive ops | MEDIUM |
 
 ---
 
@@ -2651,7 +2646,7 @@ test("role changes immediately visible in all layers", async () => {
 
 | # | Category | Issue | Mitigation |
 |---|----------|-------|-----------|
-| 9 | **Visibility** | Admin security event visibility incomplete | ✅ Implemented admin dashboard visibility for step-up + revocation event families |
+| 9 | **Visibility** | Admin security event visibility incomplete | ✅ Implemented admin dashboard visibility for revocation + historical step-up event families |
 
 ---
 
@@ -2660,7 +2655,7 @@ test("role changes immediately visible in all layers", async () => {
 | Fix | Complexity | Time | Testing |
 |-----|-----------|------|---------|
 | OAuth provider-aware linking policy hardening | Completed | 0h | 0h |
-| Admin security event visibility (step-up + revocation) | Completed | 0h | 0h |
+| Admin security event visibility (revocation + historical step-up filter) | Completed | 0h | 0h |
 | **Total remaining** | | **0 hours** | **0 hours** |
 
 ---
@@ -2668,17 +2663,12 @@ test("role changes immediately visible in all layers", async () => {
 ## Recommended Next Steps
 
 1. **Immediate (Completed):**
-  - ✅ Wire client/session management to explicitly handle `AUTH_STEP_UP_REQUIRED` responses.
-  - ✅ Detect step-up recovery flow and gracefully redirect with context parameter.
-  - ✅ Display user-facing warning when session requires re-auth.
-  - ✅ Add `/auth/challenge` page and password verification endpoint for step-up completion.
-  - ✅ Enforce step-up in middleware until challenge is verified.
+  - ✅ Provider-aware account-linking rules for OAuth identities.
+  - ✅ Admin visibility for revocation (+ historical step-up) security events.
+  - ↩️ Automatic session step-up challenge flow removed from MVP (refresh/bootstrap/middleware/socket no longer create or redirect to OTP challenges).
 
-2. **This Week:**
-  - ✅ Implemented provider-aware account-linking rules for OAuth identities.
-
-3. **Next Sprint:**
-  - ✅ Implemented admin visibility for revocation and step-up security events in dashboard/audit UI.
+2. **If reintroducing step-up later:**
+  - Bind it to explicit sensitive operations only — never access-token refresh or normal application bootstrap.
 
 ---
 

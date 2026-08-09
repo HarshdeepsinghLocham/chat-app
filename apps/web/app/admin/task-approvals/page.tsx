@@ -42,7 +42,9 @@ export default function AdminTaskApprovalsPage() {
         setLoading(true);
         setError(null);
         try {
-            const response = await getTaskApprovals(conversationId.trim() || undefined);
+            const response = await getTaskApprovals({
+                conversationId: conversationId.trim() || undefined,
+            });
             setApprovals(response.approvals);
             setCommentsById((current) => {
                 const next = { ...current };

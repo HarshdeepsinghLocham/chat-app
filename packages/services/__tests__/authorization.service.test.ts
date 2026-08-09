@@ -7,7 +7,9 @@ import {
     AuthorizationError,
     canAccessConversation,
     canAccessWorkSuggestion,
+    canDecideTaskExecutionApproval,
     canMutateWorkSuggestion,
+    assertCanDecideTaskExecutionApproval,
 } from "../authorization.service";
 
 jest.mock("@semantask/db", () => ({
@@ -354,6 +356,74 @@ describe("authorization.service", () => {
 
             await expect(
                 assertWorkSuggestionMutationAccess(userId, {
+                    conversationId,
+                    organizationId: null,
+                })
+            ).rejects.toMatchObject({
+                code: "FORBIDDEN",
+                message: "Forbidden",
+            });
+        });
+    });
+
+    describe("task execution approval access", () => {
+        it("mirrors mutation matrix for conversation participants", async () => {
+            (Conversation.findById as jest.Mock).mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue({
+                        _id: new Types.ObjectId(conversationId),
+                        participants: [new Types.ObjectId(userId)],
+                        organizationId: null,
+                    }),
+                }),
+            });
+
+            await expect(
+                canDecideTaskExecutionApproval(userId, {
+                    conversationId,
+                    organizationId: null,
+                })
+            ).resolves.toBe(true);
+        });
+
+        it("allows org admins without conversation participation", async () => {
+            (Conversation.findById as jest.Mock).mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue({
+                        _id: new Types.ObjectId(conversationId),
+                        participants: [new Types.ObjectId(otherUserId)],
+                        organizationId: new Types.ObjectId(organizationId),
+                    }),
+                }),
+            });
+            (assertOrganizationActive as jest.Mock).mockResolvedValue({ status: "active" });
+            (getMembership as jest.Mock).mockResolvedValue({
+                role: "admin",
+                organizationId: new Types.ObjectId(organizationId),
+                userId: new Types.ObjectId(userId),
+            });
+
+            await expect(
+                canDecideTaskExecutionApproval(userId, {
+                    conversationId,
+                    organizationId,
+                })
+            ).resolves.toBe(true);
+        });
+
+        it("denies unrelated users without leaking existence", async () => {
+            (Conversation.findById as jest.Mock).mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue({
+                        _id: new Types.ObjectId(conversationId),
+                        participants: [new Types.ObjectId(otherUserId)],
+                        organizationId: null,
+                    }),
+                }),
+            });
+
+            await expect(
+                assertCanDecideTaskExecutionApproval(userId, {
                     conversationId,
                     organizationId: null,
                 })

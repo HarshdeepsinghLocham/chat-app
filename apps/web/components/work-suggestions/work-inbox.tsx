@@ -9,9 +9,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
     ApiHttpError,
+    acceptWorkSuggestionApi,
+    assignWorkSuggestionApi,
+    dismissWorkSuggestionApi,
+    getOrganizationMembers,
     listWorkSuggestions,
     type WorkSuggestionListResult,
 } from "@/lib/utils/api";
+import useWorkSuggestionStore from "@/store/work-suggestion-store";
+import {
+    WorkInboxTriage,
+    type OrgMemberOption,
+} from "@/components/work-suggestions/work-inbox-triage";
 
 const STORAGE_KEY = "semantask.activeOrganizationId";
 const PAGE_LIMIT = 20;
@@ -36,6 +45,32 @@ function summarize(text: string, max = 140) {
     return `${normalized.slice(0, max - 1)}…`;
 }
 
+function ownersForSuggestion(
+    item: WorkSuggestionRecord,
+    ownerById: Record<string, string[]>
+): string[] {
+    const overlay = ownerById[item._id];
+    if (overlay !== undefined) return overlay;
+    // Candidates are extraction hints, not the linked task's current owners.
+    if (item.status === "proposed") {
+        return item.candidates.assigneeCandidates ?? [];
+    }
+    return [];
+}
+
+function restoreInboxRow(
+    current: WorkSuggestionRecord[],
+    previousRow: WorkSuggestionRecord
+): WorkSuggestionRecord[] {
+    const index = current.findIndex((row) => row._id === previousRow._id);
+    if (index >= 0) {
+        const next = current.slice();
+        next[index] = previousRow;
+        return next;
+    }
+    return [previousRow, ...current];
+}
+
 export function WorkInboxView() {
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [conversationId, setConversationId] = useState("");
@@ -44,7 +79,14 @@ export function WorkInboxView() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [result, setResult] = useState<WorkSuggestionListResult | null>(null);
+    const [items, setItems] = useState<WorkSuggestionRecord[]>([]);
+    const [members, setMembers] = useState<OrgMemberOption[]>([]);
+    const [ownerById, setOwnerById] = useState<Record<string, string[]>>({});
+    const [actingId, setActingId] = useState<string | null>(null);
+    const [actionErrorById, setActionErrorById] = useState<Record<string, string | null>>({});
     const loadSeqRef = useRef(0);
+
+    const refreshConversation = useWorkSuggestionStore((state) => state.refreshConversation);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -54,17 +96,20 @@ export function WorkInboxView() {
     const scopedConversationId = conversationId.trim() || undefined;
     const hasScope = Boolean(organizationId || scopedConversationId);
 
-    const load = useCallback(async () => {
+    const load = useCallback(async (options?: { quiet?: boolean }) => {
         if (!organizationId && !scopedConversationId) {
             loadSeqRef.current += 1;
             setResult(null);
+            setItems([]);
             setError(null);
             setLoading(false);
             return;
         }
 
         const requestId = ++loadSeqRef.current;
-        setLoading(true);
+        if (!options?.quiet) {
+            setLoading(true);
+        }
         setError(null);
         try {
             const data = await listWorkSuggestions({
@@ -76,16 +121,18 @@ export function WorkInboxView() {
             });
             if (requestId !== loadSeqRef.current) return;
             setResult(data);
+            setItems(data.items);
         } catch (loadError) {
             if (requestId !== loadSeqRef.current) return;
             setResult(null);
+            setItems([]);
             if (loadError instanceof ApiHttpError) {
                 setError(loadError.message);
             } else {
                 setError(loadError instanceof Error ? loadError.message : "Failed to load inbox");
             }
         } finally {
-            if (requestId === loadSeqRef.current) {
+            if (requestId === loadSeqRef.current && !options?.quiet) {
                 setLoading(false);
             }
         }
@@ -95,9 +142,168 @@ export function WorkInboxView() {
         void load();
     }, [load]);
 
-    const items: WorkSuggestionRecord[] = result?.items ?? [];
+    useEffect(() => {
+        if (!organizationId) {
+            setMembers([]);
+            return;
+        }
+
+        let cancelled = false;
+        void getOrganizationMembers(organizationId)
+            .then((list) => {
+                if (cancelled) return;
+                setMembers(
+                    list.map((member) => ({
+                        userId: member.userId,
+                        role: member.role,
+                    }))
+                );
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setMembers([]);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [organizationId]);
+
     const pagination = result?.pagination;
     const totalPages = pagination?.totalPages ?? 1;
+
+    const setRowError = (id: string, message: string | null) => {
+        setActionErrorById((current) => ({ ...current, [id]: message }));
+    };
+
+    const afterMutationRefresh = async (conversationIdForBadge: string) => {
+        await load({ quiet: true });
+        void refreshConversation(conversationIdForBadge);
+    };
+
+    async function handleAccept(item: WorkSuggestionRecord, assignees: string[]) {
+        const previousRow = item;
+        const previousOwners = ownerById[item._id];
+        setActingId(item._id);
+        setRowError(item._id, null);
+
+        // Default inbox filter is proposed: drop the row immediately.
+        if (status === "proposed") {
+            setItems((current) => current.filter((row) => row._id !== item._id));
+        } else {
+            setItems((current) =>
+                current.map((row) =>
+                    row._id === item._id ? { ...row, status: "converted" as const } : row
+                )
+            );
+        }
+        if (assignees.length > 0) {
+            setOwnerById((current) => ({ ...current, [item._id]: assignees }));
+        }
+
+        try {
+            const response = await acceptWorkSuggestionApi(item._id, {
+                assignees: assignees.length > 0 ? assignees : undefined,
+            });
+            if (response.task.assignees?.length) {
+                setOwnerById((current) => ({
+                    ...current,
+                    [item._id]: response.task.assignees,
+                }));
+            }
+            await afterMutationRefresh(item.conversationId);
+        } catch (actionError) {
+            setItems((current) => restoreInboxRow(current, previousRow));
+            setOwnerById((current) => {
+                const next = { ...current };
+                if (previousOwners === undefined) {
+                    delete next[item._id];
+                } else {
+                    next[item._id] = previousOwners;
+                }
+                return next;
+            });
+            setRowError(
+                item._id,
+                actionError instanceof ApiHttpError
+                    ? actionError.message
+                    : actionError instanceof Error
+                      ? actionError.message
+                      : "Accept failed"
+            );
+        } finally {
+            setActingId(null);
+        }
+    }
+
+    async function handleDismiss(item: WorkSuggestionRecord, reason: string) {
+        const previousRow = item;
+        setActingId(item._id);
+        setRowError(item._id, null);
+
+        if (status === "proposed") {
+            setItems((current) => current.filter((row) => row._id !== item._id));
+        } else {
+            setItems((current) =>
+                current.map((row) =>
+                    row._id === item._id
+                        ? { ...row, status: "dismissed" as const, dismissReason: reason }
+                        : row
+                )
+            );
+        }
+
+        try {
+            await dismissWorkSuggestionApi(item._id, reason);
+            await afterMutationRefresh(item.conversationId);
+        } catch (actionError) {
+            setItems((current) => restoreInboxRow(current, previousRow));
+            setRowError(
+                item._id,
+                actionError instanceof ApiHttpError
+                    ? actionError.message
+                    : actionError instanceof Error
+                      ? actionError.message
+                      : "Dismiss failed"
+            );
+        } finally {
+            setActingId(null);
+        }
+    }
+
+    async function handleAssign(item: WorkSuggestionRecord, assignees: string[]) {
+        const previousOwners = ownersForSuggestion(item, ownerById);
+        setActingId(item._id);
+        setRowError(item._id, null);
+        setOwnerById((current) => ({ ...current, [item._id]: assignees }));
+
+        try {
+            const response = await assignWorkSuggestionApi(item._id, { assignees });
+            setOwnerById((current) => ({
+                ...current,
+                [item._id]: response.task.assignees ?? assignees,
+            }));
+            setItems((current) =>
+                current.map((row) =>
+                    row._id === item._id ? response.suggestion : row
+                )
+            );
+            void refreshConversation(item.conversationId);
+        } catch (actionError) {
+            setOwnerById((current) => ({ ...current, [item._id]: previousOwners }));
+            setRowError(
+                item._id,
+                actionError instanceof ApiHttpError
+                    ? actionError.message
+                    : actionError instanceof Error
+                      ? actionError.message
+                      : "Assign failed"
+            );
+        } finally {
+            setActingId(null);
+        }
+    }
 
     return (
         <div className="space-y-6" data-testid="work-inbox">
@@ -105,8 +311,8 @@ export function WorkInboxView() {
                 <div>
                     <h1 className="text-2xl font-bold">Work inbox</h1>
                     <p className="text-sm text-muted-foreground">
-                        Reviewable work suggestions for your workspace. Opening this page never starts
-                        autonomous execution. Accepting a suggestion is not the same as approving tool
+                        Triage reviewable work suggestions without opening the orchestration panel.
+                        Accept creates coordination work only — it never starts autonomous tool
                         execution.
                     </p>
                 </div>
@@ -277,6 +483,20 @@ export function WorkInboxView() {
                                         <dd className="font-mono text-xs break-all">{item.conversationId}</dd>
                                     </div>
                                 </dl>
+
+                                {(item.status === "proposed" || item.status === "converted") ? (
+                                    <WorkInboxTriage
+                                        suggestion={item}
+                                        organizationId={organizationId}
+                                        members={members}
+                                        displayedOwners={ownersForSuggestion(item, ownerById)}
+                                        actionPending={actingId === item._id}
+                                        actionError={actionErrorById[item._id] ?? null}
+                                        onAccept={(assignees) => handleAccept(item, assignees)}
+                                        onAssign={(assignees) => handleAssign(item, assignees)}
+                                        onDismiss={(reason) => handleDismiss(item, reason)}
+                                    />
+                                ) : null}
                             </CardContent>
                         </Card>
                     ))}

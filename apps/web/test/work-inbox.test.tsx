@@ -3,21 +3,44 @@
  */
 import React from "react";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { WorkSuggestionRecord } from "@semantask/types";
 
 const listWorkSuggestions = jest.fn();
+const acceptWorkSuggestionApi = jest.fn();
+const dismissWorkSuggestionApi = jest.fn();
+const assignWorkSuggestionApi = jest.fn();
+const getOrganizationMembers = jest.fn();
+const decideTaskApproval = jest.fn();
+const refreshConversation = jest.fn(async () => undefined);
+
+class ApiHttpError extends Error {
+    status: number;
+    constructor(status: number, message: string) {
+        super(message);
+        this.status = status;
+        this.name = "ApiHttpError";
+    }
+}
 
 jest.mock("@/lib/utils/api", () => ({
-    ApiHttpError: class ApiHttpError extends Error {
-        status: number;
-        constructor(status: number, message: string) {
-            super(message);
-            this.status = status;
-        }
-    },
+    ApiHttpError,
     listWorkSuggestions: (...args: unknown[]) => listWorkSuggestions(...args),
+    acceptWorkSuggestionApi: (...args: unknown[]) => acceptWorkSuggestionApi(...args),
+    dismissWorkSuggestionApi: (...args: unknown[]) => dismissWorkSuggestionApi(...args),
+    assignWorkSuggestionApi: (...args: unknown[]) => assignWorkSuggestionApi(...args),
+    getOrganizationMembers: (...args: unknown[]) => getOrganizationMembers(...args),
+    decideTaskApproval: (...args: unknown[]) => decideTaskApproval(...args),
 }));
+
+jest.mock("@/store/work-suggestion-store", () => {
+    const store = (selector: (state: { refreshConversation: typeof refreshConversation }) => unknown) =>
+        selector({ refreshConversation });
+    return {
+        __esModule: true,
+        default: store,
+    };
+});
 
 import { WorkInboxView } from "@/components/work-suggestions/work-inbox";
 
@@ -33,7 +56,7 @@ function buildSuggestion(overrides: Partial<WorkSuggestionRecord> = {}): WorkSug
         summary: "Follow up with the new hire",
         confidence: 0.88,
         candidates: {
-            assigneeCandidates: [],
+            assigneeCandidates: ["507f1f77bcf86cd799439099"],
             dueAtCandidate: null,
             priorityCandidate: "",
         },
@@ -49,7 +72,14 @@ function buildSuggestion(overrides: Partial<WorkSuggestionRecord> = {}): WorkSug
 describe("WorkInboxView", () => {
     beforeEach(() => {
         listWorkSuggestions.mockReset();
+        acceptWorkSuggestionApi.mockReset();
+        dismissWorkSuggestionApi.mockReset();
+        assignWorkSuggestionApi.mockReset();
+        getOrganizationMembers.mockReset();
+        decideTaskApproval.mockReset();
+        refreshConversation.mockClear();
         window.localStorage.clear();
+        getOrganizationMembers.mockResolvedValue([]);
     });
 
     it("shows onboarding when no org or conversation scope is set", async () => {
@@ -60,7 +90,7 @@ describe("WorkInboxView", () => {
         expect(screen.queryByTestId("suggestion-dismiss")).not.toBeInTheDocument();
     });
 
-    it("loads org-scoped suggestions and links to detail", async () => {
+    it("loads org-scoped suggestions with triage actions and links to detail", async () => {
         window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
         listWorkSuggestions.mockResolvedValue({
             items: [buildSuggestion()],
@@ -82,10 +112,148 @@ describe("WorkInboxView", () => {
         expect(await screen.findByTestId("work-inbox-list")).toBeInTheDocument();
         const link = screen.getByTestId("work-inbox-row-link");
         expect(link).toHaveAttribute("href", "/work-suggestions/sug-1");
-        expect(screen.getByText("Send welcome email")).toBeInTheDocument();
-        expect(screen.queryByTestId("suggestion-accept")).not.toBeInTheDocument();
-        expect(screen.queryByTestId("suggestion-dismiss")).not.toBeInTheDocument();
-        expect(screen.queryByTestId("suggestion-assign")).not.toBeInTheDocument();
+        expect(screen.getByTestId("suggestion-accept")).toBeInTheDocument();
+        expect(screen.getByTestId("suggestion-dismiss")).toBeInTheDocument();
+        expect(screen.getByTestId("suggestion-assign")).toBeDisabled();
+    });
+
+    it("accepts a suggestion, removes it from proposed inbox, and does not call approvals", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        listWorkSuggestions
+            .mockResolvedValueOnce({
+                items: [buildSuggestion()],
+                pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+            })
+            .mockResolvedValue({
+                items: [],
+                pagination: { page: 1, limit: 20, total: 0, totalPages: 1 },
+            });
+        acceptWorkSuggestionApi.mockResolvedValue({
+            suggestion: buildSuggestion({ status: "converted", convertedTaskId: "task-1" }),
+            task: {
+                _id: "task-1",
+                assignees: ["507f1f77bcf86cd799439099"],
+            },
+        });
+
+        render(<WorkInboxView />);
+        expect(await screen.findByTestId("suggestion-accept")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId("suggestion-accept"));
+
+        await waitFor(() => {
+            expect(acceptWorkSuggestionApi).toHaveBeenCalledWith("sug-1", {
+                assignees: ["507f1f77bcf86cd799439099"],
+            });
+        });
+        expect(decideTaskApproval).not.toHaveBeenCalled();
+        expect(await screen.findByTestId("work-inbox-empty")).toBeInTheDocument();
+        expect(refreshConversation).toHaveBeenCalledWith("507f1f77bcf86cd799439014");
+    });
+
+    it("requires dismiss reason and removes row after dismiss", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        listWorkSuggestions
+            .mockResolvedValueOnce({
+                items: [buildSuggestion()],
+                pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+            })
+            .mockResolvedValue({
+                items: [],
+                pagination: { page: 1, limit: 20, total: 0, totalPages: 1 },
+            });
+        dismissWorkSuggestionApi.mockResolvedValue(
+            buildSuggestion({ status: "dismissed", dismissReason: "Not useful" })
+        );
+
+        render(<WorkInboxView />);
+        const dismiss = await screen.findByTestId("suggestion-dismiss");
+        expect(dismiss).toBeDisabled();
+
+        fireEvent.change(screen.getByTestId("suggestion-dismiss-reason"), {
+            target: { value: "Not useful" },
+        });
+        expect(dismiss).not.toBeDisabled();
+        fireEvent.click(dismiss);
+
+        await waitFor(() => {
+            expect(dismissWorkSuggestionApi).toHaveBeenCalledWith("sug-1", "Not useful");
+        });
+        expect(await screen.findByTestId("work-inbox-empty")).toBeInTheDocument();
+    });
+
+    it("assigns owner on converted suggestions and updates displayed owner", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        listWorkSuggestions.mockResolvedValue({
+            items: [
+                buildSuggestion({
+                    status: "converted",
+                    convertedTaskId: "task-1",
+                    candidates: {
+                        assigneeCandidates: ["507f1f77bcf86cd799439099"],
+                        dueAtCandidate: null,
+                        priorityCandidate: "",
+                    },
+                }),
+            ],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        });
+        assignWorkSuggestionApi.mockResolvedValue({
+            suggestion: buildSuggestion({
+                status: "converted",
+                convertedTaskId: "task-1",
+            }),
+            task: {
+                _id: "task-1",
+                assignees: ["507f1f77bcf86cd799439088"],
+            },
+        });
+
+        render(<WorkInboxView />);
+
+        // Switch to converted filter so the converted row is requested
+        fireEvent.change(await screen.findByTestId("work-inbox-status"), {
+            target: { value: "converted" },
+        });
+
+        await waitFor(() => {
+            expect(listWorkSuggestions).toHaveBeenCalledWith(
+                expect.objectContaining({ status: "converted" })
+            );
+        });
+
+        const assignees = await screen.findByTestId("suggestion-assignees");
+        fireEvent.change(assignees, {
+            target: { value: "507f1f77bcf86cd799439088" },
+        });
+        fireEvent.click(screen.getByTestId("suggestion-assign"));
+
+        await waitFor(() => {
+            expect(assignWorkSuggestionApi).toHaveBeenCalledWith("sug-1", {
+                assignees: ["507f1f77bcf86cd799439088"],
+            });
+        });
+        expect(await screen.findByTestId("work-inbox-owner")).toHaveTextContent(
+            "507f1f77bcf86cd799439088"
+        );
+    });
+
+    it("restores the row when accept fails", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        listWorkSuggestions.mockResolvedValue({
+            items: [buildSuggestion()],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        });
+        acceptWorkSuggestionApi.mockRejectedValue(new ApiHttpError(404, "Work suggestion not found"));
+
+        render(<WorkInboxView />);
+        fireEvent.click(await screen.findByTestId("suggestion-accept"));
+
+        expect(await screen.findByTestId("suggestion-action-error")).toHaveTextContent(
+            "Work suggestion not found"
+        );
+        expect(screen.getByTestId("work-inbox-row")).toBeInTheDocument();
+        expect(screen.getByTestId("work-inbox-row-link")).toHaveTextContent("Send welcome email");
     });
 
     it("shows empty state when API returns no items", async () => {

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ListFilter, LogOut, Search, X } from "lucide-react";
+import { Inbox, ListFilter, LogOut, Search, X } from "lucide-react";
+import Link from "next/link";
 import { Input } from "../ui/input";
 import ThemeSwitch from "./theme-switch";
 import UserListDialog from "./dialogs/user-list-dialog";
@@ -11,7 +12,7 @@ import { ClientUser, ClientConversation } from "@semantask/types";
 import VirtualConversationList from "../sidebar/VirtualConversationList";
 import { socket } from "@/lib/socket/socketClient";
 import { useRouter } from "next/navigation";
-import { authenticatedFetch } from "@/lib/utils/api";
+import { authenticatedFetch, getWorkInboxEnabled } from "@/lib/utils/api";
 import { recordApiTiming } from "@/lib/utils/performance";
 
 function isUser(p: unknown): p is ClientUser {
@@ -36,6 +37,21 @@ const Sidebar = ({
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
+    const [workInboxEnabled, setWorkInboxEnabled] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        void getWorkInboxEnabled()
+            .then((enabled) => {
+                if (!cancelled) setWorkInboxEnabled(enabled);
+            })
+            .catch(() => {
+                if (!cancelled) setWorkInboxEnabled(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     // Fetch conversations with explicit cancellation and retry handling.
     useEffect(() => {
@@ -181,6 +197,17 @@ const Sidebar = ({
                 <UserProfile />
 
                 <div className="ml-auto flex items-center gap-2 sm:gap-3">
+                    {workInboxEnabled ? (
+                        <Link
+                            href="/inbox"
+                            data-testid="work-inbox-nav-link"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] transition hover:text-[hsl(var(--foreground))]"
+                            aria-label="Work inbox"
+                            title="Work inbox"
+                        >
+                            <Inbox size={20} />
+                        </Link>
+                    ) : null}
                     <UserListDialog />
                     <ThemeSwitch />
 

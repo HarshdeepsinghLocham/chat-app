@@ -127,6 +127,11 @@ export function assertAcceptCreatesCoordinationOnly(raw?: string | null): void {
     }
 }
 
+/** WORK_INBOX_UI=0|1 (default 0). Expose /inbox manager surface. */
+export function isWorkInboxUiEnabled(raw?: string | null): boolean {
+    return isEnvFlagEnabled(raw ?? process.env.WORK_INBOX_UI, false);
+}
+
 export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {
     const source = raw ?? process.env.GRANDFATHER_AUTO_TENANTS ?? "";
     return new Set(

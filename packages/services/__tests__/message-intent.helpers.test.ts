@@ -55,9 +55,23 @@ describe("message-intent heuristics", () => {
                 .toEqual(["u1"]);
         });
 
+        it("matches punctuation-adjacent @mentions", () => {
+            expect(extractAssigneeUserIds("ping (@alice) please", participants))
+                .toEqual(["u1"]);
+            expect(extractAssigneeUserIds("hi,@alice can you look?", participants))
+                .toEqual(["u1"]);
+        });
+
         it("matches email tokens", () => {
             expect(extractAssigneeUserIds("cc bob@example.com on this", participants))
                 .toEqual(["u2"]);
+        });
+
+        it("rejects email substrings embedded in larger tokens", () => {
+            expect(extractAssigneeUserIds("notalice@example.com should not match", participants))
+                .toEqual([]);
+            expect(extractAssigneeUserIds("see alice@example.com.evil please", participants))
+                .toEqual([]);
         });
 
         it("matches bare username only with assignment context", () => {

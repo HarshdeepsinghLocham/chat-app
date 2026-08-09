@@ -13,10 +13,15 @@ jest.mock("@semantask/observability/metrics", () => ({
 
 describe("classifier evaluation harness", () => {
     it("meets seed gates on gold cases (type, actionable, heuristics)", () => {
-        const goldPath = join(process.cwd(), "eval/classifier-gold.json");
+        // Resolve from this test file so the harness is cwd-independent.
+        const goldPath = join(__dirname, "../eval/classifier-gold.json");
         const gold = JSON.parse(readFileSync(goldPath, "utf8")) as GoldFile;
 
         expect(gold.cases.length).toBeGreaterThanOrEqual(40);
+
+        const t7 = gold.cases.find((row) => row.id === "t7");
+        expect(t7).toBeDefined();
+        expect(t7?.priority).toBeTruthy();
 
         const report = evaluateClassifierGold(gold);
 
@@ -30,8 +35,10 @@ describe("classifier evaluation harness", () => {
         expect(report.priorityHitRate ?? 0).toBeGreaterThanOrEqual(0.9);
         expect(report.titlePassRate ?? 0).toBeGreaterThanOrEqual(0.95);
 
-        const t7Failures = report.failures.filter((f) => f.id === "t7" && f.reason.startsWith("priority"));
-        expect(t7Failures).toEqual([]);
+        const t7PriorityFailures = report.failures.filter(
+            (f) => f.id === "t7" && f.reason.startsWith("priority")
+        );
+        expect(t7PriorityFailures).toEqual([]);
 
         if (report.typeAccuracy < 0.85) {
             // Surface mismatches for debugging without failing above the seed gate.

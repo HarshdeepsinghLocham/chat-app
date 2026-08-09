@@ -186,7 +186,8 @@ export function extractAssigneeUserIds(
         const email = participant.email?.trim().toLowerCase();
 
         if (username) {
-            const mention = new RegExp(`(?:^|\\s)@${escapeRegExp(username)}\\b`, "i");
+            // Allow punctuation-adjacent mentions: "(@alice)", "hi,@alice"
+            const mention = new RegExp(`(?<![\\w])@${escapeRegExp(username)}(?![\\w])`, "i");
             if (
                 mention.test(normalized)
                 || hasBareUsernameAssignmentContext(lower, username)
@@ -196,8 +197,15 @@ export function extractAssigneeUserIds(
             }
         }
 
-        if (email && lower.includes(email)) {
-            matched.add(participant.userId);
+        if (email) {
+            // Token-aware: reject substrings like "notalice@…" or "…@example.com.evil"
+            const emailToken = new RegExp(
+                `(?<![\\w.-])${escapeRegExp(email)}(?![\\w.-])`,
+                "i"
+            );
+            if (emailToken.test(lower)) {
+                matched.add(participant.userId);
+            }
         }
     }
 

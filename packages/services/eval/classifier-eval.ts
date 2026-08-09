@@ -62,8 +62,8 @@ const WEEKDAY_INDEX: Record<string, number> = {
 function titleFromContent(content: string): string {
     const normalized = content.trim().replace(/\s+/g, " ");
     const withoutPrefix = normalized.replace(/^(@\w+[:,]?\s*)+/, "");
-    const trimmed = withoutPrefix.slice(0, 200);
-    return trimmed.length >= 3 ? trimmed : normalized.slice(0, 200);
+    // Keep prefix-stripped text even when short so "@alice: x" stays below threshold.
+    return withoutPrefix.slice(0, 200);
 }
 
 function nextUtcWeekday(today: Date, weekday: number): Date {

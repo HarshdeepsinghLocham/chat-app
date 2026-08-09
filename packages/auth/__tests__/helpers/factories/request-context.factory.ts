@@ -1,13 +1,11 @@
 import { generateDeviceFingerprint } from "../../../session/fingerprint.js";
 
 /**
- * Request-context builders for refresh/step-up integration tests.
+ * Request-context builders for refresh integration tests.
  *
- * A "request context" is the device/network metadata a client sends with a
- * refresh call (`deviceId`, `userAgent`, `ipAddress`). `refreshService` derives
- * a device fingerprint from it and compares against the fingerprint persisted on
- * the session. These builders keep the stored fingerprint and the incoming
- * context genuinely coordinated, using the REAL production `generateDeviceFingerprint`.
+ * A "request context" is the device/network metadata a client may send with a
+ * refresh call (`deviceId`, `userAgent`, `ipAddress`). Sessions store a derived
+ * fingerprint at creation time for audit/metadata; refresh does not gate on it.
  */
 export interface RequestContext {
     deviceId?: string;
@@ -21,7 +19,7 @@ const DEFAULTS: Required<RequestContext> = {
     ipAddress: "203.0.113.10",
 };
 
-/** Build a request context with sane, fingerprint-stable defaults. */
+/** Build a request context with sane defaults. */
 export function buildRequestContext(overrides: Partial<RequestContext> = {}): RequestContext {
     return {
         deviceId: overrides.deviceId ?? DEFAULTS.deviceId,
@@ -35,8 +33,7 @@ export function buildRequestContext(overrides: Partial<RequestContext> = {}): Re
  *
  * Mirrors production `createUserSession`, which stores
  * `generateDeviceFingerprint({ deviceId, userAgent, ipAddress })` rather than
- * the raw deviceId. Storing this on a session row makes a later refresh with the
- * same context pass the fingerprint check.
+ * the raw deviceId.
  */
 export function storedDeviceFingerprint(ctx: RequestContext): string {
     return generateDeviceFingerprint({
@@ -46,10 +43,7 @@ export function storedDeviceFingerprint(ctx: RequestContext): string {
     });
 }
 
-/**
- * Produce a context whose device fingerprint DIFFERS from `ctx` (device drift),
- * which should trigger the step-up flow on refresh.
- */
+/** Produce a context whose device fingerprint differs from `ctx` (device drift). */
 export function driftedContext(
     ctx: RequestContext,
     overrides: Partial<RequestContext> = {}

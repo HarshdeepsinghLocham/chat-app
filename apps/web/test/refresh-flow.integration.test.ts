@@ -34,10 +34,12 @@ describe("web refresh behavior", () => {
   it("refreshes during auth bootstrap when /api/me returns 401", async () => {
     let refreshCalls = 0;
     let meCalls = 0;
+    const fetchedUrls: string[] = [];
 
     jest.spyOn(global, "fetch" as any).mockImplementation(async (...args: unknown[]) => {
       const input = args[0] as RequestInfo | URL;
       const url = String(input);
+      fetchedUrls.push(url);
 
       if (url === "/api/auth/refresh") {
         refreshCalls += 1;
@@ -63,6 +65,9 @@ describe("web refresh behavior", () => {
 
     expect(refreshCalls).toBe(1);
     expect(meCalls).toBe(2);
+    expect(fetchedUrls.some((url) => url.includes("step-up-status"))).toBe(false);
+    expect(fetchedUrls.some((url) => url.includes("/auth/challenge"))).toBe(false);
+    expect((global as any).window.location.href).not.toContain("/auth/challenge");
   });
 
   it("deduplicates concurrent 401 refresh and keeps user logged in", async () => {
@@ -103,5 +108,30 @@ describe("web refresh behavior", () => {
     expect(users).toEqual([]);
     expect(conversations).toEqual([]);
     expect((global as any).window.location.href).toBe("/dashboard");
+    expect((global as any).window.location.href).not.toContain("/auth/challenge");
+  });
+
+  it("does not call step-up-status or redirect to /auth/challenge on normal API traffic", async () => {
+    const fetchedUrls: string[] = [];
+
+    jest.spyOn(global, "fetch" as any).mockImplementation(async (...args: unknown[]) => {
+      const input = args[0] as RequestInfo | URL;
+      const url = String(input);
+      fetchedUrls.push(url);
+
+      if (url === "/api/me" || url === "/api/users" || url === "/api/conversations") {
+        return jsonResponse(url === "/api/me" ? { id: "u1" } : [], 200);
+      }
+
+      return jsonResponse({ error: "Unexpected URL" }, 500);
+    });
+
+    await Promise.all([getUsers(), getConversations()]);
+
+    expect(fetchedUrls).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("step-up-status")])
+    );
+    expect(fetchedUrls.some((url) => url.includes("/api/auth/challenge"))).toBe(false);
+    expect((global as any).window.location.href).not.toContain("/auth/challenge");
   });
 });

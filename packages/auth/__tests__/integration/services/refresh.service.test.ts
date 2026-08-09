@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { Types } from "mongoose";
 import { refreshService } from "../../../services/refresh.service.js";
 import { verifySession } from "../../../session/verify-session.js";
 import { verifyAccessToken, verifyRefreshToken } from "../../../tokens/verify.js";
 import { hashToken } from "../../../session/token-hash.js";
-import { AuthStepUpRequiredError } from "../../../errors/auth-errors.js";
 import {
     findSessionById,
     findSessionByIdWithToken,
 } from "../../../repositories/session.repo.js";
 import { SessionModel } from "../../../repositories/sessionModel.js";
-import { StepUpChallenge } from "../../../../db/models/StepUpChallenge.js";
 import { User } from "../../../../db/models/User.js";
 import { useTestDb } from "../../helpers/db.js";
 import { objectId } from "../../helpers/ids.js";
@@ -245,155 +242,49 @@ describe("services/refresh.service (db integration)", () => {
             expect(result.refreshToken).toBeTruthy();
         });
 
-        it("throws AuthStepUpRequiredError on device fingerprint drift (req 14)", async () => {
-            const { ctx, issued } = await setupRefreshable();
-            const drifted = driftedContext(ctx);
-
-            const error = await refreshService({
-                refreshToken: issued.refreshToken,
-                ...drifted,
-            }).catch((e: unknown) => e);
-
-            expect(error).toBeInstanceOf(AuthStepUpRequiredError);
-            expect((error as AuthStepUpRequiredError).reasons).toContain("device_mismatch");
-            expect((error as AuthStepUpRequiredError).challengeId).toBeTruthy();
-        });
-
-        it("transitions the session into step_up_pending on drift (req 15)", async () => {
-            const { ctx, issued } = await setupRefreshable();
-
-            await refreshService({
-                refreshToken: issued.refreshToken,
-                ...driftedContext(ctx),
-            }).catch(() => {});
-
-            const session = await findSessionById(issued.sessionId);
-            expect(session?.state).toBe("step_up_pending");
-        });
-
-        it("creates a pending step-up challenge record on drift (req 16)", async () => {
+        it("refreshes successfully despite device fingerprint drift (no step-up)", async () => {
             const { ctx, issued, userId } = await setupRefreshable();
+            await sleep(ROTATION_DELAY_MS);
 
-            const error = (await refreshService({
+            const result = await refreshService({
                 refreshToken: issued.refreshToken,
                 ...driftedContext(ctx),
-            }).catch((e: unknown) => e)) as AuthStepUpRequiredError;
-
-            const challenge = await StepUpChallenge.findById(error.challengeId);
-            expect(challenge).not.toBeNull();
-            expect(challenge?.status).toBe("pending");
-            expect(challenge?.verificationMethod).toBe("password");
-            expect(String(challenge?.userId)).toBe(userId);
-            expect(String(challenge?.sessionId)).toBe(issued.sessionId);
-            expect(
-                await StepUpChallenge.countDocuments({
-                    userId: new Types.ObjectId(userId),
-                })
-            ).toBe(1);
-        });
-
-        it("creates an OTP step-up challenge for Google-only accounts on drift (req 16b)", async () => {
-            const ctx = buildRequestContext();
-            const user = await createUser({
-                plainPassword: undefined,
-                authProviders: ["google"],
-                googleSub: `google-${objectId()}`,
-            });
-            const userId = user._id.toString();
-            const issued = await issueRefreshTokenForSession({
-                userId,
-                deviceId: storedDeviceFingerprint(ctx),
-                userAgent: ctx.userAgent,
-                ipAddress: ctx.ipAddress,
             });
 
-            const error = (await refreshService({
-                refreshToken: issued.refreshToken,
-                ...driftedContext(ctx),
-            }).catch((e: unknown) => e)) as AuthStepUpRequiredError;
-
-            expect(error).toBeInstanceOf(AuthStepUpRequiredError);
-            const challenge = await StepUpChallenge.findById(error.challengeId);
-            expect(challenge).not.toBeNull();
-            expect(challenge?.status).toBe("pending");
-            expect(challenge?.verificationMethod).toBe("otp");
-            expect(String(challenge?.userId)).toBe(userId);
-            expect(String(challenge?.sessionId)).toBe(issued.sessionId);
-        });
-
-        it("ignores a stale password challenge and creates an OTP one for Google-only users (req 16c)", async () => {
-            const ctx = buildRequestContext();
-            const user = await createUser({
-                plainPassword: undefined,
-                authProviders: ["google"],
-                googleSub: `google-${objectId()}`,
-            });
-            const userId = user._id.toString();
-            const issued = await issueRefreshTokenForSession({
-                userId,
-                deviceId: storedDeviceFingerprint(ctx),
-                userAgent: ctx.userAgent,
-                ipAddress: ctx.ipAddress,
-                state: "step_up_pending",
-            });
-            const stale = await StepUpChallenge.create({
-                userId: new Types.ObjectId(userId),
-                sessionId: new Types.ObjectId(issued.sessionId),
-                status: "pending",
-                verificationMethod: "password",
-                expiresAt: new Date(Date.now() + 60_000),
-            });
-
-            const error = (await refreshService({
-                refreshToken: issued.refreshToken,
-                ...ctx,
-            }).catch((e: unknown) => e)) as AuthStepUpRequiredError;
-
-            expect(error).toBeInstanceOf(AuthStepUpRequiredError);
-            expect(error.challengeId).not.toBe(stale._id.toString());
-            const challenge = await StepUpChallenge.findById(error.challengeId);
-            expect(challenge?.verificationMethod).toBe("otp");
-            expect(challenge?.status).toBe("pending");
-        });
-
-        it("does NOT delete or revoke the session during step-up (req 17)", async () => {
-            const { ctx, issued } = await setupRefreshable();
-
-            await refreshService({
-                refreshToken: issued.refreshToken,
-                ...driftedContext(ctx),
-            }).catch(() => {});
-
+            expect(result.userId).toBe(userId);
+            expect(result.accessToken).toBeTruthy();
+            expect(result.refreshToken).toBeTruthy();
             const session = await findSessionById(issued.sessionId);
-            expect(session).not.toBeNull();
+            expect(session?.state).toBe("active");
             expect(session?.revokedAt).toBeNull();
-            // The original refresh token still verifies, so step-up completion can
-            // re-use this session.
-            const { payload } = await verifySession(issued.refreshToken);
-            expect(payload.sessionId).toBe(issued.sessionId);
         });
 
-        it("keeps step-up pending when refresh is retried with a matching fingerprint (req 17b)", async () => {
-            const { ctx, issued } = await setupRefreshable();
+        it("clears legacy step_up_pending sessions on refresh without creating a challenge", async () => {
+            const { ctx, issued, userId } = await setupRefreshable();
+            await SessionModel.findByIdAndUpdate(issued.sessionId, {
+                $set: { state: "step_up_pending" },
+            });
+            await sleep(ROTATION_DELAY_MS);
 
-            const firstError = (await refreshService({
-                refreshToken: issued.refreshToken,
-                ...driftedContext(ctx),
-            }).catch((e: unknown) => e)) as AuthStepUpRequiredError;
-
-            expect(firstError).toBeInstanceOf(AuthStepUpRequiredError);
-
-            const retry = await refreshService({
+            const result = await refreshService({
                 refreshToken: issued.refreshToken,
                 ...ctx,
-            }).catch((e: unknown) => e);
+            });
 
-            expect(retry).toBeInstanceOf(AuthStepUpRequiredError);
-            expect((retry as AuthStepUpRequiredError).challengeId).toBe(firstError.challengeId);
-
+            expect(result.userId).toBe(userId);
             const session = await findSessionById(issued.sessionId);
-            expect(session?.state).toBe("step_up_pending");
-            await expect(verifySession(issued.refreshToken)).resolves.toBeDefined();
+            expect(session?.state).toBe("active");
+        });
+
+        it("does not create step-up challenges for invalid refresh tokens", async () => {
+            const { ctx } = await setupRefreshable();
+
+            await expect(
+                refreshService({
+                    refreshToken: "not-a-valid-refresh-token",
+                    ...ctx,
+                })
+            ).rejects.toThrow();
         });
     });
 
@@ -482,8 +373,8 @@ describe("services/refresh.service (db integration)", () => {
             await expect(verifySession(issued.refreshToken)).rejects.toThrow("Invalid session token");
         });
 
-        it("does not create step-up challenges for invalid users before account checks", async () => {
-            const { ctx, issued, userId } = await setupRefreshable({ status: "banned" });
+        it("rejects inactive accounts without step-up side effects", async () => {
+            const { ctx, issued } = await setupRefreshable({ status: "banned" });
 
             await expect(
                 refreshService({
@@ -492,17 +383,12 @@ describe("services/refresh.service (db integration)", () => {
                 })
             ).rejects.toThrow("Account is not active");
 
-            expect(
-                await StepUpChallenge.countDocuments({
-                    userId: new Types.ObjectId(userId),
-                })
-            ).toBe(0);
             const session = await SessionModel.findById(issued.sessionId);
             expect(session?.state).toBe("active");
         });
 
-        it("does not create step-up challenges for soft-deleted users with fingerprint drift", async () => {
-            const { ctx, issued, userId } = await setupRefreshable({ isDeleted: true });
+        it("rejects soft-deleted accounts without step-up side effects", async () => {
+            const { ctx, issued } = await setupRefreshable({ isDeleted: true });
 
             await expect(
                 refreshService({
@@ -511,11 +397,6 @@ describe("services/refresh.service (db integration)", () => {
                 })
             ).rejects.toThrow("ACCOUNT_DELETED");
 
-            expect(
-                await StepUpChallenge.countDocuments({
-                    userId: new Types.ObjectId(userId),
-                })
-            ).toBe(0);
             const session = await SessionModel.findById(issued.sessionId);
             expect(session?.state).toBe("active");
         });

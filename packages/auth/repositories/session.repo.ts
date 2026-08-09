@@ -59,14 +59,6 @@ export async function rotateSessionTokenHash(
     );
 }
 
-export async function markSessionStepUpPending(id: string): Promise<ISession | null> {
-    return SessionModel.findByIdAndUpdate(
-        id,
-        { $set: { state: "step_up_pending", lastActiveAt: new Date() } },
-        { new: true }
-    );
-}
-
 export async function revokeSession(id: string): Promise<ISession | null> {
     return SessionModel.findByIdAndUpdate(
         id,

@@ -23,8 +23,6 @@ export { refreshService } from "./services/refresh.service";
 export { logoutService } from "./services/logout.service";
 export { revokeUserAuthSessions } from "./services/revoke-user-auth.service";
 export { changePasswordService, forcePasswordChangeService } from "./services/change-password.service";
-export { completePasswordStepUpChallenge } from "./services/step-up-password.service";
-export { completeOtpStepUpChallenge, requestOtpStepUpChallenge } from "./services/step-up-otp.service";
 export { logAuthEventBestEffort } from "./services/auth-audit.service";
 export { logSecurityEvent } from "./services/security-event-logger";
 export { listAuthEvents } from "./services/list-auth-events.service";
@@ -46,7 +44,6 @@ export {
 
 export { authenticateHttpBearer } from "./middleware/http-auth";
 export { authenticateSocketToken } from "./middleware/socket-auth";
-export { AuthStepUpRequiredError } from "./errors/auth-errors";
 
 export {
     buildAccessTokenCookie,

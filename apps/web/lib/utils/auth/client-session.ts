@@ -2,7 +2,6 @@ type AuthErrorPayload = {
     error?: string;
     code?: string;
     requiresReauth?: boolean;
-    challengeId?: string;
 };
 
 type RefreshBroadcastMessage = {
@@ -41,34 +40,6 @@ export function parseAuthPayload(rawText: string): AuthErrorPayload | null {
     }
 }
 
-export function isStepUpResponse(payload: AuthErrorPayload | null): boolean {
-    return (
-        payload?.code === "AUTH_STEP_UP_REQUIRED" ||
-        payload?.requiresReauth === true ||
-        payload?.error === "STEP_UP_REQUIRED"
-    );
-}
-
-export function redirectToStepUpChallenge(challengeId?: string) {
-    if (typeof window === "undefined") {
-        return;
-    }
-
-    if (window.location.pathname.startsWith("/auth/challenge")) {
-        return;
-    }
-
-    const params = new URLSearchParams();
-    if (challengeId) {
-        params.set("cid", challengeId);
-    }
-
-    const next = `${window.location.pathname}${window.location.search}`;
-    params.set("next", next || "/");
-
-    window.location.href = `/auth/challenge?${params.toString()}`;
-}
-
 export function redirectToLogin() {
     if (typeof window === "undefined") {
         return;
@@ -83,12 +54,12 @@ export function redirectToLogin() {
 
 export type RefreshSessionResult =
     | { ok: true }
-    | { ok: false; reason: "unauthorized" | "step_up" | "transient" | "rate_limited" };
+    | { ok: false; reason: "unauthorized" | "transient" | "rate_limited" };
 
 export class AuthSessionPendingError extends Error {
-    readonly reason: "step_up" | "unauthenticated";
+    readonly reason: "unauthenticated";
 
-    constructor(reason: "step_up" | "unauthenticated", message = "Auth session pending") {
+    constructor(reason: "unauthenticated" = "unauthenticated", message = "Auth session pending") {
         super(message);
         this.name = "AuthSessionPendingError";
         this.reason = reason;
@@ -100,11 +71,7 @@ export function isAuthSessionPendingError(error: unknown): error is AuthSessionP
 }
 
 export function isPublicAuthRoute(pathname: string): boolean {
-    return (
-        pathname === "/login" ||
-        pathname === "/register" ||
-        pathname.startsWith("/auth/challenge")
-    );
+    return pathname === "/login" || pathname === "/register";
 }
 
 function canUseBroadcastChannel(): boolean {
@@ -234,12 +201,6 @@ export async function refreshSession(): Promise<RefreshSessionResult> {
             if (response.ok) {
                 broadcastRefresh({ type: "REFRESH_SUCCESS", senderId: tabId });
                 return { ok: true } as const;
-            }
-
-            if (isStepUpResponse(payload)) {
-                redirectToStepUpChallenge(payload?.challengeId);
-                broadcastRefresh({ type: "REFRESH_FAILED", senderId: tabId });
-                return { ok: false, reason: "step_up" } as const;
             }
 
             if (response.status === 401) {

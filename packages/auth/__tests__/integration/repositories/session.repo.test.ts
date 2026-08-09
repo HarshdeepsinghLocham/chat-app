@@ -5,7 +5,6 @@ import {
     deleteUserSessions,
     findSessionById,
     findSessionByIdWithToken,
-    markSessionStepUpPending,
     revokeSession,
     rotateSessionTokenHash,
 } from "../../../repositories/session.repo.js";
@@ -193,30 +192,10 @@ describe("repositories/session.repo (db integration)", () => {
         });
     });
 
-    describe("markSessionStepUpPending", () => {
-        it("transitions the session into step_up_pending", async () => {
-            const issued = await issueRefreshTokenForSession();
-            expect(issued.session.state).toBe("active");
-
-            const updated = await markSessionStepUpPending(issued.sessionId);
-            expect(updated?.state).toBe("step_up_pending");
-
-            const stored = await findSessionById(issued.sessionId);
-            expect(stored?.state).toBe("step_up_pending");
-        });
-
-        it("returns null when the session does not exist", async () => {
-            expect(await markSessionStepUpPending(objectId())).toBeNull();
-        });
-    });
-
-    describe("state transition: rotate resets step_up_pending", () => {
-        it("returns a step_up_pending session to active on rotation", async () => {
-            const issued = await issueRefreshTokenForSession();
-            await markSessionStepUpPending(issued.sessionId);
-
-            const pending = await findSessionById(issued.sessionId);
-            expect(pending?.state).toBe("step_up_pending");
+    describe("state transition: rotate clears legacy step_up_pending", () => {
+        it("returns a legacy step_up_pending session to active on rotation", async () => {
+            const issued = await issueRefreshTokenForSession({ state: "step_up_pending" });
+            expect(issued.session.state).toBe("step_up_pending");
 
             await rotateSessionTokenHash(issued.sessionId, hashToken("post-stepup-token"));
 

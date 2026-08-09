@@ -4,7 +4,6 @@ import { loginUser } from "../../services/login.service.js";
 import { refreshService } from "../../services/refresh.service.js";
 import { logoutService } from "../../services/logout.service.js";
 import { changePasswordService } from "../../services/change-password.service.js";
-import { completePasswordStepUpChallenge } from "../../services/step-up-password.service.js";
 import {
     createGoogleOAuthState,
     loginWithGoogleCode,
@@ -12,7 +11,6 @@ import {
 import { resetGoogleIdTokenVerifierCacheForTests } from "../../services/google-id-token.js";
 import { verifySession } from "../../session/verify-session.js";
 import { verifyAccessToken } from "../../tokens/verify.js";
-import { AuthStepUpRequiredError } from "../../errors/auth-errors.js";
 import { findSessionById } from "../../repositories/session.repo.js";
 import { SessionModel } from "../../repositories/sessionModel.js";
 import { User } from "../../../db/models/User.js";
@@ -109,39 +107,24 @@ describe("auth lifecycle (e2e integration)", () => {
         await expect(verifySession(refreshed.refreshToken)).rejects.toThrow("Invalid session");
     });
 
-    it("Flow 2: Login -> Refresh (drift) -> Step-Up -> Completion", async () => {
+    it("Flow 2: Login -> Refresh with fingerprint drift succeeds without step-up", async () => {
         const ctx = buildRequestContext();
         await createUser({ email: "flow2@test.dev", plainPassword: PASSWORD });
 
         const loggedIn = await loginUser({ email: "flow2@test.dev", password: PASSWORD, ...ctx });
         const userId = loggedIn.user._id.toString();
+        await sleep(ROTATION_DELAY_MS);
 
-        // Refresh from a drifted device triggers step-up (session kept pending).
-        const stepUpError = (await refreshService({
+        const refreshed = await refreshService({
             refreshToken: loggedIn.refreshToken,
             ...driftedContext(ctx),
-        }).catch((e: unknown) => e)) as AuthStepUpRequiredError;
-
-        expect(stepUpError).toBeInstanceOf(AuthStepUpRequiredError);
-        const challengeId = stepUpError.challengeId!;
-
-        const { payload } = await verifySession(loggedIn.refreshToken);
-        const session = await findSessionById(payload.sessionId);
-        expect(session?.state).toBe("step_up_pending");
-
-        // Complete step-up with the original refresh token + password.
-        const completed = await completePasswordStepUpChallenge({
-            challengeId,
-            password: PASSWORD,
-            refreshToken: loggedIn.refreshToken,
         });
-        expect(completed.userId).toBe(userId);
 
-        const restored = await findSessionById(payload.sessionId);
-        expect(restored?.state).toBe("active");
-        // New refresh token issued by completion is usable.
-        const { payload: newPayload } = await verifySession(completed.refreshToken);
-        expect(newPayload.sessionId).toBe(payload.sessionId);
+        expect(refreshed.userId).toBe(userId);
+        const session = await findSessionById(refreshed.sessionId);
+        expect(session?.state).toBe("active");
+        const { payload } = await verifySession(refreshed.refreshToken);
+        expect(payload.sessionId).toBe(refreshed.sessionId);
     });
 
     it("Flow 3: Login -> Change Password -> Token Revocation", async () => {

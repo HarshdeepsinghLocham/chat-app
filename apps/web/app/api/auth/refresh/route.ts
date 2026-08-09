@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { authRateLimitResponse, enforceAuthRateLimit } from "@/lib/utils/rateLimiter";
 import { connectToDatabase } from "@/lib/Db/db";
 import {
-    AuthStepUpRequiredError,
     authConfig,
     buildAccessTokenCookie,
     buildRefreshTokenCookie,
@@ -170,31 +169,6 @@ export async function POST(req: NextRequest) {
 
         return response;
     } catch (error) {
-        if (error instanceof AuthStepUpRequiredError) {
-            void logAuthEventBestEffort({
-                eventType: "step_up_triggered",
-                outcome: "success",
-                userId: error.userId,
-                ipAddress: context.ipAddress,
-                userAgent: context.userAgent,
-                reason: error.code,
-                metadata: {
-                    reasons: error.reasons,
-                    challengeId: error.challengeId,
-                },
-            });
-
-            const response = NextResponse.json(
-                {
-                    success: false,
-                    error: "STEP_UP_REQUIRED",
-                    challengeId: error.challengeId,
-                },
-                { status: error.status }
-            );
-            return response;
-        }
-
         if (error instanceof Error) {
             logRefreshFailure(context, error.message);
 

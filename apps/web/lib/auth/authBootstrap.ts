@@ -57,10 +57,6 @@ async function recoverSessionAndMe(): Promise<boolean> {
         return me.ok;
     }
 
-    if (refreshed.ok === false && refreshed.reason === "step_up") {
-        return false;
-    }
-
     if (refreshed.ok === false && refreshed.reason === "rate_limited") {
         return false;
     }

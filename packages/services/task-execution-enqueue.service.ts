@@ -1,7 +1,11 @@
 import type { ExecutionMode } from "@semantask/types";
-import { executionEnqueueAttemptedWhileSuggestOnlyCounter } from "@semantask/observability/metrics";
+import {
+    acceptExecutionEnqueueAttemptedWhileDisabledCounter,
+    executionEnqueueAttemptedWhileSuggestOnlyCounter,
+} from "@semantask/observability/metrics";
 import { enqueueOutboxEvent, type EnqueueOutboxEventInput } from "./outbox.service";
 import {
+    isAcceptCreatesExecutionEnabled,
     isSuggestionIngressEnabled,
     shouldBlockExecutionEnqueue,
 } from "./organization-policy.service";
@@ -10,6 +14,9 @@ import {
 export function shouldFailClosedOnLeakedExecution(executionMode: ExecutionMode): boolean {
     return isSuggestionIngressEnabled() && shouldBlockExecutionEnqueue(executionMode);
 }
+
+/** Miswired accept → execution path marker (observability only when flag is off). */
+export const SUGGESTION_ACCEPT_EXECUTION_SOURCE = "suggestion.accept" as const;
 
 export type EnqueueTaskExecutionRequestedInput = {
     dedupeKey: string;
@@ -21,6 +28,12 @@ export type EnqueueTaskExecutionRequestedInput = {
      * Not a leaked ingress enqueue — allowed under suggest_only + SUGGESTION_BLOCK_EXEC.
      */
     explicitManagerRequest?: boolean;
+    /**
+     * Call-site marker. When set to suggestion.accept and ACCEPT_CREATES_EXECUTION=0,
+     * enqueue is blocked and a safety metric/alert signal is recorded (does not alter
+     * the fail-closed rail when the flag is enabled).
+     */
+    source?: string;
 };
 
 export type EnqueueTaskExecutionRequestedResult = {
@@ -37,6 +50,28 @@ export type EnqueueTaskExecutionRequestedResult = {
 export async function enqueueTaskExecutionRequested(
     input: EnqueueTaskExecutionRequestedInput
 ): Promise<EnqueueTaskExecutionRequestedResult> {
+    const source = input.source
+        ?? (typeof input.payload.source === "string" ? input.payload.source : undefined);
+    const fromSuggestionAccept = source === SUGGESTION_ACCEPT_EXECUTION_SOURCE;
+
+    // Observability: accept must never enqueue execution while the safety rail flag is off.
+    // Does not change assertAcceptCreatesCoordinationOnly (fail-closed when flag is on).
+    if (fromSuggestionAccept && !isAcceptCreatesExecutionEnabled()) {
+        acceptExecutionEnqueueAttemptedWhileDisabledCounter.inc();
+        console.error(JSON.stringify({
+            event: "execution.enqueue.accept_while_disabled_invariant",
+            source: SUGGESTION_ACCEPT_EXECUTION_SOURCE,
+            dedupeKey: input.dedupeKey,
+            executionMode: input.executionMode,
+            taskId: typeof input.payload.taskId === "string" ? input.payload.taskId : null,
+            conversationId: typeof input.payload.conversationId === "string"
+                ? input.payload.conversationId
+                : null,
+            acceptCreatesExecution: false,
+        }));
+        return { enqueued: false, blocked: true };
+    }
+
     const explicitManagerRequest = input.explicitManagerRequest === true
         || input.payload.explicitManagerRequest === true;
 

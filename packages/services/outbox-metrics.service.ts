@@ -12,6 +12,8 @@ const TOPICS = [
     "task.execution.requested",
     "task.execution.approved",
     "task.cancel.requested",
+    "work.suggestion.accepted",
+    "work.suggestion.dismissed",
 ] as const;
 
 /**

@@ -13,6 +13,15 @@ const createTask = jest.fn();
 const updateTask = jest.fn();
 const enqueueOutboxEvent = jest.fn();
 const assertAcceptCreatesCoordinationOnly = jest.fn();
+const suggestionsAcceptedCounter = { inc: jest.fn() };
+const suggestionsDismissedCounter = { inc: jest.fn() };
+const acceptToTaskLatencyMs = { observe: jest.fn() };
+
+jest.mock("@semantask/observability/metrics", () => ({
+    suggestionsAcceptedCounter,
+    suggestionsDismissedCounter,
+    acceptToTaskLatencyMs,
+}));
 
 jest.mock("@semantask/db/models/WorkSuggestion", () => ({
     __esModule: true,
@@ -141,6 +150,9 @@ describe("work-suggestion mutations", () => {
         updateTask.mockReset();
         enqueueOutboxEvent.mockReset();
         assertAcceptCreatesCoordinationOnly.mockReset();
+        suggestionsAcceptedCounter.inc.mockReset();
+        suggestionsDismissedCounter.inc.mockReset();
+        acceptToTaskLatencyMs.observe.mockReset();
         assertAcceptCreatesCoordinationOnly.mockImplementation(() => undefined);
         enqueueOutboxEvent.mockResolvedValue({});
         taskDeleteOne.mockReturnValue({ exec: jest.fn().mockResolvedValue({ deletedCount: 1 }) });
@@ -184,7 +196,20 @@ describe("work-suggestion mutations", () => {
                     lifecycleState: "ready",
                 })
             );
-            expect(enqueueOutboxEvent).toHaveBeenCalledTimes(1);
+            expect(enqueueOutboxEvent).toHaveBeenCalledTimes(2);
+            expect(enqueueOutboxEvent).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    topic: "work.suggestion.accepted",
+                    dedupeKey: `work.suggestion.accepted:${suggestionId}`,
+                    payload: expect.objectContaining({
+                        suggestionId,
+                        taskId,
+                        conversationId,
+                        organizationId,
+                        actorUserId,
+                    }),
+                })
+            );
             expect(enqueueOutboxEvent).toHaveBeenCalledWith(
                 expect.objectContaining({
                     topic: "task.created",
@@ -193,8 +218,12 @@ describe("work-suggestion mutations", () => {
             const topics = enqueueOutboxEvent.mock.calls.map(
                 (call) => (call[0] as { topic: string }).topic
             );
+            expect(topics).toContain("work.suggestion.accepted");
+            expect(topics).toContain("task.created");
             expect(topics).not.toContain("task.execution.requested");
             expect(topics).not.toContain("task.execution.approved");
+            expect(suggestionsAcceptedCounter.inc).toHaveBeenCalledTimes(1);
+            expect(acceptToTaskLatencyMs.observe).toHaveBeenCalledWith(expect.any(Number));
             const payload = JSON.parse(String(infoSpy.mock.calls[0]?.[0]));
             expect(payload.event).toBe("suggestion.converted");
         });
@@ -244,6 +273,8 @@ describe("work-suggestion mutations", () => {
             expect(result.task._id).toBe(taskId);
             expect(createTask).not.toHaveBeenCalled();
             expect(enqueueOutboxEvent).not.toHaveBeenCalled();
+            expect(suggestionsAcceptedCounter.inc).not.toHaveBeenCalled();
+            expect(acceptToTaskLatencyMs.observe).not.toHaveBeenCalled();
         });
 
         it("rejects dismiss-to-accept conflict", async () => {
@@ -341,6 +372,25 @@ describe("work-suggestion mutations", () => {
                 { $set: { status: "dismissed", dismissReason: "Not actionable" } },
                 { new: true }
             );
+            expect(enqueueOutboxEvent).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    topic: "work.suggestion.dismissed",
+                    dedupeKey: `work.suggestion.dismissed:${suggestionId}`,
+                    payload: expect.objectContaining({
+                        suggestionId,
+                        conversationId,
+                        organizationId,
+                        actorUserId,
+                        dismissReason: "Not actionable",
+                    }),
+                })
+            );
+            const topics = enqueueOutboxEvent.mock.calls.map(
+                (call) => (call[0] as { topic: string }).topic
+            );
+            expect(topics).not.toContain("task.execution.requested");
+            expect(topics).not.toContain("task.execution.approved");
+            expect(suggestionsDismissedCounter.inc).toHaveBeenCalledTimes(1);
             const payload = JSON.parse(String(infoSpy.mock.calls[0]?.[0]));
             expect(payload.event).toBe("suggestion.dismissed");
         });

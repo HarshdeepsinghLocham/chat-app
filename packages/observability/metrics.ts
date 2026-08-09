@@ -62,10 +62,29 @@ export const suggestionsCreatedCounter = new Counter({
     registers: [metricsRegistry],
 });
 
+export const suggestionsAcceptedCounter = new Counter({
+    name: "suggestions_accepted_total",
+    help: "Work suggestions accepted into coordination tasks",
+    registers: [metricsRegistry],
+});
+
+export const suggestionsDismissedCounter = new Counter({
+    name: "suggestions_dismissed_total",
+    help: "Work suggestions dismissed by managers",
+    registers: [metricsRegistry],
+});
+
 export const suggestionLatencyMs = new Histogram({
     name: "suggestion_latency_ms",
     help: "Latency from intelligence start to work suggestion write (ms)",
     buckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 8000],
+    registers: [metricsRegistry],
+});
+
+export const acceptToTaskLatencyMs = new Histogram({
+    name: "accept_to_task_latency_ms",
+    help: "Latency from suggestion creation to successful accept/convert (ms)",
+    buckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 8000, 30000, 60000],
     registers: [metricsRegistry],
 });
 
@@ -86,6 +105,12 @@ export const classifierDisagreementCounter = new Counter({
 export const executionEnqueueAttemptedWhileSuggestOnlyCounter = new Counter({
     name: "execution_enqueue_attempted_while_suggest_only_total",
     help: "Attempts to enqueue task.execution.requested while suggest_only block is active",
+    registers: [metricsRegistry],
+});
+
+export const acceptExecutionEnqueueAttemptedWhileDisabledCounter = new Counter({
+    name: "accept_execution_enqueue_attempted_while_disabled_total",
+    help: "Attempts to enqueue task.execution.requested from suggestion.accept while ACCEPT_CREATES_EXECUTION is disabled",
     registers: [metricsRegistry],
 });
 

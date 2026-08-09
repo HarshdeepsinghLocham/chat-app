@@ -160,7 +160,7 @@ describe("GET /api/work-suggestions", () => {
         expect(response.status).toBe(403);
     });
 
-    it("returns 403 for unauthorized org list", async () => {
+    it("returns 403 for unauthorized org list and does not query suggestions", async () => {
         (assertMembership as jest.Mock).mockRejectedValue(
             new MockAuthorizationError("FORBIDDEN", "Forbidden")
         );
@@ -169,6 +169,7 @@ describe("GET /api/work-suggestions", () => {
             new Request("http://localhost/api/work-suggestions?organizationId=507f1f77bcf86cd799439015")
         );
         expect(response.status).toBe(403);
+        expect(listWorkSuggestions).not.toHaveBeenCalled();
     });
 
     it("returns { success, data } list contract", async () => {

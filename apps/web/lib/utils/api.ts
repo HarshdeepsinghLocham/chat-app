@@ -390,6 +390,24 @@ export async function listWorkSuggestions(params: {
     return data.data;
 }
 
+export async function getWorkInboxEnabled(): Promise<boolean> {
+    const response = await authenticatedFetch("/api/work-inbox/enabled");
+    const rawText = await response.text();
+    const payload = parseAuthPayload(rawText) as ApiErrorPayload & {
+        success?: boolean;
+        data?: { enabled?: boolean };
+    } | null;
+
+    if (!response.ok) {
+        throw new ApiHttpError(
+            response.status,
+            payload?.error || rawText || `Request failed with status ${response.status}`
+        );
+    }
+
+    return Boolean(payload?.data?.enabled);
+}
+
 export async function getWorkSuggestion(id: string): Promise<WorkSuggestionRecord> {
     const response = await authenticatedFetch(`/api/work-suggestions/${encodeURIComponent(id)}`);
     const rawText = await response.text();

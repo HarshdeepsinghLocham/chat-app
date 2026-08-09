@@ -1303,6 +1303,7 @@ async function ensureDatabaseConnection() {
         bufferCommands: false,
         maxPoolSize: 10,
         serverSelectionTimeoutMS: 5000,
+        connectTimeoutMS: 5000,
     });
 }
 

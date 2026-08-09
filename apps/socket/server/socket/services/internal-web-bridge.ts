@@ -36,6 +36,17 @@ type PostInternalOptions = {
     timeoutMs?: number;
 };
 
+function isStructuredAuthorizationBody(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object"
+        && value !== null
+        && ("allowed" in value || "reason" in value || "userId" in value);
+}
+
+/**
+ * POST to the web internal bridge. Returns parsed JSON for both success and
+ * structured authz denials (e.g. 403 { allowed: false }). Returns null only when
+ * no candidate URL produced a usable response (network/timeout/5xx without body).
+ */
 export async function postToInternalWebApi<TResponse>(
     options: PostInternalOptions
 ): Promise<TResponse | null> {
@@ -56,11 +67,28 @@ export async function postToInternalWebApi<TResponse>(
                 signal: controller.signal,
             });
 
-            if (!response.ok) {
-                continue;
+            const rawText = await response.text();
+            let parsed: unknown = null;
+            if (rawText.trim().length > 0) {
+                try {
+                    parsed = JSON.parse(rawText);
+                } catch {
+                    parsed = null;
+                }
             }
 
-            return (await response.json()) as TResponse;
+            if (response.ok) {
+                return (parsed ?? {}) as TResponse;
+            }
+
+            // Authz endpoints return structured { allowed, reason } on 403/401.
+            // Treat those as usable responses so callers do not mislabel them as
+            // authorization_service_unavailable.
+            if (isStructuredAuthorizationBody(parsed)) {
+                return parsed as TResponse;
+            }
+
+            // Try next candidate URL for empty/unstructured failures.
         } catch {
             // Try next candidate URL.
         } finally {

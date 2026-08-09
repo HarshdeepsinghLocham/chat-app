@@ -21,8 +21,10 @@ import { upload } from "@imagekit/next";
 import { ClientUser } from "@semantask/types";
 import { ClientConversation } from "@semantask/types";
 import { getImageKitUploadAuth } from "@/lib/utils/imagekit";
+import { useUser } from "@/context/UserContext";
 
 const UserListDialog = () => {
+    const [open, setOpen] = useState(false);
     const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
     const [groupName, setGroupName] = useState("");
     const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -33,20 +35,32 @@ const UserListDialog = () => {
 
     const dialogCloseRef = useRef<HTMLButtonElement>(null);
     const setSelectedConversation = useChatStore((s) => s.setSelectedConversation);
+    const { user: contextUser } = useUser();
 
-    // 🔁 Load users
+    // Load directory only when the dialog opens (not on every Sidebar mount).
     useEffect(() => {
+        if (!open) return;
+
+        let cancelled = false;
         const fetchData = async () => {
             try {
-                const [meData, allUsers] = await Promise.all([getMe(), getUsers()]);
+                const allUsers = await getUsers();
+                if (cancelled) return;
+                const meData = contextUser ?? (await getMe());
+                if (cancelled) return;
                 setMe(meData);
                 setUsers(allUsers.filter((u: ClientUser) => u._id !== meData._id));
             } catch {
-                toast.error("Failed to load users");
+                if (!cancelled) {
+                    toast.error("Failed to load users");
+                }
             }
         };
-        fetchData();
-    }, []);
+        void fetchData();
+        return () => {
+            cancelled = true;
+        };
+    }, [open, contextUser]);
 
     // 🖼️ Render preview
     useEffect(() => {
@@ -139,7 +153,7 @@ const UserListDialog = () => {
     };
 
     return (
-        <Dialog>
+        <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger>
                 <MessageSquareDiff size={20} />
             </DialogTrigger>

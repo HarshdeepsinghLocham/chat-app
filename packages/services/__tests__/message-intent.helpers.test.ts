@@ -34,6 +34,11 @@ describe("message-intent heuristics", () => {
             expect(due?.toISOString()).toBe("2026-09-01T00:00:00.000Z");
         });
 
+        it("rejects calendar-overflow ISO and US dates", () => {
+            expect(parseDueAtCandidate("due 2026-02-31", NOW)).toBeNull();
+            expect(parseDueAtCandidate("due 02/31/2026", NOW)).toBeNull();
+        });
+
         it("returns null when no due phrase", () => {
             expect(parseDueAtCandidate("send a welcome email", NOW)).toBeNull();
         });
@@ -53,6 +58,13 @@ describe("message-intent heuristics", () => {
         it("matches email tokens", () => {
             expect(extractAssigneeUserIds("cc bob@example.com on this", participants))
                 .toEqual(["u2"]);
+        });
+
+        it("matches bare username only with assignment context", () => {
+            expect(extractAssigneeUserIds("create a task for alice", participants))
+                .toEqual(["u1"]);
+            expect(extractAssigneeUserIds("alice said this looks good", participants))
+                .toEqual([]);
         });
 
         it("returns empty without participants", () => {

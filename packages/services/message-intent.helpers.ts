@@ -120,7 +120,14 @@ export function parseDueAtCandidate(content: string, now = new Date()): Date | n
         const month = Number(iso[2]);
         const day = Number(iso[3]);
         if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-            return new Date(Date.UTC(year, month - 1, day));
+            const candidate = new Date(Date.UTC(year, month - 1, day));
+            if (
+                candidate.getUTCFullYear() === year
+                && candidate.getUTCMonth() === month - 1
+                && candidate.getUTCDate() === day
+            ) {
+                return candidate;
+            }
         }
     }
 
@@ -130,7 +137,14 @@ export function parseDueAtCandidate(content: string, now = new Date()): Date | n
         const day = Number(us[2]);
         const year = us[3] ? Number(us[3]) : now.getUTCFullYear();
         if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-            return new Date(Date.UTC(year, month - 1, day));
+            const candidate = new Date(Date.UTC(year, month - 1, day));
+            if (
+                candidate.getUTCFullYear() === year
+                && candidate.getUTCMonth() === month - 1
+                && candidate.getUTCDate() === day
+            ) {
+                return candidate;
+            }
         }
     }
 
@@ -138,8 +152,21 @@ export function parseDueAtCandidate(content: string, now = new Date()): Date | n
 }
 
 /**
- * Match @mentions / emails / usernames against conversation participants.
+ * Bare username counts only with explicit assignment context
+ * (e.g. "for alice", "assign to bob", "remind carol").
+ */
+function hasBareUsernameAssignmentContext(content: string, username: string): boolean {
+    const pattern = new RegExp(
+        `\\b(?:for|to|with|assign(?:ed)?(?:\\s+to)?|ask|cc|remind|ping)\\s+${escapeRegExp(username)}\\b`,
+        "i"
+    );
+    return pattern.test(content);
+}
+
+/**
+ * Match @mentions / emails / contextual bare usernames against participants.
  * Without participants, returns [] (never fabricates IDs).
+ * Ordinary bare usernames alone are not assigned.
  */
 export function extractAssigneeUserIds(
     content: string,
@@ -160,8 +187,10 @@ export function extractAssigneeUserIds(
 
         if (username) {
             const mention = new RegExp(`(?:^|\\s)@${escapeRegExp(username)}\\b`, "i");
-            const bare = new RegExp(`\\b${escapeRegExp(username)}\\b`, "i");
-            if (mention.test(normalized) || bare.test(lower)) {
+            if (
+                mention.test(normalized)
+                || hasBareUsernameAssignmentContext(lower, username)
+            ) {
                 matched.add(participant.userId);
                 continue;
             }

@@ -38,6 +38,9 @@ export type ClassifierEvalReport = {
     dueLabeled: number;
     dueHits: number;
     dueHitRate: number | null;
+    priorityLabeled: number;
+    priorityHits: number;
+    priorityHitRate: number | null;
     titleChecks: number;
     titlePasses: number;
     titlePassRate: number | null;
@@ -46,6 +49,16 @@ export type ClassifierEvalReport = {
 
 const DEFAULT_NOW = new Date("2026-08-08T15:00:00.000Z");
 
+const WEEKDAY_INDEX: Record<string, number> = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+};
+
 function titleFromContent(content: string): string {
     const normalized = content.trim().replace(/\s+/g, " ");
     const withoutPrefix = normalized.replace(/^(@\w+[:,]?\s*)+/, "");
@@ -53,7 +66,18 @@ function titleFromContent(content: string): string {
     return trimmed.length >= 3 ? trimmed : normalized.slice(0, 200);
 }
 
-function dueMatches(caseRow: GoldCase, dueAt: Date | null, now: Date): boolean {
+function nextUtcWeekday(today: Date, weekday: number): Date {
+    const current = today.getUTCDay();
+    let delta = (weekday - current + 7) % 7;
+    if (delta === 0) {
+        delta = 7;
+    }
+    const expected = new Date(today);
+    expected.setUTCDate(expected.getUTCDate() + delta);
+    return expected;
+}
+
+function dueMatches(caseRow: GoldCase, dueAt: Date | null, now: Date): boolean | null {
     if (!dueAt) return false;
     if (caseRow.dueAtIso) {
         return dueAt.toISOString() === caseRow.dueAtIso;
@@ -68,9 +92,13 @@ function dueMatches(caseRow: GoldCase, dueAt: Date | null, now: Date): boolean {
         expected.setUTCDate(expected.getUTCDate() + 1);
         return dueAt.toISOString() === expected.toISOString();
     }
-    if (phrase === "friday") {
-        return dueAt.toISOString() === "2026-08-14T00:00:00.000Z";
+
+    const weekday = WEEKDAY_INDEX[phrase];
+    if (weekday != null) {
+        const expected = nextUtcWeekday(today, weekday);
+        return dueAt.toISOString() === expected.toISOString();
     }
+
     if (phrase === "next week") {
         const expected = new Date(today);
         expected.setUTCDate(expected.getUTCDate() + 7);
@@ -81,7 +109,9 @@ function dueMatches(caseRow: GoldCase, dueAt: Date | null, now: Date): boolean {
         expected.setUTCDate(expected.getUTCDate() + 2);
         return dueAt.toISOString() === expected.toISOString();
     }
-    return true;
+
+    // Unsupported duePhrase: reject (do not count as a hit).
+    return null;
 }
 
 export function evaluateClassifierGold(
@@ -94,6 +124,8 @@ export function evaluateClassifierGold(
     let assigneeHits = 0;
     let dueLabeled = 0;
     let dueHits = 0;
+    let priorityLabeled = 0;
+    let priorityHits = 0;
     let titleChecks = 0;
     let titlePasses = 0;
     const failures: Array<{ id: string; reason: string }> = [];
@@ -145,12 +177,27 @@ export function evaluateClassifierGold(
 
         if (row.duePhrase || row.dueAtIso) {
             dueLabeled += 1;
-            if (dueMatches(row, entities.dueAtCandidate, now)) {
+            const match = dueMatches(row, entities.dueAtCandidate, now);
+            if (match === true) {
                 dueHits += 1;
             } else {
                 failures.push({
                     id: row.id,
-                    reason: `due expected=${row.dueAtIso ?? row.duePhrase} got=${entities.dueAtCandidate?.toISOString() ?? "null"}`,
+                    reason: match === null
+                        ? `due unsupported phrase=${row.duePhrase}`
+                        : `due expected=${row.dueAtIso ?? row.duePhrase} got=${entities.dueAtCandidate?.toISOString() ?? "null"}`,
+                });
+            }
+        }
+
+        if (row.priority) {
+            priorityLabeled += 1;
+            if (entities.priorityCandidate === row.priority) {
+                priorityHits += 1;
+            } else {
+                failures.push({
+                    id: row.id,
+                    reason: `priority expected=${row.priority} got=${entities.priorityCandidate || "\"\""}`,
                 });
             }
         }
@@ -178,6 +225,9 @@ export function evaluateClassifierGold(
         dueLabeled,
         dueHits,
         dueHitRate: dueLabeled ? dueHits / dueLabeled : null,
+        priorityLabeled,
+        priorityHits,
+        priorityHitRate: priorityLabeled ? priorityHits / priorityLabeled : null,
         titleChecks,
         titlePasses,
         titlePassRate: titleChecks ? titlePasses / titleChecks : null,

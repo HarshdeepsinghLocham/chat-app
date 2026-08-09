@@ -26,7 +26,12 @@ describe("classifier evaluation harness", () => {
         expect(report.assigneeHitRate ?? 0).toBeGreaterThanOrEqual(0.9);
         expect(report.dueHitRate).not.toBeNull();
         expect(report.dueHitRate ?? 0).toBeGreaterThanOrEqual(0.9);
+        expect(report.priorityHitRate).not.toBeNull();
+        expect(report.priorityHitRate ?? 0).toBeGreaterThanOrEqual(0.9);
         expect(report.titlePassRate ?? 0).toBeGreaterThanOrEqual(0.95);
+
+        const t7Failures = report.failures.filter((f) => f.id === "t7" && f.reason.startsWith("priority"));
+        expect(t7Failures).toEqual([]);
 
         if (report.typeAccuracy < 0.85) {
             // Surface mismatches for debugging without failing above the seed gate.

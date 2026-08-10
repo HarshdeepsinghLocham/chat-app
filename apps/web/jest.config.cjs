@@ -19,6 +19,7 @@ module.exports = {
   },
   moduleNameMapper: {
     "^@/lib/Db/(.*)$": "<rootDir>/../../packages/db/$1",
+    "^@/lib/services/(.*)$": "<rootDir>/../../packages/services/$1",
     "^@/(.*)$": "<rootDir>/$1",
     "^@semantask/types$": "<rootDir>/../../packages/types/dist/index.js",
     "^@semantask/types/(.*)$": "<rootDir>/../../packages/types/$1",

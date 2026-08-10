@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export default function AdminTaskApprovalsPage() {
     const [commentsById, setCommentsById] = useState<Record<string, string>>({});
     const [paramsById, setParamsById] = useState<Record<string, string>>({});
 
-    async function loadApprovals() {
+    const loadApprovals = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
@@ -67,7 +67,7 @@ export default function AdminTaskApprovalsPage() {
         } finally {
             setLoading(false);
         }
-    }
+    }, [conversationId]);
 
     useEffect(() => {
         void loadApprovals();

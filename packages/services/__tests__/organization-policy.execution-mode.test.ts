@@ -29,6 +29,7 @@ import {
     isExecutionModeEnforce,
     isSuggestionBlockExecEnabled,
     isSuggestionIngressEnabled,
+    isWorkInboxUiEnabled,
     parseDefaultExecutionMode,
     shouldBlockExecutionEnqueue,
     upsertOrganizationPolicy,
@@ -42,6 +43,7 @@ const ENV_KEYS = [
     "SUGGESTION_INGRESS",
     "SUGGESTION_BLOCK_EXEC",
     "ACCEPT_CREATES_EXECUTION",
+    "WORK_INBOX_UI",
 ] as const;
 
 const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
@@ -137,6 +139,19 @@ describe("accept creates execution safety rail", () => {
     it("fails closed when ACCEPT_CREATES_EXECUTION is enabled", () => {
         expect(isAcceptCreatesExecutionEnabled("1")).toBe(true);
         expect(() => assertAcceptCreatesCoordinationOnly("1")).toThrow(ConflictError);
+    });
+});
+
+describe("work inbox UI flag", () => {
+    it("defaults WORK_INBOX_UI off", () => {
+        delete process.env.WORK_INBOX_UI;
+        expect(isWorkInboxUiEnabled()).toBe(false);
+        expect(isWorkInboxUiEnabled("0")).toBe(false);
+    });
+
+    it("enables WORK_INBOX_UI when set", () => {
+        expect(isWorkInboxUiEnabled("1")).toBe(true);
+        expect(isWorkInboxUiEnabled("true")).toBe(true);
     });
 });
 

@@ -1233,9 +1233,9 @@ async function processTaskExecutionApproved(payload: TaskExecutionApprovedPayloa
             : 1,
         // Human approval satisfies the approval requirement gate, but policy is still evaluated before execution.
         needsApproval: false,
-        // S2.4: approved re-entry is always an explicit human grant for this action.
-        humanApprovedExecution: true,
+        // S2.4: only the explicit manager "Allow AI tools" path may bypass suggest_only after approval.
         explicitManagerRequest: patchAfter.explicitManagerRequest === true,
+        humanApprovedExecution: patchAfter.explicitManagerRequest === true,
     };
 
     await processTaskExecutionRequested(normalizedPayload);

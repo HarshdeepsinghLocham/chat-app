@@ -10,15 +10,15 @@ export type SuggestOnlyExecutionPayloadFlags = {
 };
 
 /**
- * Skip the leaked-ingress fail-closed path when the event is an explicit manager
- * request (or needs approval) or a human-approved re-entry — not a silent accept leak.
+ * Skip the leaked-ingress fail-closed path only for the explicit manager
+ * "Allow AI tools" request (or its human-approved re-entry) — not for generic
+ * needsApproval / silent accept leaks.
  */
 export function shouldSkipSuggestOnlyIngressFailClosed(
     payload: SuggestOnlyExecutionPayloadFlags
 ): boolean {
     return payload.humanApprovedExecution === true
-        || payload.explicitManagerRequest === true
-        || payload.needsApproval === true;
+        || payload.explicitManagerRequest === true;
 }
 
 export type SuggestOnlyPolicyOverrideInput = {
@@ -31,8 +31,9 @@ export type SuggestOnlyPolicyOverrideInput = {
 
 /**
  * Under suggest_only mode denial:
- * - explicit / needsApproval (not yet human-approved) → force approval_required
- * - humanApprovedExecution → bypass mode denial (grants/policy still apply elsewhere)
+ * - explicit manager request (not yet human-approved) → force approval_required
+ * - humanApprovedExecution after that explicit path → bypass mode denial
+ *   (grants/policy still apply elsewhere)
  */
 export function resolveSuggestOnlyPolicyOverride(input: SuggestOnlyPolicyOverrideInput): {
     forceApprovalForExplicit: boolean;
@@ -40,12 +41,13 @@ export function resolveSuggestOnlyPolicyOverride(input: SuggestOnlyPolicyOverrid
 } {
     const forceApprovalForExplicit = input.policyOutcome === "blocked"
         && input.modeDeniedBySuggestOnly
-        && (input.explicitManagerRequest === true || input.needsApproval === true)
+        && input.explicitManagerRequest === true
         && input.humanApprovedExecution !== true;
 
     const bypassSuggestOnlyAfterHumanApproval = input.policyOutcome === "blocked"
         && input.modeDeniedBySuggestOnly
-        && input.humanApprovedExecution === true;
+        && input.humanApprovedExecution === true
+        && input.explicitManagerRequest === true;
 
     return { forceApprovalForExplicit, bypassSuggestOnlyAfterHumanApproval };
 }

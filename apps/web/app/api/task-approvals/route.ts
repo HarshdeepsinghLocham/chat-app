@@ -190,6 +190,10 @@ export async function POST(req: NextRequest) {
 
         const approvedParameters = body.parameters ?? action.parameters ?? {};
         const reviewerComment = body.reviewerComment ?? body.reason ?? "Approved by reviewer.";
+        const patchAfter = asRecord(action.patch?.after);
+        const explicitManagerRequest = patchAfter.explicitManagerRequest === true;
+        // S2.4: only the explicit manager "Allow AI tools" path bypasses suggest_only.
+        const humanApprovedExecution = explicitManagerRequest;
 
         const updated = await updateTaskActionExecutionState({
             taskActionId: body.taskActionId,
@@ -201,11 +205,12 @@ export async function POST(req: NextRequest) {
             patch: {
                 before: action.patch?.before ?? null,
                 after: {
-                    ...asRecord(action.patch?.after),
+                    ...patchAfter,
                     approvedParameters,
                     reviewerComment,
                     approvedAt: new Date().toISOString(),
-                    humanApprovedExecution: true,
+                    explicitManagerRequest,
+                    humanApprovedExecution,
                 },
             },
         });
@@ -220,7 +225,8 @@ export async function POST(req: NextRequest) {
                 approvedByType: guard.user.role === "admin" ? "system" : "user",
                 approvedById: guard.user.id,
                 reason: reviewerComment,
-                humanApprovedExecution: true,
+                humanApprovedExecution,
+                explicitManagerRequest,
             },
         });
 

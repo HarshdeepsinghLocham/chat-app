@@ -17,13 +17,16 @@ test("leaked suggest_only events do not skip fail-closed", () => {
     );
 });
 
-test("explicit manager request and needsApproval skip ingress fail-closed", () => {
-    assert.equal(
-        shouldSkipSuggestOnlyIngressFailClosed({ explicitManagerRequest: true }),
-        true
-    );
+test("needsApproval alone does not skip ingress fail-closed", () => {
     assert.equal(
         shouldSkipSuggestOnlyIngressFailClosed({ needsApproval: true }),
+        false
+    );
+});
+
+test("explicit manager request skips ingress fail-closed", () => {
+    assert.equal(
+        shouldSkipSuggestOnlyIngressFailClosed({ explicitManagerRequest: true }),
         true
     );
 });
@@ -47,7 +50,31 @@ test("suggest_only + explicit → force approval_required (pending)", () => {
     assert.equal(result.bypassSuggestOnlyAfterHumanApproval, false);
 });
 
-test("suggest_only + humanApproved → bypass mode denial (not fail-closed)", () => {
+test("suggest_only + needsApproval without explicit does not force approval", () => {
+    const result = resolveSuggestOnlyPolicyOverride({
+        policyOutcome: "blocked",
+        modeDeniedBySuggestOnly: true,
+        explicitManagerRequest: false,
+        needsApproval: true,
+        humanApprovedExecution: false,
+    });
+    assert.equal(result.forceApprovalForExplicit, false);
+    assert.equal(result.bypassSuggestOnlyAfterHumanApproval, false);
+});
+
+test("suggest_only + humanApproved without explicit does not bypass", () => {
+    const result = resolveSuggestOnlyPolicyOverride({
+        policyOutcome: "blocked",
+        modeDeniedBySuggestOnly: true,
+        explicitManagerRequest: false,
+        needsApproval: false,
+        humanApprovedExecution: true,
+    });
+    assert.equal(result.forceApprovalForExplicit, false);
+    assert.equal(result.bypassSuggestOnlyAfterHumanApproval, false);
+});
+
+test("suggest_only + explicit + humanApproved → bypass mode denial", () => {
     const result = resolveSuggestOnlyPolicyOverride({
         policyOutcome: "blocked",
         modeDeniedBySuggestOnly: true,

@@ -9,10 +9,8 @@ import type {
 } from "@semantask/types";
 import {
     AuthSessionPendingError,
-    isStepUpResponse,
     parseAuthPayload,
     redirectToLogin,
-    redirectToStepUpChallenge,
     refreshSession,
 } from "@/lib/utils/auth/client-session";
 import { ensureAuthReady, authReady, isAuthenticated } from "@/lib/auth/authBootstrap";
@@ -31,7 +29,6 @@ type ApiErrorPayload = {
     error?: string;
     code?: string;
     requiresReauth?: boolean;
-    challengeId?: string;
 };
 
 export type AdminAuthEventType = "LOGIN" | "REFRESH" | "REVOKE" | "STEP_UP";
@@ -124,16 +121,8 @@ export async function authenticatedFetch(
         headers,
     });
 
-    const responseClone = response.clone();
-    const rawText = await responseClone.text();
-    const payload = parseAuthPayload(rawText) as ApiErrorPayload | null;
-
     if (response.ok) {
         return response;
-    }
-
-    if (isStepUpResponse(payload)) {
-        redirectToStepUpChallenge(payload?.challengeId);
     }
 
     if (response.status === 401 && !hasRetried && url !== "/api/auth/refresh") {
@@ -146,13 +135,6 @@ export async function authenticatedFetch(
 
         if (refreshed.ok) {
             return authenticatedFetch(url, init, true);
-        }
-
-        if (refreshed.ok === false && refreshed.reason === "step_up") {
-            throw new AuthSessionPendingError(
-                "step_up",
-                payload?.error || "Step-up verification required"
-            );
         }
 
         if (refreshed.ok === false && refreshed.reason === "rate_limited") {

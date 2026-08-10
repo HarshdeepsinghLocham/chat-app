@@ -2,37 +2,34 @@ import { verifySession } from "../session/verify-session";
 import { generateAccessToken, generateRefreshToken } from "../tokens/generate";
 import { hashToken } from "../session/token-hash";
 import {
-    markSessionStepUpPending,
     revokeSession,
     rotateSessionTokenHash,
 } from "../repositories/session.repo";
-import { generateDeviceFingerprint, validateSessionFingerprint } from "../session/fingerprint";
-import { AuthStepUpRequiredError } from "../errors/auth-errors";
 import { User } from "@/models/User";
-import { createChallenge, StepUpChallenge } from "@/models/StepUpChallenge";
 
+/**
+ * Rotate refresh + issue access token.
+ * MVP contract: never creates or requires step-up challenges.
+ * Fingerprint drift does not gate normal session maintenance.
+ */
 export const refreshService = async ({
     refreshToken,
-    deviceId,
-    userAgent,
-    ipAddress,
 }: {
     refreshToken: string;
     deviceId?: string;
     userAgent?: string;
     ipAddress?: string;
 }) => {
-    const { payload, session } = await verifySession(refreshToken);
+    const { payload } = await verifySession(refreshToken);
 
     const user = await User.findById(payload.sub)
-        .select("_id role status tokenVersion isDeleted authProviders mustChangePassword")
+        .select("_id role status tokenVersion isDeleted mustChangePassword")
         .lean<{
             _id: { toString(): string };
             role?: "user" | "moderator" | "admin";
             status?: string;
             tokenVersion?: number;
             isDeleted?: boolean;
-            authProviders?: Array<"password" | "google">;
             mustChangePassword?: boolean;
         } | null>();
 
@@ -56,85 +53,6 @@ export const refreshService = async ({
     if (payload.tokenVersion !== currentTokenVersion) {
         await revokeSession(payload.sessionId);
         throw new Error("Token version revoked");
-    }
-
-    const providers = Array.isArray(user.authProviders) ? user.authProviders : [];
-    // Google-only / passwordless accounts must step up via OTP, not password.
-    const stepUpVerificationMethod = providers.includes("password") ? "password" : "otp";
-
-    const incomingDeviceFingerprint = generateDeviceFingerprint({
-        deviceId,
-        userAgent,
-        ipAddress,
-    });
-
-    const fingerprint = validateSessionFingerprint({
-        stored: {
-            deviceId: session.deviceId,
-            userAgent: session.userAgent,
-            ipAddress: session.ipAddress,
-        },
-        incoming: {
-            deviceId: incomingDeviceFingerprint,
-            userAgent,
-            ipAddress,
-        },
-    });
-
-    if (session.state === "step_up_pending") {
-        // Only reuse a pending challenge when its method matches the user.
-        // A stale password challenge must not trap a Google-only account.
-        const existingChallenge = await StepUpChallenge.findOne({
-            userId: payload.sub,
-            sessionId: payload.sessionId,
-            status: "pending",
-            verificationMethod: stepUpVerificationMethod,
-            expiresAt: { $gt: new Date() },
-        })
-            .sort({ createdAt: -1 })
-            .select("_id")
-            .lean<{ _id: { toString(): string } } | null>();
-
-        const challengeId = existingChallenge
-            ? existingChallenge._id.toString()
-            : (
-                  await createChallenge(
-                      payload.sub,
-                      payload.sessionId,
-                      {
-                          ip: ipAddress,
-                          userAgent,
-                      },
-                      stepUpVerificationMethod
-                  )
-              )._id.toString();
-
-        throw new AuthStepUpRequiredError(
-            fingerprint.requiresStepUp ? fingerprint.reasons : [],
-            challengeId,
-            payload.sub
-        );
-    }
-
-    if (fingerprint.requiresStepUp) {
-        const challenge = await createChallenge(
-            payload.sub,
-            payload.sessionId,
-            {
-                ip: ipAddress,
-                userAgent,
-            },
-            stepUpVerificationMethod
-        );
-        // Keep the session alive but gated: step-up completion must be able to
-        // re-verify this same refresh session. Revoking here would make the
-        // challenge impossible to complete.
-        await markSessionStepUpPending(payload.sessionId);
-        throw new AuthStepUpRequiredError(
-            fingerprint.reasons,
-            challenge._id.toString(),
-            payload.sub
-        );
     }
 
     const nextRefreshToken = generateRefreshToken({

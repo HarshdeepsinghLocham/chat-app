@@ -12,9 +12,14 @@ It serves three trust planes:
    outbound calls into the web app.
 
 The package implements **stateless access tokens** + **stateful refresh
-sessions** with **device-bound fingerprinting**, optional **OTP**-based
-email verification, optional **Google OAuth**, **password and OTP step-up**
-challenges, and **token-version-based revocation**.
+sessions** with **device fingerprint metadata**, optional **OTP**-based
+**account** email verification (login/register only), optional **Google OAuth**,
+and **token-version-based revocation**.
+
+**Session maintenance is not step-up authentication.** Normal token refresh,
+application bootstrap, middleware, API requests, and socket authentication do
+**not** create OTP challenges, require step-up verification, or redirect to a
+challenge page.
 
 This document describes the lifecycle, persistence boundaries, and trust
 properties. Socket authorization specifics live in
@@ -23,11 +28,10 @@ properties. Socket authorization specifics live in
 ## Responsibilities
 
 - Generate, verify, and rotate access/refresh JWTs.
-- Persist refresh sessions in MongoDB with hashed token, device fingerprint,
-  TTL.
-- Detect fingerprint drift and escalate to a step-up challenge.
-- Issue OTPs to email for registration and step-up.
-- Audit every auth event in a queryable log.
+- Persist refresh sessions in MongoDB with hashed token, device metadata, TTL.
+- Issue OTPs to email for **registration / account verification only** (not for
+  session refresh).
+- Audit auth events in a queryable log (including historical `step_up_*` rows).
 - Provide HTTP and socket middleware shims for downstream services.
 
 ## Trust Model
@@ -84,13 +88,13 @@ finds a higher version.
   _id: ObjectId,
   userId: ObjectId   (indexed),
   refreshTokenHash: String  (select: false),
-  deviceId?: String,
-  userAgent?: String,
-  ipAddress?: String,
-  deviceFingerprint?: String,
+  deviceId: String,          // fingerprint hash stored as device metadata
+  userAgent: String,
+  ipAddress: String,
   expiresAt: Date    (TTL index: expireAfterSeconds: 0),
   revokedAt?: Date,
-  createdAt, updatedAt
+  state: "active" | "step_up_pending",  // see Legacy session state
+  createdAt, updatedAt, lastActiveAt
 }
 ```
 
@@ -102,20 +106,28 @@ Critical properties:
 - `expiresAt` has an `expireAfterSeconds: 0` TTL index → MongoDB
   auto-deletes expired sessions. There is no garbage-collection process
   the application owns.
-- `deviceFingerprint` is computed from `(deviceId, userAgent, ipBucket)`
-  with `/24` IP bucketing (see Fingerprinting). It is hashed (SHA-256) to
-  keep raw values out of session storage.
+- `deviceId` stores a SHA-256 fingerprint derived from
+  `(deviceId, userAgent, ipBucket)` at session creation for audit/metadata.
+  It is **not** used to gate refresh or trigger challenges.
+
+### Legacy session state (`step_up_pending`)
+
+`state: "step_up_pending"` remains in the schema **only for backwards
+compatibility** with rows written by a removed step-up flow. New sessions
+always start as `active`. Refresh/rotation sets `state: "active"`, so legacy
+pending rows normalize without OTP. This is **not** an active step-up
+authentication mechanism.
 
 ### Session creation
 
 `createUserSession(input)` in `packages/auth/session/create-session.ts`:
 
-1. Generate `sessionId = randomBytes(16).toString("hex")`.
-2. Call `generateRefreshToken({ sub, role, tokenVersion, type: "refresh",
-   sessionId })`.
+1. Generate `sessionId = new ObjectId().toString()`.
+2. Call `generateRefreshToken({ sub, sessionId, tokenVersion, type: "refresh" })`.
 3. Hash the raw refresh token via `hashToken(...)`.
-4. Compute `deviceFingerprint = generateDeviceFingerprint(...)`.
-5. `createSession({ ... })` writes the document with `expiresAt = now + 7d`.
+4. Compute device fingerprint metadata via `generateDeviceFingerprint(...)`.
+5. `createSession({ ... })` writes the document with `state: "active"` and
+   `expiresAt = now + refresh TTL`.
 6. Return `{ refreshToken, session }`. The raw token is returned **once** to
    be set as an HTTP-only cookie.
 
@@ -135,37 +147,52 @@ Critical properties:
    been rotated out from under the holder. This is the **session-hijack
    detection** point.
 
-## Refresh Flow
+## Refresh Flow (MVP contract)
 
-`refreshUserSession({ refreshToken, deviceId, userAgent, ipAddress })` in
+`refreshService({ refreshToken })` in
 `packages/auth/services/refresh.service.ts`:
+
+**Normal session**
+
+```
+access token expires / missing
+  → valid refresh token
+  → verifySession + user/tokenVersion checks
+  → rotate refresh token hash (state → active)
+  → issue new access + refresh tokens
+  → continue
+```
+
+**Invalid / revoked / expired refresh**
+
+```
+invalid or revoked refresh token
+  → authentication failure (401)
+  → client clears session / redirects to login
+  → login recovery
+```
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
 │ verifySession(refreshToken)                                         │
-│   └── On failure: throw → 401, no session changes.                  │
+│   └── On failure: throw → 401, no session changes, no challenge.   │
 │                                                                      │
-│ validateSessionFingerprint(storedFingerprint,                        │
-│                            { deviceId, userAgent, ipAddress })       │
-│   ├── deviceMismatch?                                                │
-│   ├── userAgentMismatch? (Bot, Header)                               │
-│   └── ipBucketMismatch?  (/24)                                       │
-│         │                                                            │
-│         └── requiresStepUp?                                          │
-│               └── createChallenge(userId, {ip, userAgent})           │
-│                     and throw AuthStepUpRequiredError(challengeId)   │
-│                                                                      │
-│ Fetch user; verify user.tokenVersion === token.tokenVersion          │
-│   └── Mismatch → throw "Token has been invalidated"                  │
+│ Fetch user; reject deleted / inactive / mustChangePassword           │
+│ Verify user.tokenVersion === token.tokenVersion                      │
+│   └── Mismatch → revoke session → throw                             │
 │                                                                      │
 │ generateRefreshToken({...})  → newRefreshToken                       │
+│ rotateSessionTokenHash(sessionId, hashToken(newRefreshToken))        │
+│   └── also sets state: "active" (clears any legacy step_up_pending)  │
 │ generateAccessToken({...})   → newAccessToken                        │
-│ rotateSessionTokenHash(sessionId, hashToken(newRefreshToken),        │
-│                        now + 7d)                                     │
 │                                                                      │
-│ logAuthEventBestEffort("refresh_success" | "refresh_failed")         │
+│ Return tokens (route sets cookies + refresh_success audit)           │
 └────────────────────────────────────────────────────────────────────┘
 ```
+
+There is **no** fingerprint gate, **no** `StepUpChallenge` creation, and
+**no** redirect to `/auth/challenge` on this path. Device fingerprint drift
+does not interrupt session maintenance.
 
 The rotation is **always** done on a successful refresh — there is no
 re-use window. A single refresh token is a one-shot credential. Reuse of an
@@ -173,7 +200,7 @@ older refresh token after rotation results in
 `tokenHashEquals → false` on the next verify (because the hash in the DB now
 matches the **new** token). This converts refresh-token theft into an
 observable signal: the legitimate client and the attacker race; the loser
-gets `Invalid refresh token`.
+gets `Invalid session token` (mapped to 401).
 
 The system does **not** explicitly classify this as "session hijack
 detected → revoke all" — it returns 401 to whichever client made the second
@@ -181,94 +208,35 @@ call. A stronger defense would be to detect the mismatch and bump
 `tokenVersion`, killing all sessions. This is documented as Technical Debt
 below.
 
-## Fingerprinting
+## What does **not** trigger OTP / step-up
 
-`packages/auth/session/fingerprint.ts`:
+The following paths use normal authentication and authorization only:
 
-- `normalizeDeviceId(value?)` — lowercase trimmed, or `"unknown"`.
-- `normalizeUserAgent(value?)` — lowercase trimmed, with normalization for
-  webview/bot variants, or `"unknown"`.
-- `normalizeIpBucket(value?)` — IPv4 → `/24` (`a.b.c.0`), IPv6 → first
-  4 groups, or `"unknown"`. The `/24` bucket reduces false positives when
-  a user's IP changes within the same NAT/CGN range.
+| Surface | Behavior |
+|---|---|
+| `/api/auth/refresh` | Rotate tokens or 401; never creates a challenge. |
+| Web middleware | Allows refresh-cookie recovery; no step-up-status check. |
+| Auth bootstrap (`/api/me` + silent refresh) | Recover session or login; no challenge redirect. |
+| Authenticated API clients | 401 → silent refresh → retry or login. |
+| Socket connect / reconnect | Access JWT + identity/conversation AuthZ bridges. |
+| Conversation / identity authorization | Membership and policy checks only. |
 
-`generateDeviceFingerprint(input)` → SHA-256 over the three normalized
-fields, hex-encoded.
+Step-up authentication, if reintroduced later, must be an **explicit**
+security boundary around a genuinely sensitive operation — not part of
+session refresh.
 
-`validateSessionFingerprint(stored, input)` returns:
+## Device fingerprint metadata
 
-```ts
-{ requiresStepUp: boolean, deviceMismatch, userAgentMismatch, ipBucketMismatch }
-```
+`packages/auth/session/fingerprint.ts` exposes
+`generateDeviceFingerprint({ deviceId, userAgent, ipAddress })` used when
+**creating** a session. It hashes a stable device id when present, otherwise
+UA + IP bucket (`/24` for IPv4). Stored values support audit/forensics; they
+are not compared during refresh in the MVP contract.
 
-The `requiresStepUp` predicate is the boolean OR of the three
-mismatches, scoped so that **first-time refresh** (no stored fingerprint)
-does not trigger step-up.
+## OTP Service (Registration / Email Verification Only)
 
-When `requiresStepUp` is true, the refresh service creates a
-`StepUpChallenge` row, attaches IP/UA metadata, and throws
-`AuthStepUpRequiredError(reasons, challengeId, userId)`. The API layer
-maps this to a 403 with the `challengeId`; the client then routes to a
-step-up endpoint.
-
-## Step-Up Challenges
-
-`StepUpChallenge` model (`packages/db/models/StepUpChallenge.ts`):
-
-- TTL: 5 minutes (`STEP_UP_TTL_MS`), enforced by MongoDB
-  `expireAfterSeconds: 0` index.
-- `status`: `pending` → `verified` | `expired`.
-- `verificationMethod`: `"password"` (default) or `"otp"`.
-- `otp.hash` + `otp.sentAt` populated when the user opts to use OTP.
-
-There are two completion paths:
-
-### Password step-up
-
-`completePasswordStepUpChallenge(input)` in
-`services/step-up-password.service.ts`:
-
-1. `getChallengeById(challengeId)` (lazy-expires if past TTL).
-2. Validate `status === "pending"`, `userId === challenge.userId`.
-3. `comparePassword(password, user.password)` (bcrypt via
-   `packages/auth/password/compare.ts`).
-4. `markChallengeVerified(challengeId)` — atomic
-   `findOneAndUpdate` with `status: "pending"` predicate (so a
-   concurrent expiration loses to verification).
-5. **Rotate the refresh session**:
-   `rotateSessionTokenHash(sessionId, newHash, now + 7d)`.
-6. Return a freshly-signed access token + refresh token.
-
-### OTP step-up
-
-`services/step-up-otp.service.ts`:
-
-`requestOtpStepUpChallenge(challengeId)`:
-
-1. Generate a 6-digit OTP via `crypto.randomInt`.
-2. `hashOtp(otp)` (SHA-256, salted with `OTP_HASH_SECRET`).
-3. `recordChallengeOtp(challengeId, hash)` writes
-   `{ otp.hash, otp.sentAt, verificationMethod: "otp" }` to the
-   challenge — only if it is still `pending` and not expired.
-4. `sendOtpEmail(user.email, otp)`.
-
-`completeOtpStepUpChallenge({ challengeId, otp })`:
-
-1. `getChallengeById` + status/expiry validation.
-2. `compareHashedOtp(otp, challenge.otp.hash)` — constant-time.
-3. `markChallengeVerified`.
-4. `rotateSessionTokenHash` + issue new tokens.
-
-Both paths converge on the **same outcome**: a fresh refresh token bound to
-the same `sessionId`, with the `deviceFingerprint` on the session **not
-updated**. This means a successful step-up unblocks the immediate refresh
-but the next request from the same drifted device will trigger a *new*
-step-up unless `deviceFingerprint` is also rotated. The current code does
-not rotate it. This is documented as Technical Debt.
-
-## OTP Service (Registration / Email Verification)
-
-`packages/auth/services/otp.service.ts` provides:
+`packages/auth/services/otp.service.ts` provides **account verification**
+during login/register flows. It is **unrelated to session refresh**:
 
 - `sendEmailOtpService(email)` → 6-digit OTP, hashed and persisted in
   `Otp` model, then `sendOtpEmail`. `OTP_COOLDOWN_MS` prevents resends
@@ -277,8 +245,11 @@ not rotate it. This is documented as Technical Debt.
   OTP for the email, validates expiry (`OTP_EXPIRY_MS`), validates the
   hash via constant-time compare, and marks it consumed.
 - `verifyOtpAndRegisterService({ email, otp, name, password? })` →
-  combines verification with `register.service.ts:registerUserService` or
-  retrieval of an existing user.
+  combines verification with `register.service.ts` or retrieval of an
+  existing user.
+
+Web routes: `/api/auth/sendOtp`, `/api/auth/verify-otp` (and register).
+There is no `/auth/challenge` page and no step-up OTP challenge model.
 
 The OTP table uses a unique compound index that intentionally allows multiple
 OTPs per email over time (cooldown-bounded); on verification, the latest is
@@ -292,8 +263,8 @@ used.
 | Google OAuth | `services/google-oauth.service.ts:loginWithGoogleCode` | Same; auto-links by `googleSub`, never by email-only (`ensureGoogleProviderLinked` rejects with `GOOGLE_ACCOUNT_NOT_LINKED` if a password account exists without a `googleSub`). |
 | OTP-only registration | `verifyOtpAndRegisterService` | Same. |
 
-All paths funnel through `createUserSession`, so refresh-token rotation and
-fingerprinting work identically regardless of how the user authenticated.
+All paths funnel through `createUserSession`, so refresh-token rotation works
+identically regardless of how the user authenticated.
 
 ## Logout
 
@@ -312,12 +283,17 @@ fingerprinting work identically regardless of how the user authenticated.
 
 `services/auth-audit.service.ts` writes to `AuthEventModel`
 (`repositories/authEventModel.ts`). Every login, refresh, logout, OAuth,
-password change, step-up, and revocation emits one row with:
+password change, and revocation emits one row with:
 
-- `eventType` (one of 20 enum values).
+- `eventType` (enum values including historical `step_up_triggered` /
+  `step_up_success` / `step_up_failed` for rows written by the removed flow).
 - `outcome: "success" | "failure"`.
 - `userId` (if known), `email`, `ipAddress`, `userAgent`, `reason`,
   `metadata`.
+
+Admin UI can still filter the historical `STEP_UP` event group for forensics.
+The application no longer emits new step-up events during normal session
+maintenance.
 
 The write is **best-effort**: if the DB connection is not ready
 (`connection.readyState !== 1`) the write is silently skipped. Errors are
@@ -346,8 +322,9 @@ support common queries.
 The split is intentional: `packages/auth` knows JWTs; the **caller**
 decides whether to additionally check `tokenVersion` against the DB. The
 socket server always does (via the bridge). REST endpoints typically rely
-on a Next.js middleware (not in this package) that calls the same
-helper.
+on a Next.js middleware (not in this package) that verifies the access
+cookie and, when only a refresh cookie remains, **allows the request through**
+so client/server refresh can recover — without any step-up gate.
 
 ## Configuration
 
@@ -364,10 +341,9 @@ helper.
 
 Hard-coded constants the user should know about:
 
-- Access token TTL: `15m` (`tokens/generate.ts:9`).
-- Refresh token TTL: `7d` (`tokens/generate.ts:21`).
-- Session TTL: `7d` (matches refresh TTL).
-- Step-up TTL: `5m` (`StepUpChallenge.ts:27`).
+- Access token TTL: `15m` (`tokens/generate.ts`).
+- Refresh token TTL: `7d` (`tokens/generate.ts`).
+- Session TTL: matches refresh TTL.
 - OTP cooldown: `OTP_COOLDOWN_MS` env, default 60s (verify in
   `otp.service.ts`).
 - OTP expiry: `OTP_EXPIRY_MS` env.
@@ -377,10 +353,10 @@ Hard-coded constants the user should know about:
 - **Stateless access + stateful refresh**. Standard pattern; 15-min
   access TTL caps the blast radius of a stolen access token. The 7-day
   refresh TTL is generous; reducing it would increase user friction.
-- **`/24` IP bucketing**. False-negative rate (drift detection misses) is
-  higher than per-IP fingerprinting, but the user-experience cost of
-  flagging every mobile IP change is much worse. Documented in
-  `fingerprint.ts`.
+- **Fingerprint as metadata only**. Storing device fingerprint without
+  gating refresh avoids OTP interrupts during normal use. Stronger
+  risk-based step-up, if needed later, must be opt-in around sensitive
+  actions — not refresh.
 - **One-shot refresh rotation**. Rotating on every refresh prevents
   reuse, at the cost of "double-tap refresh" failures (network glitches
   that cause the client to re-send the same refresh). The server has no
@@ -390,10 +366,6 @@ Hard-coded constants the user should know about:
   bumping the version (which would log out all devices). Single-device
   logout is therefore session-based only, and a stolen access token from
   device X cannot be revoked without taking down device Y.
-- **OTP-hash storage on the challenge**. The challenge document holds the
-  OTP hash directly rather than referencing the `Otp` table. This couples
-  the step-up flow to its own OTP storage but avoids cross-table joins on
-  the hot path.
 - **Best-effort audit logging**. Auth never fails due to logging failures.
   Audit completeness is therefore not guaranteed; production must
   cross-check audit row counts against application metrics.
@@ -402,17 +374,15 @@ Hard-coded constants the user should know about:
 
 | Failure | Behavior |
 |---|---|
-| Refresh JWT signature invalid | `verifySession` throws `Invalid refresh token` → 401. |
+| Refresh JWT signature invalid | `verifySession` throws → 401. |
 | Refresh JWT shape invalid (missing `sessionId`, wrong `type`) | Same as above. |
-| Session not found or revoked | `Session not found` / `Session has been revoked` → 401. |
-| Session expired | `Session expired` → 401. Also auto-deleted by TTL index. |
-| Refresh hash mismatch (token rotated or forged) | `Invalid refresh token` → 401. No revocation cascade. |
-| `tokenVersion` mismatch | `Token has been invalidated` → 401. |
-| Fingerprint mismatch | `AuthStepUpRequiredError(challengeId)` → 403; client must complete step-up. |
-| Step-up password wrong | Throws → caller maps to 401. Challenge stays `pending` until TTL. |
-| Step-up OTP expired | Lazy-expired by `getChallengeById`. |
+| Session not found or revoked | → 401. |
+| Session expired | → 401. Also auto-deleted by TTL index. |
+| Refresh hash mismatch (token rotated or forged) | → 401. No challenge creation. |
+| `tokenVersion` mismatch | Session revoked; → 401. |
+| Account inactive / deleted / password change required | → auth failure (no challenge). |
 | User banned / deleted mid-session | Caught by `authorizeSocketIdentity` bridge call on next socket op; REST routes must call `validateAuthUserById` themselves. |
-| MongoDB unreachable | `verifySession` rejects (cannot find session); audit log silently skipped; auth halts. |
+| MongoDB unreachable | `verifySession` rejects (cannot find session); audit log silently skipped; auth returns 503 where connectivity is detected. |
 
 ## Scalability Considerations
 
@@ -435,31 +405,29 @@ Hard-coded constants the user should know about:
 1. **Refresh-hash mismatch is not treated as a security event**. A stolen
    refresh token races with the legitimate user. The loser sees 401. A
    stronger response is to bump `tokenVersion` on detected mismatch and
-   log a `step_up_triggered` event with reason `refresh_reuse`. Today,
-   the loss is silent.
-2. **Step-up does not update the session fingerprint**. After a successful
-   step-up the next refresh from the same drifted device triggers
-   step-up again. Either the session should adopt the new fingerprint or
-   the user-experience should reflect "trust this device" with explicit
-   re-fingerprinting on opt-in.
-3. **No revocation list for individual tokens**. The only revocation
+   log a security event with reason `refresh_reuse`. Today, the loss is
+   silent.
+2. **No revocation list for individual tokens**. The only revocation
    primitives are session deletion (this session) and `tokenVersion` bump
    (all sessions). Per-device revocation requires either of these.
-4. **`AuthEventModel` has no TTL**. Without a retention policy, the
+3. **`AuthEventModel` has no TTL**. Without a retention policy, the
    audit log grows unbounded.
-5. **`authenticateHttpBearer` does not check `tokenVersion` against the
+4. **`authenticateHttpBearer` does not check `tokenVersion` against the
    DB**. Web routes that depend on instant revocation must wrap the
    middleware with an extra check. The socket process does this in the
    bridge; REST does not have a uniform pattern.
-6. **Google OAuth account linking is by exact `googleSub` only**.
+5. **Google OAuth account linking is by exact `googleSub` only**.
    `ensureGoogleProviderLinked` will reject if a password account exists
    for the same email without a `googleSub` — this is the safe default,
    but UX-wise the user sees `GOOGLE_ACCOUNT_NOT_LINKED` with no
    recourse outside `/api/auth/link/google-link` (which lives in the web
    app, not here).
-7. **No mTLS or asymmetric JWT (e.g. RS256)**. HS256 with shared secrets
+6. **No mTLS or asymmetric JWT (e.g. RS256)**. HS256 with shared secrets
    is fine for internal-only verifiers but rules out third-party token
    consumers.
+7. **Legacy `step_up_pending` enum value** remains on `SessionModel` until
+   a deliberate data migration drops it; runtime never writes it for new
+   sessions.
 
 ## Future Evolution
 
@@ -474,8 +442,8 @@ Hard-coded constants the user should know about:
   session id) instead of JWTs; the JWT carries no useful info that isn't
   already stored on the session row, and an opaque token shortens
   exposure if the secret leaks.
-- Plumb step-up completion to refresh the device fingerprint on the
-  session.
+- If risk-based step-up returns, bind it to explicit sensitive operations
+  only — never to access-token refresh or normal bootstrap.
 
 ## Uncertain
 
@@ -485,8 +453,7 @@ Hard-coded constants the user should know about:
   socket review but is not centralized in this package.
 - The HTTP middleware in this package is a thin verifier; the
   user-facing route handlers in `apps/web/app/api/auth/*` add cookie
-  handling, CSRF, and rate limiting (rate limiting was not
-  exhaustively traced).
+  handling and rate limiting (rate limiting was not exhaustively traced).
 - The Google OAuth `state` cookie validation is performed in the route
   handler, not in `google-oauth.service.ts`. A cross-check of the route
   is needed to confirm CSRF protection on the OAuth callback.

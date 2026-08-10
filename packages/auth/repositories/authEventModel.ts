@@ -7,6 +7,7 @@ export type AuthEventType =
     | "register_failed"
     | "refresh_success"
     | "refresh_failed"
+    // Historical only: emitted by a removed step-up flow. Kept so existing audit rows deserialize.
     | "step_up_triggered"
     | "step_up_success"
     | "step_up_failed"

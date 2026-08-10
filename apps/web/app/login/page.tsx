@@ -21,18 +21,6 @@ import { Loader2 } from "lucide-react";
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-// Component that uses useSearchParams - wrapped in Suspense
-function StepUpWarning() {
-    const searchParams = useSearchParams();
-    useEffect(() => {
-        const reason = searchParams.get("reason");
-        if (reason === "step-up-required") {
-            toast.warning("Session verification changed. Please sign in again.");
-        }
-    }, [searchParams]);
-    return null;
-}
-
 function AuthErrorWarning() {
     const searchParams = useSearchParams();
 
@@ -97,9 +85,6 @@ function Loginpage() {
 
     return (
         <>
-            <Suspense fallback={null}>
-                <StepUpWarning />
-            </Suspense>
             <Suspense fallback={null}>
                 <AuthErrorWarning />
             </Suspense>

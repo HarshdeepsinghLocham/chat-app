@@ -19,7 +19,7 @@ are currently leaky.
 packages/
 ├── types/      # Pure TypeScript types + a few framework-free utilities.
 ├── db/         # MongoDB models, indexes, connection helpers.
-├── auth/       # JWT, sessions, fingerprinting, OTP, step-up.
+├── auth/       # JWT, sessions, fingerprint metadata, account OTP.
 ├── services/   # Domain logic that reads/writes db, emits events.
 └── redis/      # Re-export shim around apps/socket Redis client.
 ```
@@ -124,7 +124,7 @@ Sub-export points (`package.json` `exports`):
   connection helper.
 - **Source of truth for**: `User`, `Conversation`, `Message`,
   `Task`, `TaskAction`, `TaskExecutionEvent`, `TaskMemory`, `TaskPlan`,
-  `TaskReflection`, `OutboxEvent`, `OTP`, `StepUpChallenge`,
+  `TaskReflection`, `OutboxEvent`, `OTP`,
   `Contact`, `Devices`, `TempMessage`.
   - `MessageIntent` — persisted on classify / semantic override (`message-intent.service`; Phase 2.3).
 - **Constraints**: Server-only (`mongoose`). The `package.json` *does*
@@ -149,9 +149,10 @@ exports) would be safer but the choice keeps the surface area small.
 ### `@semantask/auth`
 
 - **Owns**: JWT generation/verification (`tokens/*`), session lifecycle
-  (`session/*`), refresh + login + register + OTP + step-up services
+  (`session/*`), refresh + login + register + account-verification OTP services
   (`services/*`), HTTP and socket middleware shims (`middleware/*`),
-  audit logging (`services/auth-audit.service.ts`).
+  audit logging (`services/auth-audit.service.ts`). Refresh never gates on
+  step-up challenges (see [authentication-and-session-model.md](./authentication-and-session-model.md)).
 - **Constraints**: Server-only (jsonwebtoken, bcryptjs, mongoose).
 - **Why separate**: Authentication is *the* trust boundary; centralizing
   it removes the temptation to re-implement token verify in each app. It

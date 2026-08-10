@@ -56,6 +56,8 @@ describe("POST /api/internal/socket/authorize-conversation-access", () => {
             allowed: true,
             participantIds: ["u1", "u2"],
         });
+        expect(body).not.toHaveProperty("requiresStepUp");
+        expect(body).not.toHaveProperty("challengeId");
     });
 
     it("returns forbidden without distinguishing missing conversations", async () => {

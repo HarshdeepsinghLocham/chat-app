@@ -45,6 +45,8 @@ export async function rotateSessionTokenHash(
     id: string,
     refreshTokenHash: string
 ): Promise<ISession | null> {
+    // Always write state: "active" so legacy step_up_pending rows normalize on refresh.
+    // New sessions never enter step_up_pending; this is not an active step-up gate.
     return SessionModel.findByIdAndUpdate(
         id,
         {
@@ -55,14 +57,6 @@ export async function rotateSessionTokenHash(
                 expiresAt: new Date(Date.now() + authConfig.session.refreshTtlMs),
             },
         },
-        { new: true }
-    );
-}
-
-export async function markSessionStepUpPending(id: string): Promise<ISession | null> {
-    return SessionModel.findByIdAndUpdate(
-        id,
-        { $set: { state: "step_up_pending", lastActiveAt: new Date() } },
         { new: true }
     );
 }

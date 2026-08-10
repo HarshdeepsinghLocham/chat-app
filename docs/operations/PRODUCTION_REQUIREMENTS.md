@@ -319,7 +319,7 @@ Prefer distinct `INTERNAL_SECRET_SOCKET` / `INTERNAL_SECRET_WORKER`. Legacy `INT
 | Missing Redis (prod worker) | Worker refuses to start (`REDIS_URL` / `UPSTASH_REDIS_REST_URL`) |
 | Overlapping `OUTBOX_PARTITION_ID` | Two replicas may claim the same outbox `_id` — use one replica per partition id |
 | Mismatched `INTERNAL_SECRET_SOCKET` / callers vs socket | Task updates never reach clients; 401 on socket `/internal/*` |
-| Mismatched `INTERNAL_SECRET_WORKER` / callers vs web | Socket authz / step-up bridges fail; 401 on web `/api/internal/*` |
+| Mismatched `INTERNAL_SECRET_WORKER` / callers vs web | Socket authz bridges fail; 401 on web `/api/internal/*` |
 | Missing socket secret (prod worker) | Worker refuses to start (`INTERNAL_SECRET_SOCKET` or legacy `INTERNAL_SECRET`) |
 | Empty email allowlist + email tool | Sends to arbitrary domains may auto-execute |
 | `ORIGIN` mismatch | Socket connection rejected |

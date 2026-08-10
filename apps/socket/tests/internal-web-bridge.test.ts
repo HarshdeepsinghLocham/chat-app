@@ -2,6 +2,52 @@ import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 import { postToInternalWebApi } from "../server/socket/services/internal-web-bridge.js";
 
+test("socket authorization bridge never targets step-up challenge endpoints", async () => {
+    const previousWeb = process.env.WEB_SERVER_URL;
+    const previousOrigin = process.env.ORIGIN;
+    const previousSecret = process.env.INTERNAL_SECRET;
+    process.env.WEB_SERVER_URL = "http://bridge-test.local";
+    process.env.ORIGIN = "http://bridge-test.local";
+    process.env.INTERNAL_SECRET = "test-internal-secret";
+
+    const requestedPaths: string[] = [];
+    const fetchMock = mock.method(globalThis, "fetch", async (input: RequestInfo | URL) => {
+        requestedPaths.push(String(input));
+        return new Response(JSON.stringify({ allowed: true, role: "user" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+        });
+    });
+
+    try {
+        await postToInternalWebApi({
+            path: "/api/internal/socket/authorize-identity",
+            body: { userId: "u1", tokenVersion: 0 },
+            timeoutMs: 1_000,
+        });
+        await postToInternalWebApi({
+            path: "/api/internal/socket/authorize-conversation-access",
+            body: { userId: "u1", conversationId: "c1" },
+            timeoutMs: 1_000,
+        });
+
+        assert.equal(fetchMock.mock.callCount(), 2);
+        for (const url of requestedPaths) {
+            assert.equal(url.includes("step-up"), false);
+            assert.equal(url.includes("/auth/challenge"), false);
+            assert.equal(url.includes("/api/auth/challenge"), false);
+        }
+    } finally {
+        fetchMock.mock.restore();
+        if (previousWeb === undefined) delete process.env.WEB_SERVER_URL;
+        else process.env.WEB_SERVER_URL = previousWeb;
+        if (previousOrigin === undefined) delete process.env.ORIGIN;
+        else process.env.ORIGIN = previousOrigin;
+        if (previousSecret === undefined) delete process.env.INTERNAL_SECRET;
+        else process.env.INTERNAL_SECRET = previousSecret;
+    }
+});
+
 test("postToInternalWebApi returns structured 403 authz body instead of null", async () => {
     const previousWeb = process.env.WEB_SERVER_URL;
     const previousOrigin = process.env.ORIGIN;

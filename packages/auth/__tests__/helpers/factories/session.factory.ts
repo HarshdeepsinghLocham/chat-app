@@ -98,12 +98,6 @@ export async function createExpiredSession(
     });
 }
 
-export async function createStepUpPendingSession(
-    overrides: Partial<SessionFactoryAttrs> = {}
-): Promise<ISession> {
-    return createSessionDoc({ ...overrides, state: "step_up_pending" });
-}
-
 /**
  * Create a session whose `refreshTokenHash` is absent. The schema marks the
  * field required, so we strip it via a raw collection update (bypassing

@@ -1,5 +1,15 @@
 import mongoose, { model, Model, Schema, Types } from "mongoose";
 
+/**
+ * Session lifecycle state.
+ *
+ * `step_up_pending` is kept ONLY for backwards compatibility with existing DB rows
+ * written by a removed step-up authentication flow:
+ * - New sessions must not enter this state (create defaults to `active`).
+ * - Legacy rows may still contain `step_up_pending`.
+ * - Refresh/rotation normalizes legacy `step_up_pending` → `active`.
+ * - This is NOT an active step-up authentication mechanism.
+ */
 export type SessionState = "active" | "step_up_pending";
 
 export const SESSION_STATES: SessionState[] = ["active", "step_up_pending"];

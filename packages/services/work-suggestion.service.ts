@@ -247,6 +247,19 @@ async function enqueueTaskCreatedFanout(task: TaskRecord, actorUserId: string): 
     });
 }
 
+/**
+ * Accept creates the coordination task before the suggestion CAS. If the CAS
+ * loses (e.g. dismiss won), delete the orphan so the accept dedupe key does not
+ * permanently block a later repair/re-accept.
+ */
+async function discardOrphanAcceptTask(task: ITask): Promise<void> {
+    const filter: { _id: ITask["_id"]; dedupeKey?: string } = { _id: task._id };
+    if (typeof task.dedupeKey === "string" && task.dedupeKey.length > 0) {
+        filter.dedupeKey = task.dedupeKey;
+    }
+    await TaskModel.deleteOne(filter).exec();
+}
+
 function isValidObjectId(value: string | null | undefined): value is string {
     return Boolean(value && mongoose.Types.ObjectId.isValid(value));
 }
@@ -583,6 +596,10 @@ export async function acceptWorkSuggestion(
             suggestion: normalizeWorkSuggestion(raced),
             task: normalizeTask(task),
         };
+    }
+
+    if (taskCreated) {
+        await discardOrphanAcceptTask(task);
     }
 
     throw new ConflictError("Suggestion was modified concurrently; accept aborted");

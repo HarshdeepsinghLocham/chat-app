@@ -23,11 +23,14 @@ jest.mock("@semantask/db/models/WorkSuggestion", () => ({
     WORK_SUGGESTION_STATUSES: ["proposed", "accepted", "dismissed", "converted"],
 }));
 
+const taskDeleteOne = jest.fn();
+
 jest.mock("@semantask/db/models/Task", () => ({
     __esModule: true,
     default: {
         findOne: (...args: unknown[]) => taskFindOne(...args),
         findById: (...args: unknown[]) => taskFindById(...args),
+        deleteOne: (...args: unknown[]) => taskDeleteOne(...args),
     },
 }));
 
@@ -133,12 +136,14 @@ describe("work-suggestion mutations", () => {
         suggestionFindOneAndUpdate.mockReset();
         taskFindOne.mockReset();
         taskFindById.mockReset();
+        taskDeleteOne.mockReset();
         createTask.mockReset();
         updateTask.mockReset();
         enqueueOutboxEvent.mockReset();
         assertAcceptCreatesCoordinationOnly.mockReset();
         assertAcceptCreatesCoordinationOnly.mockImplementation(() => undefined);
         enqueueOutboxEvent.mockResolvedValue({});
+        taskDeleteOne.mockReturnValue({ exec: jest.fn().mockResolvedValue({ deletedCount: 1 }) });
         infoSpy = jest.spyOn(console, "info").mockImplementation(() => undefined);
     });
 
@@ -250,6 +255,30 @@ describe("work-suggestion mutations", () => {
                 acceptWorkSuggestion({ suggestionId, actorUserId })
             ).rejects.toBeInstanceOf(ConflictError);
             expect(createTask).not.toHaveBeenCalled();
+        });
+
+        it("discards orphan task when dismiss wins the accept CAS", async () => {
+            const proposed = buildSuggestion();
+            const dismissed = buildSuggestion({ status: "dismissed", dismissReason: "Nope" });
+            const task = buildTask();
+            suggestionFindById
+                .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(proposed) })
+                .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(dismissed) });
+            taskFindOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
+            createTask.mockResolvedValue(task);
+            suggestionFindOneAndUpdate.mockReturnValue({
+                exec: jest.fn().mockResolvedValue(null),
+            });
+
+            await expect(
+                acceptWorkSuggestion({ suggestionId, actorUserId })
+            ).rejects.toBeInstanceOf(ConflictError);
+
+            expect(taskDeleteOne).toHaveBeenCalledWith({
+                _id: task._id,
+                dedupeKey: `suggestion.accept::${suggestionId}`,
+            });
+            expect(enqueueOutboxEvent).not.toHaveBeenCalled();
         });
     });
 

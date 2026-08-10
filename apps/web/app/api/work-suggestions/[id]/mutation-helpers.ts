@@ -27,6 +27,13 @@ export function workSuggestionMutationErrorResponse(error: unknown, context: str
         );
     }
 
+    if (error instanceof SyntaxError) {
+        return NextResponse.json(
+            { success: false, error: "Invalid JSON payload" },
+            { status: 400 }
+        );
+    }
+
     if (error instanceof ConflictError) {
         return NextResponse.json(
             { success: false, error: error.message },

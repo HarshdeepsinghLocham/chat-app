@@ -251,8 +251,23 @@ async function enqueueTaskCreatedFanout(task: TaskRecord, actorUserId: string): 
  * Accept creates the coordination task before the suggestion CAS. If the CAS
  * loses (e.g. dismiss won), delete the orphan so the accept dedupe key does not
  * permanently block a later repair/re-accept.
+ *
+ * Skip delete when the suggestion already claims this task — a concurrent
+ * winning accept may have linked it after we lost our CAS read.
  */
-async function discardOrphanAcceptTask(task: ITask): Promise<void> {
+async function discardOrphanAcceptTask(
+    task: ITask,
+    suggestionId: string
+): Promise<void> {
+    const linked = await WorkSuggestionModel.findById(suggestionId).exec();
+    if (
+        linked?.status === "converted"
+        && linked.convertedTaskId
+        && linked.convertedTaskId.toString() === task._id.toString()
+    ) {
+        return;
+    }
+
     const filter: { _id: ITask["_id"]; dedupeKey?: string } = { _id: task._id };
     if (typeof task.dedupeKey === "string" && task.dedupeKey.length > 0) {
         filter.dedupeKey = task.dedupeKey;
@@ -599,7 +614,7 @@ export async function acceptWorkSuggestion(
     }
 
     if (taskCreated) {
-        await discardOrphanAcceptTask(task);
+        await discardOrphanAcceptTask(task, input.suggestionId);
     }
 
     throw new ConflictError("Suggestion was modified concurrently; accept aborted");

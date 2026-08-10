@@ -263,6 +263,8 @@ describe("work-suggestion mutations", () => {
             const task = buildTask();
             suggestionFindById
                 .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(proposed) })
+                .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(dismissed) })
+                // discardOrphan re-reads suggestion; dismissed is not linked to the task
                 .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(dismissed) });
             taskFindOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
             createTask.mockResolvedValue(task);
@@ -279,6 +281,36 @@ describe("work-suggestion mutations", () => {
                 dedupeKey: `suggestion.accept::${suggestionId}`,
             });
             expect(enqueueOutboxEvent).not.toHaveBeenCalled();
+        });
+
+        it("does not delete a task that a concurrent accept already linked", async () => {
+            const proposed = buildSuggestion();
+            const converted = buildSuggestion({
+                status: "converted",
+                convertedTaskId: new Types.ObjectId(taskId),
+            });
+            const task = buildTask();
+            suggestionFindById
+                .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(proposed) })
+                // CAS lost to a different status race read that is not our task yet
+                .mockReturnValueOnce({
+                    exec: jest.fn().mockResolvedValue(
+                        buildSuggestion({ status: "dismissed", dismissReason: "stale" })
+                    ),
+                })
+                // discard check sees a concurrent accept already linked this task
+                .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(converted) });
+            taskFindOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
+            createTask.mockResolvedValue(task);
+            suggestionFindOneAndUpdate.mockReturnValue({
+                exec: jest.fn().mockResolvedValue(null),
+            });
+
+            await expect(
+                acceptWorkSuggestion({ suggestionId, actorUserId })
+            ).rejects.toBeInstanceOf(ConflictError);
+
+            expect(taskDeleteOne).not.toHaveBeenCalled();
         });
     });
 

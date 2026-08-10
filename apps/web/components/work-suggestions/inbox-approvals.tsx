@@ -36,9 +36,12 @@ function getPolicySummary(item: TaskApprovalRecord) {
     return reasons.join(" ");
 }
 
+const STORAGE_KEY = "semantask.activeOrganizationId";
+
 export function InboxApprovalsView() {
     const [approvals, setApprovals] = useState<TaskApprovalRecord[]>([]);
     const [conversationId, setConversationId] = useState("");
+    const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [actingId, setActingId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -46,12 +49,30 @@ export function InboxApprovalsView() {
     const [paramsById, setParamsById] = useState<Record<string, string>>({});
     const loadSeqRef = useRef(0);
 
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        setOrganizationId(window.localStorage.getItem(STORAGE_KEY));
+    }, []);
+
     const loadApprovals = useCallback(async () => {
         const requestId = ++loadSeqRef.current;
         setLoading(true);
         setError(null);
         try {
-            const response = await getTaskApprovals(conversationId.trim() || undefined);
+            const scopedConversation = conversationId.trim() || undefined;
+            if (!scopedConversation && !organizationId) {
+                if (requestId !== loadSeqRef.current) return;
+                setApprovals([]);
+                setError(
+                    "Select an active organization or enter a conversation id to load execution approvals."
+                );
+                return;
+            }
+
+            const response = await getTaskApprovals({
+                conversationId: scopedConversation,
+                organizationId: scopedConversation ? undefined : organizationId ?? undefined,
+            });
             if (requestId !== loadSeqRef.current) return;
             setApprovals(response.approvals);
             setCommentsById((current) => {
@@ -78,7 +99,7 @@ export function InboxApprovalsView() {
             if (loadError instanceof ApiHttpError) {
                 if (loadError.status === 403) {
                     setError(
-                        "Execution approvals require platform admin access. Your account cannot review this queue."
+                        "You do not have permission to review execution approvals for this scope."
                     );
                 } else {
                     setError(loadError.message);
@@ -91,7 +112,7 @@ export function InboxApprovalsView() {
                 setLoading(false);
             }
         }
-    }, [conversationId]);
+    }, [conversationId, organizationId]);
 
     useEffect(() => {
         void loadApprovals();
@@ -248,7 +269,7 @@ export function InboxApprovalsView() {
                                             onClick={() => void decide(item, "approve")}
                                             disabled={actingId === item._id}
                                         >
-                                            Approve
+                                            Allow AI tools
                                         </Button>
                                         <Button
                                             size="sm"

@@ -26,6 +26,7 @@ export type WorkSuggestionDetailViewProps = {
         dueAt?: string | null;
         priority?: TaskPriority;
     }) => void | Promise<void>;
+    onAllowAiTools?: () => void | Promise<void>;
 };
 
 function formatTimestamp(iso: string) {
@@ -51,6 +52,7 @@ export function WorkSuggestionDetailView({
     onAccept,
     onDismiss,
     onAssign,
+    onAllowAiTools,
 }: WorkSuggestionDetailViewProps) {
     const [dismissReason, setDismissReason] = useState("");
     const [assigneesInput, setAssigneesInput] = useState("");
@@ -303,14 +305,33 @@ export function WorkSuggestionDetailView({
                                 </div>
                             </>
                         ) : (
-                            <Button
-                                data-testid="suggestion-assign"
-                                disabled={actionPending || !onAssign}
-                                onClick={() => void onAssign?.(buildMutationInput())}
-                            >
-                                Save assignment
-                            </Button>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    data-testid="suggestion-assign"
+                                    disabled={actionPending || !onAssign}
+                                    onClick={() => void onAssign?.(buildMutationInput())}
+                                >
+                                    Save assignment
+                                </Button>
+                                {suggestion.convertedTaskId ? (
+                                    <Button
+                                        data-testid="suggestion-allow-ai-tools"
+                                        variant="outline"
+                                        disabled={actionPending || !onAllowAiTools}
+                                        onClick={() => void onAllowAiTools?.()}
+                                    >
+                                        Allow AI tools
+                                    </Button>
+                                ) : null}
+                            </div>
                         )}
+
+                        {isConverted ? (
+                            <p className="text-xs text-muted-foreground">
+                                Allow AI tools requests execution approval for the converted task. It is
+                                not the same as accepting a suggestion.
+                            </p>
+                        ) : null}
 
                         {actionError ? (
                             <p className="text-sm text-destructive" data-testid="suggestion-action-error">

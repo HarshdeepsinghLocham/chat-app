@@ -135,6 +135,28 @@ describe("enqueueTaskExecutionRequested", () => {
         expect(result.enqueued).toBe(true);
         expect(enqueueOutboxEvent).toHaveBeenCalled();
     });
+
+    it("allows explicit manager request under suggest_only + SUGGESTION_BLOCK_EXEC", async () => {
+        process.env.SUGGESTION_INGRESS = "1";
+        process.env.SUGGESTION_BLOCK_EXEC = "1";
+        enqueueOutboxEvent.mockResolvedValue({ _id: "evt-1" });
+
+        const result = await enqueueTaskExecutionRequested({
+            dedupeKey: "task.execution.requested:t1:explicit:u1",
+            payload: {
+                taskId: "t1",
+                conversationId: "c1",
+                explicitManagerRequest: true,
+                needsApproval: true,
+            },
+            executionMode: "suggest_only",
+            explicitManagerRequest: true,
+        });
+
+        expect(result).toEqual({ enqueued: true, blocked: false });
+        expect(enqueueOutboxEvent).toHaveBeenCalled();
+        expect(executionEnqueueAttemptedWhileSuggestOnlyCounter.inc).not.toHaveBeenCalled();
+    });
 });
 
 describe("shouldFailClosedOnLeakedExecution", () => {

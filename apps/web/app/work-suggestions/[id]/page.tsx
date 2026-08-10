@@ -9,6 +9,7 @@ import {
     assignWorkSuggestionApi,
     dismissWorkSuggestionApi,
     getWorkSuggestion,
+    requestTaskExecutionApi,
 } from "@/lib/utils/api";
 import { WorkSuggestionDetailView } from "@/components/work-suggestions/work-suggestion-detail";
 
@@ -110,6 +111,14 @@ export default function WorkSuggestionDetailPage() {
                 await runAction(async () => {
                     const result = await assignWorkSuggestionApi(id, input);
                     setSuggestion(result.suggestion);
+                });
+            }}
+            onAllowAiTools={async () => {
+                if (!suggestion?.convertedTaskId) return;
+                await runAction(async () => {
+                    await requestTaskExecutionApi(suggestion.convertedTaskId as string, {
+                        reason: "Manager requested AI tool execution from suggestion detail",
+                    });
                 });
             }}
         />

@@ -2,8 +2,8 @@
  * @jest-environment jsdom
  */
 import React from "react";
-import { describe, expect, it } from "@jest/globals";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, jest } from "@jest/globals";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { WorkSuggestionRecord } from "@semantask/types";
 import { WorkSuggestionDetailView } from "@/components/work-suggestions/work-suggestion-detail";
 
@@ -120,5 +120,25 @@ describe("WorkSuggestionDetailView", () => {
         expect(screen.getByTestId("converted-task-id")).toHaveTextContent("task-1");
         expect(screen.getByTestId("suggestion-assign")).toBeInTheDocument();
         expect(screen.queryByTestId("suggestion-accept")).not.toBeInTheDocument();
+    });
+
+    it("shows Allow AI tools for converted suggestions with a task id", () => {
+        const onAllowAiTools = jest.fn(async () => undefined);
+        render(
+            <WorkSuggestionDetailView
+                loading={false}
+                errorStatus={null}
+                errorMessage={null}
+                suggestion={buildSuggestion({
+                    status: "converted",
+                    convertedTaskId: "task-1",
+                })}
+                onAllowAiTools={onAllowAiTools}
+            />
+        );
+        expect(screen.getByTestId("suggestion-allow-ai-tools")).toHaveTextContent("Allow AI tools");
+        expect(screen.getByText(/not the same as accepting a suggestion/i)).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId("suggestion-allow-ai-tools"));
+        expect(onAllowAiTools).toHaveBeenCalledTimes(1);
     });
 });

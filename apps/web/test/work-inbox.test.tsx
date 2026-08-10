@@ -12,6 +12,7 @@ const dismissWorkSuggestionApi = jest.fn();
 const assignWorkSuggestionApi = jest.fn();
 const getOrganizationMembers = jest.fn();
 const decideTaskApproval = jest.fn();
+const requestTaskExecutionApi = jest.fn();
 const refreshConversation = jest.fn(async () => undefined);
 
 class ApiHttpError extends Error {
@@ -31,6 +32,7 @@ jest.mock("@/lib/utils/api", () => ({
     assignWorkSuggestionApi: (...args: unknown[]) => assignWorkSuggestionApi(...args),
     getOrganizationMembers: (...args: unknown[]) => getOrganizationMembers(...args),
     decideTaskApproval: (...args: unknown[]) => decideTaskApproval(...args),
+    requestTaskExecutionApi: (...args: unknown[]) => requestTaskExecutionApi(...args),
 }));
 
 jest.mock("@/store/work-suggestion-store", () => {
@@ -77,6 +79,7 @@ describe("WorkInboxView", () => {
         assignWorkSuggestionApi.mockReset();
         getOrganizationMembers.mockReset();
         decideTaskApproval.mockReset();
+        requestTaskExecutionApi.mockReset();
         refreshConversation.mockClear();
         window.localStorage.clear();
         getOrganizationMembers.mockResolvedValue([]);
@@ -88,6 +91,8 @@ describe("WorkInboxView", () => {
         expect(listWorkSuggestions).not.toHaveBeenCalled();
         expect(screen.queryByTestId("suggestion-accept")).not.toBeInTheDocument();
         expect(screen.queryByTestId("suggestion-dismiss")).not.toBeInTheDocument();
+        expect(requestTaskExecutionApi).not.toHaveBeenCalled();
+        expect(decideTaskApproval).not.toHaveBeenCalled();
     });
 
     it("loads org-scoped suggestions with triage actions and links to detail", async () => {
@@ -147,8 +152,43 @@ describe("WorkInboxView", () => {
             });
         });
         expect(decideTaskApproval).not.toHaveBeenCalled();
+        expect(requestTaskExecutionApi).not.toHaveBeenCalled();
         expect(await screen.findByTestId("work-inbox-empty")).toBeInTheDocument();
         expect(refreshConversation).toHaveBeenCalledWith("507f1f77bcf86cd799439014");
+    });
+
+    it("requests execution via Allow AI tools on converted rows only", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        listWorkSuggestions.mockResolvedValue({
+            items: [
+                buildSuggestion({
+                    status: "converted",
+                    convertedTaskId: "task-1",
+                }),
+            ],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        });
+        requestTaskExecutionApi.mockResolvedValue({
+            taskAction: { _id: "action-1", executionState: "requested" },
+            enqueued: true,
+            alreadyPending: false,
+        });
+
+        render(<WorkInboxView />);
+        fireEvent.change(await screen.findByTestId("work-inbox-status"), {
+            target: { value: "converted" },
+        });
+
+        expect(requestTaskExecutionApi).not.toHaveBeenCalled();
+        fireEvent.click(await screen.findByTestId("suggestion-allow-ai-tools"));
+
+        await waitFor(() => {
+            expect(requestTaskExecutionApi).toHaveBeenCalledWith("task-1", {
+                reason: "Manager requested AI tool execution from work inbox",
+            });
+        });
+        expect(acceptWorkSuggestionApi).not.toHaveBeenCalled();
+        expect(decideTaskApproval).not.toHaveBeenCalled();
     });
 
     it("requires dismiss reason and removes row after dismiss", async () => {

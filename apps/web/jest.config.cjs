@@ -20,10 +20,13 @@ module.exports = {
   moduleNameMapper: {
     "^@/lib/Db/(.*)$": "<rootDir>/../../packages/db/$1",
     "^@/lib/services/(.*)$": "<rootDir>/../../packages/services/$1",
+    "^@/models/(.*)$": "<rootDir>/../../packages/db/models/$1",
     "^@/(.*)$": "<rootDir>/$1",
     "^@semantask/types$": "<rootDir>/../../packages/types/dist/index.js",
     "^@semantask/types/(.*)$": "<rootDir>/../../packages/types/$1",
     "^@semantask/services/(.*)$": "<rootDir>/../../packages/services/$1",
+    "^@semantask/db$": "<rootDir>/../../packages/db/dist/db.js",
+    "^@semantask/db/(.*)$": "<rootDir>/../../packages/db/$1",
     "^next/link$": "<rootDir>/test/mocks/next-link.tsx",
   },
   clearMocks: true,

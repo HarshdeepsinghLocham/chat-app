@@ -353,3 +353,34 @@ export async function assertWorkSuggestionMutationAccess(
         throw new AuthorizationError("FORBIDDEN", "Forbidden");
     }
 }
+
+export type TaskExecutionApprovalTarget = {
+    conversationId: string;
+    organizationId?: string | null;
+};
+
+/**
+ * Execution approval AuthZ (Allow AI tools / decide pending TaskAction):
+ * same matrix as WorkSuggestion mutations — conversation participant OR org owner/admin.
+ */
+export async function canDecideTaskExecutionApproval(
+    userId: string,
+    target: TaskExecutionApprovalTarget,
+    options?: ConversationAccessOptions
+): Promise<boolean> {
+    return canMutateWorkSuggestion(userId, {
+        conversationId: target.conversationId,
+        organizationId: target.organizationId ?? null,
+    }, options);
+}
+
+export async function assertCanDecideTaskExecutionApproval(
+    userId: string,
+    target: TaskExecutionApprovalTarget,
+    options?: ConversationAccessOptions
+): Promise<void> {
+    const allowed = await canDecideTaskExecutionApproval(userId, target, options);
+    if (!allowed) {
+        throw new AuthorizationError("FORBIDDEN", "Forbidden");
+    }
+}

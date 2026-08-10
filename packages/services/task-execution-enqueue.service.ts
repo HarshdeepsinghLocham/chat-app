@@ -16,6 +16,11 @@ export type EnqueueTaskExecutionRequestedInput = {
     payload: Record<string, unknown>;
     executionMode: ExecutionMode;
     session?: EnqueueOutboxEventInput["session"];
+    /**
+     * Explicit manager "Allow AI tools" / request-execution path.
+     * Not a leaked ingress enqueue — allowed under suggest_only + SUGGESTION_BLOCK_EXEC.
+     */
+    explicitManagerRequest?: boolean;
 };
 
 export type EnqueueTaskExecutionRequestedResult = {
@@ -25,14 +30,19 @@ export type EnqueueTaskExecutionRequestedResult = {
 
 /**
  * Enqueue boundary for task.execution.requested.
- * Refuse writes when suggestion ingress is on and suggest_only + SUGGESTION_BLOCK_EXEC.
+ * Refuse writes when suggestion ingress is on and suggest_only + SUGGESTION_BLOCK_EXEC,
+ * unless this is an explicit manager request (S2.4).
  * When ingress is disabled, enqueue proceeds (legacy path).
  */
 export async function enqueueTaskExecutionRequested(
     input: EnqueueTaskExecutionRequestedInput
 ): Promise<EnqueueTaskExecutionRequestedResult> {
+    const explicitManagerRequest = input.explicitManagerRequest === true
+        || input.payload.explicitManagerRequest === true;
+
     if (
-        isSuggestionIngressEnabled()
+        !explicitManagerRequest
+        && isSuggestionIngressEnabled()
         && shouldBlockExecutionEnqueue(input.executionMode)
     ) {
         executionEnqueueAttemptedWhileSuggestOnlyCounter.inc();
@@ -54,7 +64,9 @@ export async function enqueueTaskExecutionRequested(
     await enqueueOutboxEvent({
         topic: "task.execution.requested",
         dedupeKey: input.dedupeKey,
-        payload: input.payload,
+        payload: explicitManagerRequest
+            ? { ...input.payload, explicitManagerRequest: true }
+            : input.payload,
         session: input.session,
     });
 

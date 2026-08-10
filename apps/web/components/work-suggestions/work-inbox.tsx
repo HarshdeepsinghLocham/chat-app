@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { WorkSuggestionRecord, WorkSuggestionStatus } from "@semantask/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +44,7 @@ export function WorkInboxView() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [result, setResult] = useState<WorkSuggestionListResult | null>(null);
+    const loadSeqRef = useRef(0);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -55,12 +56,14 @@ export function WorkInboxView() {
 
     const load = useCallback(async () => {
         if (!organizationId && !scopedConversationId) {
+            loadSeqRef.current += 1;
             setResult(null);
             setError(null);
             setLoading(false);
             return;
         }
 
+        const requestId = ++loadSeqRef.current;
         setLoading(true);
         setError(null);
         try {
@@ -71,8 +74,10 @@ export function WorkInboxView() {
                 page,
                 limit: PAGE_LIMIT,
             });
+            if (requestId !== loadSeqRef.current) return;
             setResult(data);
         } catch (loadError) {
+            if (requestId !== loadSeqRef.current) return;
             setResult(null);
             if (loadError instanceof ApiHttpError) {
                 setError(loadError.message);
@@ -80,7 +85,9 @@ export function WorkInboxView() {
                 setError(loadError instanceof Error ? loadError.message : "Failed to load inbox");
             }
         } finally {
-            setLoading(false);
+            if (requestId === loadSeqRef.current) {
+                setLoading(false);
+            }
         }
     }, [organizationId, scopedConversationId, status, page]);
 

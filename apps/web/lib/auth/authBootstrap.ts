@@ -4,11 +4,32 @@
    - Provides instrumentation for duplicate refresh detection
 */
 import { redirectToLogin, refreshSession } from "@/lib/utils/auth/client-session";
+import type { ClientUser } from "@semantask/types";
 
 let bootstrapPromise: Promise<void> | null = null;
 export let authReady = false;
 export let authLoading = true;
 export let isAuthenticated = false;
+/** Populated when bootstrap /api/me succeeds; consumed once by UserContext. */
+let bootstrappedMe: ClientUser | null = null;
+
+async function cacheMeFromResponse(resp: Response): Promise<void> {
+    try {
+        const body = (await resp.clone().json()) as ClientUser;
+        if (body && typeof body === "object" && "_id" in body) {
+            bootstrappedMe = body;
+        }
+    } catch {
+        // Leave cache empty; callers can refetch /api/me.
+    }
+}
+
+/** One-shot handoff of the bootstrap /api/me body to avoid a duplicate fetch. */
+export function consumeBootstrappedMe(): ClientUser | null {
+    const user = bootstrappedMe;
+    bootstrappedMe = null;
+    return user;
+}
 
 function now() {
     return typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -30,6 +51,9 @@ async function recoverSessionAndMe(): Promise<boolean> {
     let refreshed = await refreshSession();
     if (refreshed.ok) {
         const me = await fetchMe();
+        if (me.ok) {
+            await cacheMeFromResponse(me);
+        }
         return me.ok;
     }
 
@@ -46,6 +70,9 @@ async function recoverSessionAndMe(): Promise<boolean> {
         refreshed = await refreshSession();
         if (refreshed.ok) {
             const me = await fetchMe();
+            if (me.ok) {
+                await cacheMeFromResponse(me);
+            }
             return me.ok;
         }
         if (refreshed.ok === false && refreshed.reason === "unauthorized") {
@@ -67,6 +94,7 @@ export function resetAuthBootstrap() {
     isAuthenticated = false;
     authLoading = true;
     bootstrapPromise = null;
+    bootstrappedMe = null;
 }
 
 /** Ensure auth initialization runs once and completes before protected requests */
@@ -82,6 +110,7 @@ export function ensureAuthReady(): Promise<void> {
             try {
                 const resp = await fetchMe();
                 if (resp.ok) {
+                    await cacheMeFromResponse(resp);
                     authReady = true;
                     isAuthenticated = true;
                     return;

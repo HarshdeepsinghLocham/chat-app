@@ -6,7 +6,11 @@ import { createContext, useContext, useMemo, useEffect, useRef, useState } from 
 import { isAuthSessionPendingError, isPublicAuthRoute } from "@/lib/utils/auth/client-session";
 import { recordApiTiming } from "@/lib/utils/performance";
 import { getMe } from "@/lib/utils/api";
-import { ensureAuthReady, isAuthenticated } from "@/lib/auth/authBootstrap";
+import {
+    consumeBootstrappedMe,
+    ensureAuthReady,
+    isAuthenticated,
+} from "@/lib/auth/authBootstrap";
 
 async function fetchCurrentUser(signal?: AbortSignal): Promise<ClientUser | null> {
     const startedAt = performance.now();
@@ -27,6 +31,17 @@ async function fetchCurrentUser(signal?: AbortSignal): Promise<ClientUser | null
     }
 
     try {
+        // Reuse bootstrap /api/me body when present (avoids a second round-trip).
+        const bootstrapped = consumeBootstrappedMe();
+        if (bootstrapped) {
+            recordApiTiming("/api/me", performance.now() - startedAt);
+            return bootstrapped;
+        }
+
+        if (signal?.aborted) {
+            return null;
+        }
+
         const user = await getMe();
         recordApiTiming("/api/me", performance.now() - startedAt);
         return user || null;

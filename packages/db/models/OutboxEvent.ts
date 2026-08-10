@@ -8,7 +8,9 @@ export type OutboxTopic =
     | "task.execution.approved"
     | "task.cancel.requested"
     | "billing.usage.recorded"
-    | "billing.quota.exceeded";
+    | "billing.quota.exceeded"
+    | "work.suggestion.accepted"
+    | "work.suggestion.dismissed";
 
 export type OutboxStatus = "pending" | "processing" | "completed" | "failed" | "dead_letter";
 
@@ -42,6 +44,8 @@ const OutboxEventSchema = new Schema<IOutboxEvent>(
                 "task.cancel.requested",
                 "billing.usage.recorded",
                 "billing.quota.exceeded",
+                "work.suggestion.accepted",
+                "work.suggestion.dismissed",
             ],
             required: true,
             index: true,

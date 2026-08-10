@@ -12,6 +12,9 @@ if (existsSync(rootEnvPath)) {
 
 const requireFromDb = createRequire(resolve(process.cwd(), "../../packages/db/package.json"));
 const mongoosePath = requireFromDb.resolve("mongoose");
+// mongodb/lib/deps.js optionally requires aws4 (MONGODB-AWS). Declare it on
+// @semantask/db and alias so webpack can resolve it instead of warning.
+const aws4Path = requireFromDb.resolve("aws4");
 
 const nextConfig: NextConfig = {
   // Use prebuilt dist for observability (avoids webpack resolving .js ESM paths in TS sources
@@ -23,6 +26,7 @@ const nextConfig: NextConfig = {
     // Do NOT externalize top-level "mongodb" — packages/db also depends on
     // mongodb@4 for mongo.ts; that would steal resolution from mongoose's driver.
     "mongoose",
+    "aws4",
     "@semantask/observability",
     "prom-client",
     "@opentelemetry/sdk-trace-node",
@@ -47,6 +51,7 @@ const nextConfig: NextConfig = {
       ...(config.resolve.alias || {}),
       // Force every import onto one mongoose copy (pnpm + transpilePackages).
       mongoose: mongoosePath,
+      aws4: aws4Path,
       "@semantask/services": resolve(process.cwd(), "../../packages/services"),
       "@semantask/db": resolve(process.cwd(), "../../packages/db"),
     };

@@ -14,6 +14,11 @@ import WorkSuggestionModel, {
 } from "@semantask/db/models/WorkSuggestion";
 import { AuthorizationError } from "./authorization-errors";
 import { ConflictError, ValidationError } from "./organization-errors";
+import {
+    acceptToTaskLatencyMs,
+    suggestionsAcceptedCounter,
+    suggestionsDismissedCounter,
+} from "@semantask/observability/metrics";
 import { assertAcceptCreatesCoordinationOnly } from "./organization-policy.service";
 import { normalizeTask } from "./normalizers/task.normalizer";
 import { createTask, updateTask } from "./repositories/task.repo";
@@ -243,6 +248,46 @@ async function enqueueTaskCreatedFanout(task: TaskRecord, actorUserId: string): 
                 createdById: actorUserId,
                 suggestionId: task.suggestionId ?? null,
             },
+        },
+    });
+}
+
+async function enqueueSuggestionAcceptedOutbox(input: {
+    suggestionId: string;
+    taskId: string;
+    conversationId: string;
+    organizationId: string | null;
+    actorUserId: string;
+}): Promise<void> {
+    await enqueueOutboxEvent({
+        topic: "work.suggestion.accepted",
+        dedupeKey: `work.suggestion.accepted:${input.suggestionId}`,
+        payload: {
+            suggestionId: input.suggestionId,
+            taskId: input.taskId,
+            conversationId: input.conversationId,
+            organizationId: input.organizationId,
+            actorUserId: input.actorUserId,
+        },
+    });
+}
+
+async function enqueueSuggestionDismissedOutbox(input: {
+    suggestionId: string;
+    conversationId: string;
+    organizationId: string | null;
+    actorUserId: string;
+    dismissReason: string;
+}): Promise<void> {
+    await enqueueOutboxEvent({
+        topic: "work.suggestion.dismissed",
+        dedupeKey: `work.suggestion.dismissed:${input.suggestionId}`,
+        payload: {
+            suggestionId: input.suggestionId,
+            conversationId: input.conversationId,
+            organizationId: input.organizationId,
+            actorUserId: input.actorUserId,
+            dismissReason: input.dismissReason,
         },
     });
 }
@@ -538,9 +583,20 @@ export async function acceptWorkSuggestion(
         if (!existingTask) {
             throw new ConflictError("Converted suggestion is missing its task");
         }
+        const taskRecord = normalizeTask(existingTask);
+        // Idempotent retry may have committed conversion before outbox insert succeeded.
+        await enqueueSuggestionAcceptedOutbox({
+            suggestionId: suggestion._id.toString(),
+            taskId: taskRecord._id,
+            conversationId: suggestion.conversationId.toString(),
+            organizationId: suggestion.organizationId
+                ? suggestion.organizationId.toString()
+                : null,
+            actorUserId: input.actorUserId,
+        });
         return {
             suggestion: normalizeWorkSuggestion(suggestion),
-            task: normalizeTask(existingTask),
+            task: taskRecord,
         };
     }
 
@@ -579,20 +635,40 @@ export async function acceptWorkSuggestion(
 
     if (converted) {
         const taskRecord = normalizeTask(task);
+        const suggestionIdStr = converted._id.toString();
+        const conversationIdStr = converted.conversationId.toString();
+        const organizationIdStr = converted.organizationId
+            ? converted.organizationId.toString()
+            : null;
+
         console.info(JSON.stringify({
             event: "suggestion.converted",
-            suggestionId: converted._id.toString(),
+            suggestionId: suggestionIdStr,
             taskId: taskRecord._id,
             actorUserId: input.actorUserId,
-            conversationId: converted.conversationId.toString(),
-            organizationId: converted.organizationId
-                ? converted.organizationId.toString()
-                : null,
+            conversationId: conversationIdStr,
+            organizationId: organizationIdStr,
             taskCreated,
         }));
 
+        await enqueueSuggestionAcceptedOutbox({
+            suggestionId: suggestionIdStr,
+            taskId: taskRecord._id,
+            conversationId: conversationIdStr,
+            organizationId: organizationIdStr,
+            actorUserId: input.actorUserId,
+        });
+
         if (taskCreated) {
             await enqueueTaskCreatedFanout(taskRecord, input.actorUserId);
+        }
+
+        suggestionsAcceptedCounter.inc();
+        const createdAtMs = suggestion.createdAt instanceof Date
+            ? suggestion.createdAt.getTime()
+            : Date.parse(String(suggestion.createdAt));
+        if (Number.isFinite(createdAtMs)) {
+            acceptToTaskLatencyMs.observe(Math.max(0, Date.now() - createdAtMs));
         }
 
         return {
@@ -607,9 +683,19 @@ export async function acceptWorkSuggestion(
         && raced.convertedTaskId
         && raced.convertedTaskId.toString() === task._id.toString()
     ) {
+        const taskRecord = normalizeTask(task);
+        await enqueueSuggestionAcceptedOutbox({
+            suggestionId: raced._id.toString(),
+            taskId: taskRecord._id,
+            conversationId: raced.conversationId.toString(),
+            organizationId: raced.organizationId
+                ? raced.organizationId.toString()
+                : null,
+            actorUserId: input.actorUserId,
+        });
         return {
             suggestion: normalizeWorkSuggestion(raced),
-            task: normalizeTask(task),
+            task: taskRecord,
         };
     }
 
@@ -640,6 +726,15 @@ export async function dismissWorkSuggestion(
     const suggestion = await loadSuggestionOrThrow(input.suggestionId);
 
     if (suggestion.status === "dismissed") {
+        await enqueueSuggestionDismissedOutbox({
+            suggestionId: suggestion._id.toString(),
+            conversationId: suggestion.conversationId.toString(),
+            organizationId: suggestion.organizationId
+                ? suggestion.organizationId.toString()
+                : null,
+            actorUserId: input.actorUserId,
+            dismissReason: suggestion.dismissReason ?? reason,
+        });
         return normalizeWorkSuggestion(suggestion);
     }
 
@@ -662,20 +757,43 @@ export async function dismissWorkSuggestion(
     ).exec();
 
     if (dismissed) {
+        const suggestionIdStr = dismissed._id.toString();
+        const conversationIdStr = dismissed.conversationId.toString();
+        const organizationIdStr = dismissed.organizationId
+            ? dismissed.organizationId.toString()
+            : null;
+
         console.info(JSON.stringify({
             event: "suggestion.dismissed",
-            suggestionId: dismissed._id.toString(),
+            suggestionId: suggestionIdStr,
             actorUserId: input.actorUserId,
-            conversationId: dismissed.conversationId.toString(),
-            organizationId: dismissed.organizationId
-                ? dismissed.organizationId.toString()
-                : null,
+            conversationId: conversationIdStr,
+            organizationId: organizationIdStr,
         }));
+
+        await enqueueSuggestionDismissedOutbox({
+            suggestionId: suggestionIdStr,
+            conversationId: conversationIdStr,
+            organizationId: organizationIdStr,
+            actorUserId: input.actorUserId,
+            dismissReason: reason.slice(0, 2000),
+        });
+
+        suggestionsDismissedCounter.inc();
         return normalizeWorkSuggestion(dismissed);
     }
 
     const raced = await loadSuggestionOrThrow(input.suggestionId);
     if (raced.status === "dismissed") {
+        await enqueueSuggestionDismissedOutbox({
+            suggestionId: raced._id.toString(),
+            conversationId: raced.conversationId.toString(),
+            organizationId: raced.organizationId
+                ? raced.organizationId.toString()
+                : null,
+            actorUserId: input.actorUserId,
+            dismissReason: raced.dismissReason ?? reason,
+        });
         return normalizeWorkSuggestion(raced);
     }
 

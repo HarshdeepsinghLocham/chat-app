@@ -309,9 +309,13 @@ export async function assertWorkSuggestionAccess(
 }
 
 /**
- * Mutation AuthZ (accept/dismiss/assign): conversation participant, OR org
- * owner/admin for org-scoped suggestions. Plain org members without
- * conversation access cannot mutate (stricter than read access).
+ * Phase 2 manager triage AuthZ (accept/dismiss/assign):
+ * conversation-accessible actor (any authorized participant via
+ * canAccessConversation) OR org owner/admin (canManageMembers) for
+ * org-scoped suggestions. There is no separate conversation-level manager
+ * role; Conversation.admin is not used for AuthZ.
+ * Plain org members without conversation access cannot mutate (stricter than read).
+ * Platform admin bypass follows ConversationAccessOptions.allowAdminBypass.
  */
 export async function canMutateWorkSuggestion(
     userId: string,
@@ -326,14 +330,28 @@ export async function canMutateWorkSuggestion(
         return true;
     }
 
-    const organizationId = suggestion.organizationId ?? null;
-    if (!organizationId || !isValidObjectId(organizationId)) {
+    const conversation = await loadConversationForAccess(suggestion.conversationId);
+    if (!conversation) {
+        return false;
+    }
+
+    // Org-manager path must bind to the conversation's organization so a stale
+    // or cross-org suggestion.organizationId cannot authorize mutations.
+    const conversationOrganizationId = organizationIdFromConversation(conversation);
+    if (!conversationOrganizationId) {
+        return false;
+    }
+
+    if (
+        suggestion.organizationId
+        && suggestion.organizationId !== conversationOrganizationId
+    ) {
         return false;
     }
 
     try {
-        await assertOrganizationActive(organizationId);
-        const membership = await getMembership(organizationId, userId);
+        await assertOrganizationActive(conversationOrganizationId);
+        const membership = await getMembership(conversationOrganizationId, userId);
         if (!membership) {
             return false;
         }
@@ -360,8 +378,9 @@ export type TaskExecutionApprovalTarget = {
 };
 
 /**
- * Execution approval AuthZ (Allow AI tools / decide pending TaskAction):
- * same matrix as WorkSuggestion mutations — conversation participant OR org owner/admin.
+ * Execution approval AuthZ (Allow AI tools / request-execution / decide pending TaskAction):
+ * same Phase 2 manager matrix as WorkSuggestion mutations — conversation-accessible
+ * actor OR org owner/admin (canManageMembers). No separate conversation manager role.
  */
 export async function canDecideTaskExecutionApproval(
     userId: string,

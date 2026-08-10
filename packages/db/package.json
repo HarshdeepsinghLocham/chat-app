@@ -37,12 +37,14 @@
         "test": "NODE_OPTIONS='--experimental-vm-modules' jest --config ./jest.config.cjs"
     },
     "dependencies": {
+        "aws4": "^1.13.2",
         "dexie": "^4.2.1",
-        "mongoose": "^8.16.2",
-        "mongodb": "^4.17.2"
+        "mongodb": "^4.17.2",
+        "mongoose": "^8.16.2"
     },
     "devDependencies": {
         "@jest/globals": "30.4.1",
+        "@types/aws4": "^1.11.6",
         "@types/jest": "^30.0.0",
         "jest": "^30.4.1",
         "ts-jest": "^29.4.4"

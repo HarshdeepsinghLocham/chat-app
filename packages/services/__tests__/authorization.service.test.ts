@@ -343,6 +343,68 @@ describe("authorization.service", () => {
             ).resolves.toBe(true);
         });
 
+        it("allows org owners for org-scoped suggestions without conversation participation", async () => {
+            (Conversation.findById as jest.Mock).mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue({
+                        _id: new Types.ObjectId(conversationId),
+                        participants: [new Types.ObjectId(otherUserId)],
+                        organizationId: new Types.ObjectId(organizationId),
+                    }),
+                }),
+            });
+            (assertOrganizationActive as jest.Mock).mockResolvedValue({ status: "active" });
+            (getMembership as jest.Mock).mockResolvedValue({
+                role: "owner",
+                organizationId: new Types.ObjectId(organizationId),
+                userId: new Types.ObjectId(userId),
+            });
+
+            await expect(
+                canMutateWorkSuggestion(userId, {
+                    conversationId,
+                    organizationId,
+                })
+            ).resolves.toBe(true);
+        });
+
+        it("denies cross-org access attempts (IDOR)", async () => {
+            const foreignOrgId = new Types.ObjectId().toString();
+            (Conversation.findById as jest.Mock).mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue({
+                        _id: new Types.ObjectId(conversationId),
+                        participants: [new Types.ObjectId(otherUserId)],
+                        organizationId: new Types.ObjectId(organizationId),
+                    }),
+                }),
+            });
+            (assertOrganizationActive as jest.Mock).mockResolvedValue({ status: "active" });
+            (getMembership as jest.Mock).mockResolvedValue({
+                role: "admin",
+                organizationId: new Types.ObjectId(foreignOrgId),
+                userId: new Types.ObjectId(userId),
+            });
+
+            await expect(
+                canMutateWorkSuggestion(userId, {
+                    conversationId,
+                    organizationId: foreignOrgId,
+                })
+            ).resolves.toBe(false);
+            expect(getMembership).not.toHaveBeenCalledWith(foreignOrgId, userId);
+
+            await expect(
+                assertWorkSuggestionMutationAccess(userId, {
+                    conversationId,
+                    organizationId: foreignOrgId,
+                })
+            ).rejects.toMatchObject({
+                code: "FORBIDDEN",
+                message: "Forbidden",
+            });
+        });
+
         it("denies unrelated users without leaking existence", async () => {
             (Conversation.findById as jest.Mock).mockReturnValue({
                 select: jest.fn().mockReturnValue({
@@ -409,6 +471,56 @@ describe("authorization.service", () => {
                     organizationId,
                 })
             ).resolves.toBe(true);
+        });
+
+        it("denies plain org members without conversation participation for execution approval", async () => {
+            (Conversation.findById as jest.Mock).mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue({
+                        _id: new Types.ObjectId(conversationId),
+                        participants: [new Types.ObjectId(otherUserId)],
+                        organizationId: new Types.ObjectId(organizationId),
+                    }),
+                }),
+            });
+            (assertOrganizationActive as jest.Mock).mockResolvedValue({ status: "active" });
+            (getMembership as jest.Mock).mockResolvedValue({
+                role: "member",
+                organizationId: new Types.ObjectId(organizationId),
+                userId: new Types.ObjectId(userId),
+            });
+
+            await expect(
+                canDecideTaskExecutionApproval(userId, {
+                    conversationId,
+                    organizationId,
+                })
+            ).resolves.toBe(false);
+        });
+
+        it("denies cross-org execution approval attempts (IDOR)", async () => {
+            const foreignOrgId = new Types.ObjectId().toString();
+            (Conversation.findById as jest.Mock).mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue({
+                        _id: new Types.ObjectId(conversationId),
+                        participants: [new Types.ObjectId(otherUserId)],
+                        organizationId: new Types.ObjectId(organizationId),
+                    }),
+                }),
+            });
+            (assertOrganizationActive as jest.Mock).mockResolvedValue({ status: "active" });
+            (getMembership as jest.Mock).mockResolvedValue(null);
+
+            await expect(
+                assertCanDecideTaskExecutionApproval(userId, {
+                    conversationId,
+                    organizationId: foreignOrgId,
+                })
+            ).rejects.toMatchObject({
+                code: "FORBIDDEN",
+                message: "Forbidden",
+            });
         });
 
         it("denies unrelated users without leaking existence", async () => {

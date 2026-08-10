@@ -28,7 +28,10 @@ export async function connectToDatabase(): Promise<Mongoose> {
             .connect(mongoUri, {
                 bufferCommands: false,
                 maxPoolSize: 10,
+                // Align with serverSelectionTimeoutMS so TLS/secureConnect hangs fail
+                // fast instead of the driver default connectTimeoutMS=30000.
                 serverSelectionTimeoutMS: 5000,
+                connectTimeoutMS: 5000,
             })
             .catch((err) => {
                 delete mongooseRef[CONNECT_PROMISE_KEY];

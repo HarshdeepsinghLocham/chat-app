@@ -330,14 +330,28 @@ export async function canMutateWorkSuggestion(
         return true;
     }
 
-    const organizationId = suggestion.organizationId ?? null;
-    if (!organizationId || !isValidObjectId(organizationId)) {
+    const conversation = await loadConversationForAccess(suggestion.conversationId);
+    if (!conversation) {
+        return false;
+    }
+
+    // Org-manager path must bind to the conversation's organization so a stale
+    // or cross-org suggestion.organizationId cannot authorize mutations.
+    const conversationOrganizationId = organizationIdFromConversation(conversation);
+    if (!conversationOrganizationId) {
+        return false;
+    }
+
+    if (
+        suggestion.organizationId
+        && suggestion.organizationId !== conversationOrganizationId
+    ) {
         return false;
     }
 
     try {
-        await assertOrganizationActive(organizationId);
-        const membership = await getMembership(organizationId, userId);
+        await assertOrganizationActive(conversationOrganizationId);
+        const membership = await getMembership(conversationOrganizationId, userId);
         if (!membership) {
             return false;
         }

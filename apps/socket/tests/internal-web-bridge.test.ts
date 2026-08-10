@@ -67,6 +67,50 @@ test("postToInternalWebApi returns null when response is unstructured failure", 
     }
 });
 
+test("postToInternalWebApi skips malformed 2xx and tries the next candidate", async () => {
+    const previousWeb = process.env.WEB_SERVER_URL;
+    const previousOrigin = process.env.ORIGIN;
+    const previousSecret = process.env.INTERNAL_SECRET;
+    process.env.WEB_SERVER_URL = "http://bridge-primary.local";
+    process.env.ORIGIN = "http://bridge-fallback.local";
+    process.env.INTERNAL_SECRET = "test-internal-secret";
+
+    let calls = 0;
+    const fetchMock = mock.method(globalThis, "fetch", async (input: RequestInfo | URL) => {
+        calls += 1;
+        const url = String(input);
+        if (url.includes("bridge-primary.local")) {
+            return new Response("not-json", {
+                status: 200,
+                headers: { "content-type": "text/plain" },
+            });
+        }
+        return new Response(JSON.stringify({ allowed: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+        });
+    });
+
+    try {
+        const result = await postToInternalWebApi<{ allowed: boolean }>({
+            path: "/api/internal/socket/authorize-conversation-access",
+            body: { userId: "u1", conversationId: "c1" },
+            timeoutMs: 1_000,
+        });
+
+        assert.deepEqual(result, { allowed: true });
+        assert.equal(calls >= 2, true);
+    } finally {
+        fetchMock.mock.restore();
+        if (previousWeb === undefined) delete process.env.WEB_SERVER_URL;
+        else process.env.WEB_SERVER_URL = previousWeb;
+        if (previousOrigin === undefined) delete process.env.ORIGIN;
+        else process.env.ORIGIN = previousOrigin;
+        if (previousSecret === undefined) delete process.env.INTERNAL_SECRET;
+        else process.env.INTERNAL_SECRET = previousSecret;
+    }
+});
+
 test("postToInternalWebApi does not treat structured 500 as final authz denial", async () => {
     const previousWeb = process.env.WEB_SERVER_URL;
     const previousOrigin = process.env.ORIGIN;

@@ -78,6 +78,11 @@ export async function postToInternalWebApi<TResponse>(
             }
 
             if (response.ok) {
+                // Non-empty malformed 2xx bodies are not usable — try the next
+                // candidate instead of pretending the response was `{}`.
+                if (rawText.trim().length > 0 && parsed === null) {
+                    continue;
+                }
                 return (parsed ?? {}) as TResponse;
             }
 

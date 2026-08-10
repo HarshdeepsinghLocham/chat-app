@@ -380,7 +380,11 @@ describe("authorization.service", () => {
                 }),
             });
             (assertOrganizationActive as jest.Mock).mockResolvedValue({ status: "active" });
-            (getMembership as jest.Mock).mockResolvedValue(null);
+            (getMembership as jest.Mock).mockResolvedValue({
+                role: "admin",
+                organizationId: new Types.ObjectId(foreignOrgId),
+                userId: new Types.ObjectId(userId),
+            });
 
             await expect(
                 canMutateWorkSuggestion(userId, {
@@ -388,6 +392,7 @@ describe("authorization.service", () => {
                     organizationId: foreignOrgId,
                 })
             ).resolves.toBe(false);
+            expect(getMembership).not.toHaveBeenCalled();
 
             await expect(
                 assertWorkSuggestionMutationAccess(userId, {

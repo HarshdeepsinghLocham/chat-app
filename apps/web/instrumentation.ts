@@ -23,9 +23,10 @@ export async function register() {
     // Warm the shared mongoose pool so the first authenticated API / socket
     // authz call does not pay a cold Atlas TLS handshake under load.
     try {
+        // Use the package export — webpackIgnore bypasses Next aliases like @/lib/Db.
         const { connectToDatabase } = await import(
             /* webpackIgnore: true */
-            "@/lib/Db/db"
+            "@semantask/db"
         );
         await connectToDatabase();
     } catch (error) {

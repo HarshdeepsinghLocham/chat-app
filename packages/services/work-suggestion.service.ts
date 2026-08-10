@@ -252,6 +252,46 @@ async function enqueueTaskCreatedFanout(task: TaskRecord, actorUserId: string): 
     });
 }
 
+async function enqueueSuggestionAcceptedOutbox(input: {
+    suggestionId: string;
+    taskId: string;
+    conversationId: string;
+    organizationId: string | null;
+    actorUserId: string;
+}): Promise<void> {
+    await enqueueOutboxEvent({
+        topic: "work.suggestion.accepted",
+        dedupeKey: `work.suggestion.accepted:${input.suggestionId}`,
+        payload: {
+            suggestionId: input.suggestionId,
+            taskId: input.taskId,
+            conversationId: input.conversationId,
+            organizationId: input.organizationId,
+            actorUserId: input.actorUserId,
+        },
+    });
+}
+
+async function enqueueSuggestionDismissedOutbox(input: {
+    suggestionId: string;
+    conversationId: string;
+    organizationId: string | null;
+    actorUserId: string;
+    dismissReason: string;
+}): Promise<void> {
+    await enqueueOutboxEvent({
+        topic: "work.suggestion.dismissed",
+        dedupeKey: `work.suggestion.dismissed:${input.suggestionId}`,
+        payload: {
+            suggestionId: input.suggestionId,
+            conversationId: input.conversationId,
+            organizationId: input.organizationId,
+            actorUserId: input.actorUserId,
+            dismissReason: input.dismissReason,
+        },
+    });
+}
+
 /**
  * Accept creates the coordination task before the suggestion CAS. If the CAS
  * loses (e.g. dismiss won), delete the orphan so the accept dedupe key does not
@@ -543,9 +583,20 @@ export async function acceptWorkSuggestion(
         if (!existingTask) {
             throw new ConflictError("Converted suggestion is missing its task");
         }
+        const taskRecord = normalizeTask(existingTask);
+        // Idempotent retry may have committed conversion before outbox insert succeeded.
+        await enqueueSuggestionAcceptedOutbox({
+            suggestionId: suggestion._id.toString(),
+            taskId: taskRecord._id,
+            conversationId: suggestion.conversationId.toString(),
+            organizationId: suggestion.organizationId
+                ? suggestion.organizationId.toString()
+                : null,
+            actorUserId: input.actorUserId,
+        });
         return {
             suggestion: normalizeWorkSuggestion(suggestion),
-            task: normalizeTask(existingTask),
+            task: taskRecord,
         };
     }
 
@@ -600,16 +651,12 @@ export async function acceptWorkSuggestion(
             taskCreated,
         }));
 
-        await enqueueOutboxEvent({
-            topic: "work.suggestion.accepted",
-            dedupeKey: `work.suggestion.accepted:${suggestionIdStr}`,
-            payload: {
-                suggestionId: suggestionIdStr,
-                taskId: taskRecord._id,
-                conversationId: conversationIdStr,
-                organizationId: organizationIdStr,
-                actorUserId: input.actorUserId,
-            },
+        await enqueueSuggestionAcceptedOutbox({
+            suggestionId: suggestionIdStr,
+            taskId: taskRecord._id,
+            conversationId: conversationIdStr,
+            organizationId: organizationIdStr,
+            actorUserId: input.actorUserId,
         });
 
         if (taskCreated) {
@@ -636,9 +683,19 @@ export async function acceptWorkSuggestion(
         && raced.convertedTaskId
         && raced.convertedTaskId.toString() === task._id.toString()
     ) {
+        const taskRecord = normalizeTask(task);
+        await enqueueSuggestionAcceptedOutbox({
+            suggestionId: raced._id.toString(),
+            taskId: taskRecord._id,
+            conversationId: raced.conversationId.toString(),
+            organizationId: raced.organizationId
+                ? raced.organizationId.toString()
+                : null,
+            actorUserId: input.actorUserId,
+        });
         return {
             suggestion: normalizeWorkSuggestion(raced),
-            task: normalizeTask(task),
+            task: taskRecord,
         };
     }
 
@@ -669,6 +726,15 @@ export async function dismissWorkSuggestion(
     const suggestion = await loadSuggestionOrThrow(input.suggestionId);
 
     if (suggestion.status === "dismissed") {
+        await enqueueSuggestionDismissedOutbox({
+            suggestionId: suggestion._id.toString(),
+            conversationId: suggestion.conversationId.toString(),
+            organizationId: suggestion.organizationId
+                ? suggestion.organizationId.toString()
+                : null,
+            actorUserId: input.actorUserId,
+            dismissReason: suggestion.dismissReason ?? reason,
+        });
         return normalizeWorkSuggestion(suggestion);
     }
 
@@ -705,16 +771,12 @@ export async function dismissWorkSuggestion(
             organizationId: organizationIdStr,
         }));
 
-        await enqueueOutboxEvent({
-            topic: "work.suggestion.dismissed",
-            dedupeKey: `work.suggestion.dismissed:${suggestionIdStr}`,
-            payload: {
-                suggestionId: suggestionIdStr,
-                conversationId: conversationIdStr,
-                organizationId: organizationIdStr,
-                actorUserId: input.actorUserId,
-                dismissReason: reason.slice(0, 2000),
-            },
+        await enqueueSuggestionDismissedOutbox({
+            suggestionId: suggestionIdStr,
+            conversationId: conversationIdStr,
+            organizationId: organizationIdStr,
+            actorUserId: input.actorUserId,
+            dismissReason: reason.slice(0, 2000),
         });
 
         suggestionsDismissedCounter.inc();
@@ -723,6 +785,15 @@ export async function dismissWorkSuggestion(
 
     const raced = await loadSuggestionOrThrow(input.suggestionId);
     if (raced.status === "dismissed") {
+        await enqueueSuggestionDismissedOutbox({
+            suggestionId: raced._id.toString(),
+            conversationId: raced.conversationId.toString(),
+            organizationId: raced.organizationId
+                ? raced.organizationId.toString()
+                : null,
+            actorUserId: input.actorUserId,
+            dismissReason: raced.dismissReason ?? reason,
+        });
         return normalizeWorkSuggestion(raced);
     }
 

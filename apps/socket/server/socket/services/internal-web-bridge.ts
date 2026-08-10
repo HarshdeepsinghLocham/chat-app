@@ -83,8 +83,12 @@ export async function postToInternalWebApi<TResponse>(
 
             // Authz endpoints return structured { allowed, reason } on 403/401.
             // Treat those as usable responses so callers do not mislabel them as
-            // authorization_service_unavailable.
-            if (isStructuredAuthorizationBody(parsed)) {
+            // authorization_service_unavailable. Do not short-circuit on 5xx —
+            // those should fall through to the next candidate URL.
+            if (
+                (response.status === 401 || response.status === 403)
+                && isStructuredAuthorizationBody(parsed)
+            ) {
                 return parsed as TResponse;
             }
 

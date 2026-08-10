@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,12 +44,15 @@ export function InboxApprovalsView() {
     const [error, setError] = useState<string | null>(null);
     const [commentsById, setCommentsById] = useState<Record<string, string>>({});
     const [paramsById, setParamsById] = useState<Record<string, string>>({});
+    const loadSeqRef = useRef(0);
 
     const loadApprovals = useCallback(async () => {
+        const requestId = ++loadSeqRef.current;
         setLoading(true);
         setError(null);
         try {
             const response = await getTaskApprovals(conversationId.trim() || undefined);
+            if (requestId !== loadSeqRef.current) return;
             setApprovals(response.approvals);
             setCommentsById((current) => {
                 const next = { ...current };
@@ -70,6 +73,7 @@ export function InboxApprovalsView() {
                 return next;
             });
         } catch (loadError) {
+            if (requestId !== loadSeqRef.current) return;
             setApprovals([]);
             if (loadError instanceof ApiHttpError) {
                 if (loadError.status === 403) {
@@ -83,7 +87,9 @@ export function InboxApprovalsView() {
                 setError(loadError instanceof Error ? loadError.message : "Failed to load approvals");
             }
         } finally {
-            setLoading(false);
+            if (requestId === loadSeqRef.current) {
+                setLoading(false);
+            }
         }
     }, [conversationId]);
 

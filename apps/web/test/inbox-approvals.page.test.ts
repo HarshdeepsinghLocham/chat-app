@@ -18,11 +18,15 @@ jest.mock("@/components/work-suggestions/inbox-approvals", () => ({
 }));
 
 import { isWorkInboxUiEnabled } from "@semantask/services/organization-policy.service";
-import InboxApprovalsPage from "../app/inbox/approvals/page";
+import InboxApprovalsPage, { dynamic } from "../app/inbox/approvals/page";
 
 describe("InboxApprovalsPage flag gate", () => {
     beforeEach(() => {
         jest.clearAllMocks();
+    });
+
+    it("forces dynamic rendering so WORK_INBOX_UI is evaluated at request time", () => {
+        expect(dynamic).toBe("force-dynamic");
     });
 
     it("calls notFound when WORK_INBOX_UI is disabled", () => {

@@ -115,6 +115,8 @@ export interface TaskRecord {
     _id: string;
     conversationId: string;
     parentTaskId: string | null;
+    /** Present when created by accepting a WorkSuggestion. */
+    suggestionId?: string | null;
     title: string;
     description: string;
     status: TaskStatus;

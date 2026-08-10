@@ -23,6 +23,8 @@ export interface ITask {
     /** Null / missing = personal workspace. Inherited from conversation when set. */
     organizationId?: mongoose.Types.ObjectId | null;
     parentTaskId?: mongoose.Types.ObjectId | null;
+    /** Set when this Task was created by accepting a WorkSuggestion. */
+    suggestionId?: mongoose.Types.ObjectId | null;
     title: string;
     description: string;
     status: TaskStatus;
@@ -147,6 +149,12 @@ const TaskSchema = new Schema<ITask>(
         createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
         source: { type: String, enum: ["ai", "manual", "imported"], required: true, index: true },
         parentTaskId: { type: Schema.Types.ObjectId, ref: "Task", default: null, index: true },
+        suggestionId: {
+            type: Schema.Types.ObjectId,
+            ref: "WorkSuggestion",
+            default: null,
+            index: true,
+        },
         sourceMessageIds: [{ type: Schema.Types.ObjectId, ref: "Message" }],
         latestContextMessageId: { type: Schema.Types.ObjectId, ref: "Message", default: null },
         confidence: { type: Number, min: 0, max: 1, default: 1 },

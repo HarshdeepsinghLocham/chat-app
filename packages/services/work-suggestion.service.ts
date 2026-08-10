@@ -1,16 +1,23 @@
 import mongoose from "mongoose";
 import type {
     TaskPriority,
+    TaskRecord,
     WorkSuggestionCandidates,
     WorkSuggestionRecord,
     WorkSuggestionStatus,
 } from "@semantask/types";
 import { connectToDatabase } from "@semantask/db";
+import TaskModel, { type ITask } from "@semantask/db/models/Task";
 import WorkSuggestionModel, {
     type IWorkSuggestion,
     WORK_SUGGESTION_STATUSES,
 } from "@semantask/db/models/WorkSuggestion";
-import { ValidationError } from "./organization-errors";
+import { AuthorizationError } from "./authorization-errors";
+import { ConflictError, ValidationError } from "./organization-errors";
+import { assertAcceptCreatesCoordinationOnly } from "./organization-policy.service";
+import { normalizeTask } from "./normalizers/task.normalizer";
+import { createTask, updateTask } from "./repositories/task.repo";
+import { enqueueOutboxEvent } from "./outbox.service";
 
 export function isSuggestionStatus(value: unknown): value is WorkSuggestionStatus {
     return typeof value === "string"
@@ -52,6 +59,221 @@ export type WorkSuggestionListResult = {
         totalPages: number;
     };
 };
+
+export type AcceptWorkSuggestionInput = {
+    suggestionId: string;
+    actorUserId: string;
+    assignees?: string[];
+    dueAt?: string | Date | null;
+    priority?: TaskPriority;
+};
+
+export type AcceptWorkSuggestionResult = {
+    suggestion: WorkSuggestionRecord;
+    task: TaskRecord;
+};
+
+export type DismissWorkSuggestionInput = {
+    suggestionId: string;
+    actorUserId: string;
+    reason: string;
+};
+
+export type AssignWorkSuggestionInput = {
+    suggestionId: string;
+    actorUserId: string;
+    assignees?: string[];
+    dueAt?: string | Date | null;
+    priority?: TaskPriority;
+};
+
+export type AssignWorkSuggestionResult = {
+    suggestion: WorkSuggestionRecord;
+    task: TaskRecord;
+};
+
+const TASK_PRIORITIES: readonly TaskPriority[] = ["low", "medium", "high", "urgent"];
+
+function isTaskPriority(value: unknown): value is TaskPriority {
+    return typeof value === "string" && (TASK_PRIORITIES as readonly string[]).includes(value);
+}
+
+function buildAcceptDedupeKey(suggestionId: string): string {
+    return `suggestion.accept::${suggestionId}`;
+}
+
+function resolvePriority(
+    override: TaskPriority | undefined,
+    candidate: TaskPriority | "" | undefined
+): TaskPriority {
+    if (override && isTaskPriority(override)) {
+        return override;
+    }
+    if (candidate && isTaskPriority(candidate)) {
+        return candidate;
+    }
+    return "medium";
+}
+
+function resolveDueAt(
+    override: string | Date | null | undefined,
+    candidate: Date | string | null | undefined
+): Date | null {
+    if (override === null) {
+        return null;
+    }
+    if (override !== undefined) {
+        const parsed = override instanceof Date ? override : new Date(override);
+        if (Number.isNaN(parsed.getTime())) {
+            throw new ValidationError("Invalid dueAt");
+        }
+        return parsed;
+    }
+    if (candidate == null) {
+        return null;
+    }
+    const parsed = candidate instanceof Date ? candidate : new Date(candidate);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function resolveAssignees(
+    override: string[] | undefined,
+    candidates: mongoose.Types.ObjectId[] | undefined
+): string[] {
+    if (override !== undefined) {
+        return override.filter((id) => isValidObjectId(id));
+    }
+    return (candidates ?? []).map((id) => id.toString()).filter((id) => isValidObjectId(id));
+}
+
+async function loadSuggestionOrThrow(suggestionId: string): Promise<IWorkSuggestion> {
+    if (!isValidObjectId(suggestionId)) {
+        throw new AuthorizationError("NOT_FOUND", "Work suggestion not found");
+    }
+
+    const doc = await WorkSuggestionModel.findById(suggestionId).exec();
+    if (!doc) {
+        throw new AuthorizationError("NOT_FOUND", "Work suggestion not found");
+    }
+    return doc;
+}
+
+async function findTaskByDedupeKey(dedupeKey: string): Promise<ITask | null> {
+    return TaskModel.findOne({ dedupeKey }).exec();
+}
+
+async function createOrReuseAcceptTask(input: {
+    suggestion: IWorkSuggestion;
+    actorUserId: string;
+    assignees: string[];
+    dueAt: Date | null;
+    priority: TaskPriority;
+}): Promise<{ task: ITask; created: boolean }> {
+    const suggestionId = input.suggestion._id.toString();
+    const dedupeKey = buildAcceptDedupeKey(suggestionId);
+
+    const existing = await findTaskByDedupeKey(dedupeKey);
+    if (existing) {
+        return { task: existing, created: false };
+    }
+
+    try {
+        const task = await createTask({
+            conversationId: input.suggestion.conversationId.toString(),
+            organizationId: input.suggestion.organizationId
+                ? input.suggestion.organizationId.toString()
+                : null,
+            parentTaskId: null,
+            suggestionId,
+            title: input.suggestion.title,
+            description: input.suggestion.summary ?? "",
+            assignees: input.assignees,
+            dueAt: input.dueAt,
+            priority: input.priority,
+            source: "ai",
+            sourceMessageIds: [input.suggestion.messageId.toString()],
+            latestContextMessageId: input.suggestion.messageId.toString(),
+            confidence: input.suggestion.confidence,
+            tags: ["work-suggestion"],
+            dedupeKey,
+            createdBy: input.actorUserId,
+            subTasks: [],
+            dependencyIds: [],
+            lifecycleState: "ready",
+            iterationCount: 0,
+            currentRunId: null,
+            currentStepId: null,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            lastHeartbeatAt: null,
+            nextRetryAt: null,
+            blockedReason: null,
+            pausedReason: null,
+            progress: 0,
+            checkpoints: [],
+            executionHistory: {
+                attempts: 0,
+                failures: 0,
+                results: [],
+            },
+        });
+        return { task, created: true };
+    } catch (error) {
+        if (isDuplicateKeyError(error)) {
+            const raced = await findTaskByDedupeKey(dedupeKey);
+            if (raced) {
+                return { task: raced, created: false };
+            }
+        }
+        throw error;
+    }
+}
+
+async function enqueueTaskCreatedFanout(task: TaskRecord, actorUserId: string): Promise<void> {
+    await enqueueOutboxEvent({
+        topic: "task.created",
+        dedupeKey: `task.created:${task._id}`,
+        payload: {
+            conversationId: task.conversationId,
+            socketPath: "/internal/task-created",
+            socketPayload: {
+                task,
+                sourceMessageId: task.sourceMessageIds[0] ?? null,
+                createdByType: "user",
+                createdById: actorUserId,
+                suggestionId: task.suggestionId ?? null,
+            },
+        },
+    });
+}
+
+/**
+ * Accept creates the coordination task before the suggestion CAS. If the CAS
+ * loses (e.g. dismiss won), delete the orphan so the accept dedupe key does not
+ * permanently block a later repair/re-accept.
+ *
+ * Skip delete when the suggestion already claims this task — a concurrent
+ * winning accept may have linked it after we lost our CAS read.
+ */
+async function discardOrphanAcceptTask(
+    task: ITask,
+    suggestionId: string
+): Promise<void> {
+    const linked = await WorkSuggestionModel.findById(suggestionId).exec();
+    if (
+        linked?.status === "converted"
+        && linked.convertedTaskId
+        && linked.convertedTaskId.toString() === task._id.toString()
+    ) {
+        return;
+    }
+
+    const filter: { _id: ITask["_id"]; dedupeKey?: string } = { _id: task._id };
+    if (typeof task.dedupeKey === "string" && task.dedupeKey.length > 0) {
+        filter.dedupeKey = task.dedupeKey;
+    }
+    await TaskModel.deleteOne(filter).exec();
+}
 
 function isValidObjectId(value: string | null | undefined): value is string {
     return Boolean(value && mongoose.Types.ObjectId.isValid(value));
@@ -277,6 +499,282 @@ export async function listWorkSuggestions(
             total,
             totalPages: Math.max(1, Math.ceil(total / limit)),
         },
+    };
+}
+
+/**
+ * Accept a proposed WorkSuggestion into a coordination Task.
+ * Never enqueues task.execution.* or creates TaskAction execution requests.
+ */
+export async function acceptWorkSuggestion(
+    input: AcceptWorkSuggestionInput
+): Promise<AcceptWorkSuggestionResult> {
+    assertAcceptCreatesCoordinationOnly();
+    await connectToDatabase();
+
+    if (!isValidObjectId(input.actorUserId)) {
+        throw new ValidationError("Invalid actorUserId");
+    }
+
+    if (input.priority !== undefined && !isTaskPriority(input.priority)) {
+        throw new ValidationError("Invalid priority");
+    }
+
+    if (input.assignees !== undefined) {
+        if (!Array.isArray(input.assignees) || input.assignees.length > 32) {
+            throw new ValidationError("assignees must be an array of at most 32 user ids");
+        }
+        for (const id of input.assignees) {
+            if (!isValidObjectId(id)) {
+                throw new ValidationError("Invalid assignee id");
+            }
+        }
+    }
+
+    const suggestion = await loadSuggestionOrThrow(input.suggestionId);
+
+    if (suggestion.status === "converted" && suggestion.convertedTaskId) {
+        const existingTask = await TaskModel.findById(suggestion.convertedTaskId).exec();
+        if (!existingTask) {
+            throw new ConflictError("Converted suggestion is missing its task");
+        }
+        return {
+            suggestion: normalizeWorkSuggestion(suggestion),
+            task: normalizeTask(existingTask),
+        };
+    }
+
+    if (suggestion.status !== "proposed") {
+        throw new ConflictError(`Suggestion cannot be accepted from status=${suggestion.status}`);
+    }
+
+    const assignees = resolveAssignees(input.assignees, suggestion.candidates?.assigneeCandidates);
+    const dueAt = resolveDueAt(input.dueAt, suggestion.candidates?.dueAtCandidate ?? null);
+    const priority = resolvePriority(
+        input.priority,
+        (suggestion.candidates?.priorityCandidate ?? "") as TaskPriority | ""
+    );
+
+    const { task, created: taskCreated } = await createOrReuseAcceptTask({
+        suggestion,
+        actorUserId: input.actorUserId,
+        assignees,
+        dueAt,
+        priority,
+    });
+
+    const converted = await WorkSuggestionModel.findOneAndUpdate(
+        {
+            _id: suggestion._id,
+            status: "proposed",
+        },
+        {
+            $set: {
+                status: "converted",
+                convertedTaskId: task._id,
+            },
+        },
+        { new: true }
+    ).exec();
+
+    if (converted) {
+        const taskRecord = normalizeTask(task);
+        console.info(JSON.stringify({
+            event: "suggestion.converted",
+            suggestionId: converted._id.toString(),
+            taskId: taskRecord._id,
+            actorUserId: input.actorUserId,
+            conversationId: converted.conversationId.toString(),
+            organizationId: converted.organizationId
+                ? converted.organizationId.toString()
+                : null,
+            taskCreated,
+        }));
+
+        if (taskCreated) {
+            await enqueueTaskCreatedFanout(taskRecord, input.actorUserId);
+        }
+
+        return {
+            suggestion: normalizeWorkSuggestion(converted),
+            task: taskRecord,
+        };
+    }
+
+    const raced = await loadSuggestionOrThrow(input.suggestionId);
+    if (
+        raced.status === "converted"
+        && raced.convertedTaskId
+        && raced.convertedTaskId.toString() === task._id.toString()
+    ) {
+        return {
+            suggestion: normalizeWorkSuggestion(raced),
+            task: normalizeTask(task),
+        };
+    }
+
+    if (taskCreated) {
+        await discardOrphanAcceptTask(task, input.suggestionId);
+    }
+
+    throw new ConflictError("Suggestion was modified concurrently; accept aborted");
+}
+
+export async function dismissWorkSuggestion(
+    input: DismissWorkSuggestionInput
+): Promise<WorkSuggestionRecord> {
+    await connectToDatabase();
+
+    if (!isValidObjectId(input.actorUserId)) {
+        throw new ValidationError("Invalid actorUserId");
+    }
+
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+    if (!reason) {
+        throw new ValidationError("dismiss reason is required");
+    }
+    if (reason.length > 2000) {
+        throw new ValidationError("dismiss reason must be at most 2000 characters");
+    }
+
+    const suggestion = await loadSuggestionOrThrow(input.suggestionId);
+
+    if (suggestion.status === "dismissed") {
+        return normalizeWorkSuggestion(suggestion);
+    }
+
+    if (suggestion.status !== "proposed") {
+        throw new ConflictError(`Suggestion cannot be dismissed from status=${suggestion.status}`);
+    }
+
+    const dismissed = await WorkSuggestionModel.findOneAndUpdate(
+        {
+            _id: suggestion._id,
+            status: "proposed",
+        },
+        {
+            $set: {
+                status: "dismissed",
+                dismissReason: reason.slice(0, 2000),
+            },
+        },
+        { new: true }
+    ).exec();
+
+    if (dismissed) {
+        console.info(JSON.stringify({
+            event: "suggestion.dismissed",
+            suggestionId: dismissed._id.toString(),
+            actorUserId: input.actorUserId,
+            conversationId: dismissed.conversationId.toString(),
+            organizationId: dismissed.organizationId
+                ? dismissed.organizationId.toString()
+                : null,
+        }));
+        return normalizeWorkSuggestion(dismissed);
+    }
+
+    const raced = await loadSuggestionOrThrow(input.suggestionId);
+    if (raced.status === "dismissed") {
+        return normalizeWorkSuggestion(raced);
+    }
+
+    throw new ConflictError("Suggestion was modified concurrently; dismiss aborted");
+}
+
+export async function assignWorkSuggestion(
+    input: AssignWorkSuggestionInput
+): Promise<AssignWorkSuggestionResult> {
+    await connectToDatabase();
+
+    if (!isValidObjectId(input.actorUserId)) {
+        throw new ValidationError("Invalid actorUserId");
+    }
+
+    if (
+        input.assignees === undefined
+        && input.dueAt === undefined
+        && input.priority === undefined
+    ) {
+        throw new ValidationError("assignees, dueAt, or priority is required");
+    }
+
+    if (input.priority !== undefined && !isTaskPriority(input.priority)) {
+        throw new ValidationError("Invalid priority");
+    }
+
+    if (input.assignees !== undefined) {
+        if (!Array.isArray(input.assignees) || input.assignees.length > 32) {
+            throw new ValidationError("assignees must be an array of at most 32 user ids");
+        }
+        for (const id of input.assignees) {
+            if (!isValidObjectId(id)) {
+                throw new ValidationError("Invalid assignee id");
+            }
+        }
+    }
+
+    const suggestion = await loadSuggestionOrThrow(input.suggestionId);
+
+    if (suggestion.status !== "converted" || !suggestion.convertedTaskId) {
+        throw new ConflictError("Suggestion must be converted before assign");
+    }
+
+    const dueAt = input.dueAt !== undefined
+        ? resolveDueAt(input.dueAt, undefined)
+        : undefined;
+
+    const updatedTask = await updateTask({
+        taskId: suggestion.convertedTaskId.toString(),
+        ...(input.assignees !== undefined ? { assignees: input.assignees } : {}),
+        ...(dueAt !== undefined ? { dueAt } : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        updatedBy: input.actorUserId,
+    });
+
+    if (!updatedTask) {
+        throw new ConflictError("Converted suggestion is missing its task");
+    }
+
+    const taskRecord = normalizeTask(updatedTask);
+
+    await enqueueOutboxEvent({
+        topic: "task.updated",
+        dedupeKey: `task.updated:${taskRecord._id}:${taskRecord.updatedAt}`,
+        payload: {
+            conversationId: taskRecord.conversationId,
+            socketPath: "/internal/task-updated",
+            socketPayload: {
+                taskId: taskRecord._id,
+                conversationId: taskRecord.conversationId,
+                patch: {
+                    ...(input.assignees !== undefined ? { assignees: input.assignees } : {}),
+                    ...(dueAt !== undefined ? { dueAt: dueAt ? dueAt.toISOString() : null } : {}),
+                    ...(input.priority !== undefined ? { priority: input.priority } : {}),
+                },
+                previousVersion: Math.max(0, (taskRecord.version ?? 1) - 1),
+                newVersion: taskRecord.version,
+                updatedByType: "user",
+                updatedById: input.actorUserId,
+                suggestionId: suggestion._id.toString(),
+            },
+        },
+    });
+
+    console.info(JSON.stringify({
+        event: "suggestion.assigned",
+        suggestionId: suggestion._id.toString(),
+        taskId: taskRecord._id,
+        actorUserId: input.actorUserId,
+        conversationId: suggestion.conversationId.toString(),
+        organizationId: suggestion.organizationId
+            ? suggestion.organizationId.toString()
+            : null,
+    }));
+
+    return {
+        suggestion: normalizeWorkSuggestion(suggestion),
+        task: taskRecord,
     };
 }
 

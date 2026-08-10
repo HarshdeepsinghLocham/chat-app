@@ -100,5 +100,25 @@ describe("WorkSuggestionDetailView", () => {
         expect(detail).toHaveTextContent("Follow up with the new hire");
         expect(detail).toHaveTextContent("88%");
         expect(detail).toHaveTextContent("msg-1");
+        expect(screen.getByTestId("work-suggestion-actions")).toBeInTheDocument();
+        expect(screen.getByTestId("suggestion-accept")).toBeInTheDocument();
+        expect(screen.getByTestId("suggestion-dismiss")).toBeInTheDocument();
+    });
+
+    it("shows assign controls for converted suggestions", () => {
+        render(
+            <WorkSuggestionDetailView
+                loading={false}
+                errorStatus={null}
+                errorMessage={null}
+                suggestion={buildSuggestion({
+                    status: "converted",
+                    convertedTaskId: "task-1",
+                })}
+            />
+        );
+        expect(screen.getByTestId("converted-task-id")).toHaveTextContent("task-1");
+        expect(screen.getByTestId("suggestion-assign")).toBeInTheDocument();
+        expect(screen.queryByTestId("suggestion-accept")).not.toBeInTheDocument();
     });
 });

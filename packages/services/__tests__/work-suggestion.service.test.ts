@@ -19,8 +19,30 @@ jest.mock("@semantask/db/models/WorkSuggestion", () => ({
         create: (...args: unknown[]) => create(...args),
         countDocuments: (...args: unknown[]) => countDocuments(...args),
         find: (...args: unknown[]) => find(...args),
+        findOneAndUpdate: jest.fn(),
     },
     WORK_SUGGESTION_STATUSES: ["proposed", "accepted", "dismissed", "converted"],
+}));
+
+jest.mock("@semantask/db/models/Task", () => ({
+    __esModule: true,
+    default: {
+        findOne: jest.fn(),
+        findById: jest.fn(),
+    },
+}));
+
+jest.mock("../repositories/task.repo", () => ({
+    createTask: jest.fn(),
+    updateTask: jest.fn(),
+}));
+
+jest.mock("../outbox.service", () => ({
+    enqueueOutboxEvent: jest.fn(),
+}));
+
+jest.mock("../organization-policy.service", () => ({
+    assertAcceptCreatesCoordinationOnly: jest.fn(),
 }));
 
 import {

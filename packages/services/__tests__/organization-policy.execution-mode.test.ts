@@ -23,7 +23,9 @@ jest.mock("../organization.service", () => ({
 }));
 
 import {
+    assertAcceptCreatesCoordinationOnly,
     getEffectiveExecutionMode,
+    isAcceptCreatesExecutionEnabled,
     isExecutionModeEnforce,
     isSuggestionBlockExecEnabled,
     isSuggestionIngressEnabled,
@@ -31,6 +33,7 @@ import {
     shouldBlockExecutionEnqueue,
     upsertOrganizationPolicy,
 } from "../organization-policy.service";
+import { ConflictError } from "../organization-errors";
 
 const ENV_KEYS = [
     "DEFAULT_EXECUTION_MODE",
@@ -38,6 +41,7 @@ const ENV_KEYS = [
     "GRANDFATHER_AUTO_TENANTS",
     "SUGGESTION_INGRESS",
     "SUGGESTION_BLOCK_EXEC",
+    "ACCEPT_CREATES_EXECUTION",
 ] as const;
 
 const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
@@ -120,6 +124,19 @@ describe("suggestion ingress flags", () => {
         expect(shouldBlockExecutionEnqueue("auto_execute")).toBe(false);
         process.env.SUGGESTION_BLOCK_EXEC = "0";
         expect(shouldBlockExecutionEnqueue("suggest_only")).toBe(false);
+    });
+});
+
+describe("accept creates execution safety rail", () => {
+    it("defaults ACCEPT_CREATES_EXECUTION off", () => {
+        delete process.env.ACCEPT_CREATES_EXECUTION;
+        expect(isAcceptCreatesExecutionEnabled()).toBe(false);
+        expect(() => assertAcceptCreatesCoordinationOnly()).not.toThrow();
+    });
+
+    it("fails closed when ACCEPT_CREATES_EXECUTION is enabled", () => {
+        expect(isAcceptCreatesExecutionEnabled("1")).toBe(true);
+        expect(() => assertAcceptCreatesCoordinationOnly("1")).toThrow(ConflictError);
     });
 });
 

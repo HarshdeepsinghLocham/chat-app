@@ -88,7 +88,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
                 },
             });
         } catch (error) {
-            if (error instanceof z.ZodError) {
+            if (error instanceof z.ZodError || error instanceof SyntaxError) {
                 return NextResponse.json(
                     { success: false, error: "Invalid request-execution payload" },
                     { status: 400 }

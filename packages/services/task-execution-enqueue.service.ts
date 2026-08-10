@@ -64,7 +64,9 @@ export async function enqueueTaskExecutionRequested(
     await enqueueOutboxEvent({
         topic: "task.execution.requested",
         dedupeKey: input.dedupeKey,
-        payload: input.payload,
+        payload: explicitManagerRequest
+            ? { ...input.payload, explicitManagerRequest: true }
+            : input.payload,
         session: input.session,
     });
 

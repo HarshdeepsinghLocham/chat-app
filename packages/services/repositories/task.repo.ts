@@ -375,6 +375,23 @@ export async function getPendingApprovalTaskActionForTask(taskId: string): Promi
         .exec();
 }
 
+/**
+ * Find an in-flight explicit manager request action that has not yet reached
+ * approval_pending (worker may still be processing `requested`).
+ */
+export async function getInFlightExplicitRequestTaskAction(
+    taskId: string
+): Promise<ITaskAction | null> {
+    await connectToDatabase();
+    return TaskActionModel.findOne({
+        taskId: toObjectId(taskId),
+        executionState: { $in: ["requested", "approval_pending"] },
+        "patch.after.explicitManagerRequest": true,
+    })
+        .sort({ createdAt: -1 })
+        .exec();
+}
+
 export async function getPendingApprovalTaskActionsForOrganization(
     organizationId: string
 ): Promise<ITaskAction[]> {

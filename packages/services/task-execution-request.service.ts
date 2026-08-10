@@ -15,7 +15,7 @@ import {
 import {
     buildTaskActionIdempotencyKey,
     createTaskAction,
-    getPendingApprovalTaskActionForTask,
+    getInFlightExplicitRequestTaskAction,
 } from "./repositories/task.repo";
 import { enqueueTaskExecutionRequested } from "./task-execution-enqueue.service";
 
@@ -73,10 +73,10 @@ export async function requestTaskExecution(
         input.authOptions
     );
 
-    const existingPending = await getPendingApprovalTaskActionForTask(input.taskId);
-    if (existingPending) {
+    const existingInFlight = await getInFlightExplicitRequestTaskAction(input.taskId);
+    if (existingInFlight) {
         return {
-            taskAction: existingPending,
+            taskAction: existingInFlight,
             enqueued: false,
             alreadyPending: true,
         };
@@ -135,10 +135,10 @@ export async function requestTaskExecution(
     } catch (error) {
         const maybeMongoError = error as { code?: number };
         if (maybeMongoError?.code === 11000) {
-            const racedPending = await getPendingApprovalTaskActionForTask(input.taskId);
-            if (racedPending) {
+            const racedInFlight = await getInFlightExplicitRequestTaskAction(input.taskId);
+            if (racedInFlight) {
                 return {
-                    taskAction: racedPending,
+                    taskAction: racedInFlight,
                     enqueued: false,
                     alreadyPending: true,
                 };

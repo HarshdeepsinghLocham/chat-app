@@ -897,7 +897,11 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
 
     const requiresApproval = policyDecision.outcome === "approval_required" || forceApprovalForExplicit;
 
-    if ((policyDecision.outcome === "blocked" || unsafe) && !forceApprovalForExplicit && !bypassSuggestOnlyAfterHumanApproval) {
+    // Human-approved suggest_only re-entry may bypass mode denial only — never
+    // unrelated unsafe policy denials (domains, recipients, etc.).
+    const bypassSuggestOnlyModeDenial = bypassSuggestOnlyAfterHumanApproval && !unsafe;
+
+    if ((policyDecision.outcome === "blocked" || unsafe) && !forceApprovalForExplicit && !bypassSuggestOnlyModeDenial) {
         const modeDenied = modeDeniedBySuggestOnly;
         const blockedReason = unsafe
             ? "Execution blocked by policy: action marked unsafe."

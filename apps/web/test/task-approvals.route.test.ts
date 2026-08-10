@@ -203,12 +203,70 @@ describe("POST /api/task-approvals", () => {
         );
 
         expect(response.status).toBe(200);
+        // Generic approvals do not set S2.4 suggest_only bypass flags.
+        expect(enqueueOutboxEvent).toHaveBeenCalledWith(
+            expect.objectContaining({
+                topic: "task.execution.approved",
+                dedupeKey: "task.execution.approved:action-1",
+                payload: expect.objectContaining({
+                    humanApprovedExecution: false,
+                    explicitManagerRequest: false,
+                }),
+            })
+        );
+    });
+
+    it("sets suggest_only bypass flags only for explicit manager Allow AI tools approvals", async () => {
+        (requireAuthUser as jest.Mock).mockResolvedValue({ user: adminUser, response: null });
+        (getTaskActionById as jest.Mock).mockResolvedValue(
+            pendingAction({
+                actionType: "none",
+                toolName: "none",
+                patch: {
+                    before: null,
+                    after: {
+                        source: "explicit-manager-request",
+                        explicitManagerRequest: true,
+                        needsApproval: true,
+                    },
+                },
+            })
+        );
+        (assertCanDecideTaskExecutionApproval as jest.Mock).mockResolvedValue(undefined);
+        (updateTaskActionExecutionState as jest.Mock).mockResolvedValue(
+            pendingAction({ executionState: "approved" })
+        );
+
+        const response = await POST(
+            new Request("http://localhost/api/task-approvals", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                    taskActionId: "action-1",
+                    decision: "approve",
+                    reviewerComment: "allow tools",
+                }),
+            }) as never
+        );
+
+        expect(response.status).toBe(200);
         expect(enqueueOutboxEvent).toHaveBeenCalledWith(
             expect.objectContaining({
                 topic: "task.execution.approved",
                 dedupeKey: "task.execution.approved:action-1",
                 payload: expect.objectContaining({
                     humanApprovedExecution: true,
+                    explicitManagerRequest: true,
+                }),
+            })
+        );
+        expect(updateTaskActionExecutionState).toHaveBeenCalledWith(
+            expect.objectContaining({
+                patch: expect.objectContaining({
+                    after: expect.objectContaining({
+                        explicitManagerRequest: true,
+                        humanApprovedExecution: true,
+                    }),
                 }),
             })
         );

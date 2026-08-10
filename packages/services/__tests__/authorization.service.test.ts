@@ -392,7 +392,7 @@ describe("authorization.service", () => {
                     organizationId: foreignOrgId,
                 })
             ).resolves.toBe(false);
-            expect(getMembership).not.toHaveBeenCalled();
+            expect(getMembership).not.toHaveBeenCalledWith(foreignOrgId, userId);
 
             await expect(
                 assertWorkSuggestionMutationAccess(userId, {

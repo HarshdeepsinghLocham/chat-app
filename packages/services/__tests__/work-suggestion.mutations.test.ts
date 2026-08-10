@@ -272,7 +272,19 @@ describe("work-suggestion mutations", () => {
 
             expect(result.task._id).toBe(taskId);
             expect(createTask).not.toHaveBeenCalled();
-            expect(enqueueOutboxEvent).not.toHaveBeenCalled();
+            // Recovery: re-enqueue accepted outbox with stable dedupe key if prior insert failed.
+            expect(enqueueOutboxEvent).toHaveBeenCalledTimes(1);
+            expect(enqueueOutboxEvent).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    topic: "work.suggestion.accepted",
+                    dedupeKey: `work.suggestion.accepted:${suggestionId}`,
+                    payload: expect.objectContaining({
+                        suggestionId,
+                        taskId,
+                        actorUserId,
+                    }),
+                })
+            );
             expect(suggestionsAcceptedCounter.inc).not.toHaveBeenCalled();
             expect(acceptToTaskLatencyMs.observe).not.toHaveBeenCalled();
         });

@@ -1,17 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ApiHttpError, type TaskApprovalRecord } from "@/lib/utils/api";
 import {
-    ApiHttpError,
-    decideTaskApproval,
-    getTaskApprovals,
-    type TaskApprovalRecord,
-} from "@/lib/utils/api";
+    taskApprovalsErrorMessage,
+    useDecideTaskApproval,
+    useTaskApprovalsList,
+} from "@/lib/queries/use-task-approvals";
+import type { TaskApprovalsListParams } from "@/lib/queries/keys";
 
 function formatTimestamp(iso: string) {
     const value = new Date(iso);
@@ -39,88 +40,68 @@ function getPolicySummary(item: TaskApprovalRecord) {
 const STORAGE_KEY = "semantask.activeOrganizationId";
 
 export function InboxApprovalsView() {
-    const [approvals, setApprovals] = useState<TaskApprovalRecord[]>([]);
     const [conversationId, setConversationId] = useState("");
-    const [organizationId, setOrganizationId] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [organizationId] = useState<string | null>(() => {
+        if (typeof window === "undefined") return null;
+        return window.localStorage.getItem(STORAGE_KEY);
+    });
     const [actingId, setActingId] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
     const [commentsById, setCommentsById] = useState<Record<string, string>>({});
     const [paramsById, setParamsById] = useState<Record<string, string>>({});
-    const loadSeqRef = useRef(0);
+
+    const scopedConversation = conversationId.trim() || undefined;
+    const hasScope = Boolean(scopedConversation || organizationId);
+
+    const listParams: TaskApprovalsListParams = useMemo(
+        () => ({
+            conversationId: scopedConversation,
+            organizationId: scopedConversation ? undefined : organizationId ?? undefined,
+        }),
+        [scopedConversation, organizationId]
+    );
+
+    const listQuery = useTaskApprovalsList({
+        organizationId,
+        conversationId: scopedConversation,
+    });
+
+    const decideMutation = useDecideTaskApproval(listParams);
+
+    const approvals = listQuery.data ?? [];
 
     useEffect(() => {
-        if (typeof window === "undefined") return;
-        setOrganizationId(window.localStorage.getItem(STORAGE_KEY));
-    }, []);
-
-    const loadApprovals = useCallback(async () => {
-        const requestId = ++loadSeqRef.current;
-        setLoading(true);
-        setError(null);
-        try {
-            const scopedConversation = conversationId.trim() || undefined;
-            if (!scopedConversation && !organizationId) {
-                if (requestId !== loadSeqRef.current) return;
-                setApprovals([]);
-                setError(
-                    "Select an active organization or enter a conversation id to load execution approvals."
-                );
-                return;
-            }
-
-            const response = await getTaskApprovals({
-                conversationId: scopedConversation,
-                organizationId: scopedConversation ? undefined : organizationId ?? undefined,
-            });
-            if (requestId !== loadSeqRef.current) return;
-            setApprovals(response.approvals);
-            setCommentsById((current) => {
-                const next = { ...current };
-                for (const approval of response.approvals) {
-                    if (next[approval._id] === undefined) {
-                        next[approval._id] = "";
-                    }
+        if (!listQuery.data) return;
+        setCommentsById((current) => {
+            const next = { ...current };
+            for (const approval of listQuery.data) {
+                if (next[approval._id] === undefined) {
+                    next[approval._id] = "";
                 }
-                return next;
-            });
-            setParamsById((current) => {
-                const next = { ...current };
-                for (const approval of response.approvals) {
-                    if (next[approval._id] === undefined) {
-                        next[approval._id] = JSON.stringify(approval.parameters ?? {}, null, 2);
-                    }
-                }
-                return next;
-            });
-        } catch (loadError) {
-            if (requestId !== loadSeqRef.current) return;
-            setApprovals([]);
-            if (loadError instanceof ApiHttpError) {
-                if (loadError.status === 403) {
-                    setError(
-                        "You do not have permission to review execution approvals for this scope."
-                    );
-                } else {
-                    setError(loadError.message);
-                }
-            } else {
-                setError(loadError instanceof Error ? loadError.message : "Failed to load approvals");
             }
-        } finally {
-            if (requestId === loadSeqRef.current) {
-                setLoading(false);
+            return next;
+        });
+        setParamsById((current) => {
+            const next = { ...current };
+            for (const approval of listQuery.data) {
+                if (next[approval._id] === undefined) {
+                    next[approval._id] = JSON.stringify(approval.parameters ?? {}, null, 2);
+                }
             }
-        }
-    }, [conversationId, organizationId]);
+            return next;
+        });
+    }, [listQuery.data]);
 
-    useEffect(() => {
-        void loadApprovals();
-    }, [loadApprovals]);
+    const loading = hasScope && (listQuery.isLoading || listQuery.isFetching) && !listQuery.data;
+    const scopeError = !hasScope
+        ? "Select an active organization or enter a conversation id to load execution approvals."
+        : null;
+    const loadError = listQuery.error ? taskApprovalsErrorMessage(listQuery.error) : null;
+    const error = actionError ?? scopeError ?? loadError;
 
     async function decide(item: TaskApprovalRecord, decision: "approve" | "reject") {
         setActingId(item._id);
-        setError(null);
+        setActionError(null);
         try {
             let parsedParameters: Record<string, unknown> | undefined;
             const parameterText = paramsById[item._id] ?? "";
@@ -129,30 +110,29 @@ export function InboxApprovalsView() {
                 try {
                     const parsed = JSON.parse(parameterText) as unknown;
                     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-                        setError("Parameters override must be a JSON object.");
+                        setActionError("Parameters override must be a JSON object.");
                         setActingId(null);
                         return;
                     }
                     parsedParameters = parsed as Record<string, unknown>;
                 } catch {
-                    setError("Parameters override contains invalid JSON.");
+                    setActionError("Parameters override contains invalid JSON.");
                     setActingId(null);
                     return;
                 }
             }
 
-            await decideTaskApproval({
+            await decideMutation.mutateAsync({
                 taskActionId: item._id,
                 decision,
                 reviewerComment: commentsById[item._id] || undefined,
                 parameters: parsedParameters,
             });
-            await loadApprovals();
         } catch (decisionError) {
             if (decisionError instanceof ApiHttpError) {
-                setError(decisionError.message);
+                setActionError(decisionError.message);
             } else {
-                setError(
+                setActionError(
                     decisionError instanceof Error
                         ? decisionError.message
                         : "Failed to update approval decision"
@@ -197,8 +177,8 @@ export function InboxApprovalsView() {
                         <Button
                             data-testid="inbox-approvals-refresh"
                             variant="outline"
-                            onClick={() => void loadApprovals()}
-                            disabled={loading}
+                            onClick={() => void listQuery.refetch()}
+                            disabled={loading || !hasScope}
                         >
                             {loading ? "Loading…" : "Refresh"}
                         </Button>
@@ -222,13 +202,18 @@ export function InboxApprovalsView() {
                     <CardContent className="space-y-3 p-6 text-sm">
                         <p className="font-medium">Unable to load approvals</p>
                         <p className="text-muted-foreground">{error}</p>
-                        <Button
-                            data-testid="inbox-approvals-retry"
-                            variant="outline"
-                            onClick={() => void loadApprovals()}
-                        >
-                            Retry
-                        </Button>
+                        {hasScope ? (
+                            <Button
+                                data-testid="inbox-approvals-retry"
+                                variant="outline"
+                                onClick={() => {
+                                    setActionError(null);
+                                    void listQuery.refetch();
+                                }}
+                            >
+                                Retry
+                            </Button>
+                        ) : null}
                     </CardContent>
                 </Card>
             ) : null}

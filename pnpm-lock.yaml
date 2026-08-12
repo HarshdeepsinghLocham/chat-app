@@ -88,7 +88,7 @@ importers:
         version: 5.100.10(react@19.1.0)
       axios:
         specifier: ^1.18.0
-        version: 1.18.1
+        version: 1.18.1(debug@4.4.3)
       babel-preset-expo:
         specifier: ~54.0.10
         version: 54.0.10(@babel/core@7.29.0)(@babel/runtime@7.29.2)(expo@54.0.34(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3))(react-refresh@0.14.2)
@@ -265,6 +265,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4.2.2
         version: 4.3.0
+      '@tanstack/react-query':
+        specifier: ^5.100.10
+        version: 5.100.10(react@19.1.0)
       '@tanstack/react-virtual':
         specifier: ^3.13.21
         version: 3.13.24(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -12710,7 +12713,7 @@ snapshots:
 
   axe-core@4.12.1: {}
 
-  axios@1.18.1:
+  axios@1.18.1(debug@4.4.3):
     dependencies:
       follow-redirects: 1.16.0(debug@4.4.3)
       form-data: 4.0.6

@@ -1,30 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { WorkSuggestionRecord, WorkSuggestionStatus } from "@semantask/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-    ApiHttpError,
-    acceptWorkSuggestionApi,
-    assignWorkSuggestionApi,
-    dismissWorkSuggestionApi,
-    getOrganizationMembers,
-    listWorkSuggestions,
-    requestTaskExecutionApi,
-    type WorkSuggestionListResult,
-} from "@/lib/utils/api";
 import useWorkSuggestionStore from "@/store/work-suggestion-store";
 import {
     WorkInboxTriage,
     type OrgMemberOption,
 } from "@/components/work-suggestions/work-inbox-triage";
+import { useOrganizationMembers } from "@/lib/queries/use-organizations";
+import {
+    WORK_INBOX_PAGE_LIMIT,
+    mutationErrorMessage,
+    useAcceptWorkSuggestion,
+    useAssignWorkSuggestion,
+    useDismissWorkSuggestion,
+    useRequestTaskExecution,
+    useWorkSuggestionsList,
+} from "@/lib/queries/use-work-suggestions";
+import type { WorkSuggestionsListParams } from "@/lib/queries/keys";
 
 const STORAGE_KEY = "semantask.activeOrganizationId";
-const PAGE_LIMIT = 20;
 
 const STATUS_OPTIONS: Array<{ value: "" | WorkSuggestionStatus; label: string }> = [
     { value: "proposed", label: "proposed" },
@@ -59,153 +59,83 @@ function ownersForSuggestion(
     return [];
 }
 
-function restoreInboxRow(
-    current: WorkSuggestionRecord[],
-    previousRow: WorkSuggestionRecord
-): WorkSuggestionRecord[] {
-    const index = current.findIndex((row) => row._id === previousRow._id);
-    if (index >= 0) {
-        const next = current.slice();
-        next[index] = previousRow;
-        return next;
-    }
-    return [previousRow, ...current];
-}
-
 export function WorkInboxView() {
-    const [organizationId, setOrganizationId] = useState<string | null>(null);
+    const [organizationId] = useState<string | null>(() => {
+        if (typeof window === "undefined") return null;
+        return window.localStorage.getItem(STORAGE_KEY);
+    });
     const [conversationId, setConversationId] = useState("");
     const [status, setStatus] = useState<"" | WorkSuggestionStatus>("proposed");
     const [page, setPage] = useState(1);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [result, setResult] = useState<WorkSuggestionListResult | null>(null);
-    const [items, setItems] = useState<WorkSuggestionRecord[]>([]);
-    const [members, setMembers] = useState<OrgMemberOption[]>([]);
     const [ownerById, setOwnerById] = useState<Record<string, string[]>>({});
     const [actingId, setActingId] = useState<string | null>(null);
     const [actionErrorById, setActionErrorById] = useState<Record<string, string | null>>({});
-    const loadSeqRef = useRef(0);
 
     const refreshConversation = useWorkSuggestionStore((state) => state.refreshConversation);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        setOrganizationId(window.localStorage.getItem(STORAGE_KEY));
-    }, []);
 
     const scopedConversationId = conversationId.trim() || undefined;
     const hasScope = Boolean(organizationId || scopedConversationId);
 
-    const load = useCallback(async (options?: { quiet?: boolean }) => {
-        if (!organizationId && !scopedConversationId) {
-            loadSeqRef.current += 1;
-            setResult(null);
-            setItems([]);
-            setError(null);
-            setLoading(false);
-            return;
-        }
+    const listParams: WorkSuggestionsListParams = useMemo(
+        () => ({
+            organizationId: organizationId ?? undefined,
+            conversationId: scopedConversationId,
+            status,
+            page,
+            limit: WORK_INBOX_PAGE_LIMIT,
+        }),
+        [organizationId, scopedConversationId, status, page]
+    );
 
-        const requestId = ++loadSeqRef.current;
-        if (!options?.quiet) {
-            setLoading(true);
-        }
-        setError(null);
-        try {
-            const data = await listWorkSuggestions({
-                organizationId: organizationId ?? undefined,
-                conversationId: scopedConversationId,
-                status: status || undefined,
-                page,
-                limit: PAGE_LIMIT,
-            });
-            if (requestId !== loadSeqRef.current) return;
-            setResult(data);
-            setItems(data.items);
-        } catch (loadError) {
-            if (requestId !== loadSeqRef.current) return;
-            setResult(null);
-            setItems([]);
-            if (loadError instanceof ApiHttpError) {
-                setError(loadError.message);
-            } else {
-                setError(loadError instanceof Error ? loadError.message : "Failed to load inbox");
-            }
-        } finally {
-            if (requestId === loadSeqRef.current && !options?.quiet) {
-                setLoading(false);
-            }
-        }
-    }, [organizationId, scopedConversationId, status, page]);
+    const listQuery = useWorkSuggestionsList({
+        organizationId,
+        conversationId: scopedConversationId,
+        status,
+        page,
+        limit: WORK_INBOX_PAGE_LIMIT,
+    });
 
-    useEffect(() => {
-        void load();
-    }, [load]);
+    const membersQuery = useOrganizationMembers(organizationId);
+    const members: OrgMemberOption[] = useMemo(
+        () =>
+            (membersQuery.data ?? []).map((member) => ({
+                userId: member.userId,
+                role: member.role,
+            })),
+        [membersQuery.data]
+    );
 
-    useEffect(() => {
-        if (!organizationId) {
-            setMembers([]);
-            return;
-        }
+    const acceptMutation = useAcceptWorkSuggestion(listParams);
+    const dismissMutation = useDismissWorkSuggestion(listParams);
+    const assignMutation = useAssignWorkSuggestion(listParams);
+    const requestExecutionMutation = useRequestTaskExecution();
 
-        let cancelled = false;
-        void getOrganizationMembers(organizationId)
-            .then((list) => {
-                if (cancelled) return;
-                setMembers(
-                    list.map((member) => ({
-                        userId: member.userId,
-                        role: member.role,
-                    }))
-                );
-            })
-            .catch(() => {
-                if (!cancelled) {
-                    setMembers([]);
-                }
-            });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [organizationId]);
-
-    const pagination = result?.pagination;
+    const items = listQuery.data?.items ?? [];
+    const pagination = listQuery.data?.pagination;
     const totalPages = pagination?.totalPages ?? 1;
+    const loading = listQuery.isLoading || listQuery.isFetching;
+    const error = listQuery.error
+        ? mutationErrorMessage(listQuery.error, "Failed to load inbox")
+        : null;
 
     const setRowError = (id: string, message: string | null) => {
         setActionErrorById((current) => ({ ...current, [id]: message }));
     };
 
-    const afterMutationRefresh = async (conversationIdForBadge: string) => {
-        await load({ quiet: true });
-        void refreshConversation(conversationIdForBadge);
-    };
-
     async function handleAccept(item: WorkSuggestionRecord, assignees: string[]) {
-        const previousRow = item;
         const previousOwners = ownerById[item._id];
         setActingId(item._id);
         setRowError(item._id, null);
 
-        // Default inbox filter is proposed: drop the row immediately.
-        if (status === "proposed") {
-            setItems((current) => current.filter((row) => row._id !== item._id));
-        } else {
-            setItems((current) =>
-                current.map((row) =>
-                    row._id === item._id ? { ...row, status: "converted" as const } : row
-                )
-            );
-        }
         if (assignees.length > 0) {
             setOwnerById((current) => ({ ...current, [item._id]: assignees }));
         }
 
         try {
-            const response = await acceptWorkSuggestionApi(item._id, {
-                assignees: assignees.length > 0 ? assignees : undefined,
+            const response = await acceptMutation.mutateAsync({
+                item,
+                assignees,
+                statusFilter: status,
             });
             if (response.task.assignees?.length) {
                 setOwnerById((current) => ({
@@ -213,9 +143,8 @@ export function WorkInboxView() {
                     [item._id]: response.task.assignees,
                 }));
             }
-            await afterMutationRefresh(item.conversationId);
+            void refreshConversation(item.conversationId);
         } catch (actionError) {
-            setItems((current) => restoreInboxRow(current, previousRow));
             setOwnerById((current) => {
                 const next = { ...current };
                 if (previousOwners === undefined) {
@@ -225,49 +154,25 @@ export function WorkInboxView() {
                 }
                 return next;
             });
-            setRowError(
-                item._id,
-                actionError instanceof ApiHttpError
-                    ? actionError.message
-                    : actionError instanceof Error
-                      ? actionError.message
-                      : "Accept failed"
-            );
+            setRowError(item._id, mutationErrorMessage(actionError, "Accept failed"));
         } finally {
             setActingId(null);
         }
     }
 
     async function handleDismiss(item: WorkSuggestionRecord, reason: string) {
-        const previousRow = item;
         setActingId(item._id);
         setRowError(item._id, null);
 
-        if (status === "proposed") {
-            setItems((current) => current.filter((row) => row._id !== item._id));
-        } else {
-            setItems((current) =>
-                current.map((row) =>
-                    row._id === item._id
-                        ? { ...row, status: "dismissed" as const, dismissReason: reason }
-                        : row
-                )
-            );
-        }
-
         try {
-            await dismissWorkSuggestionApi(item._id, reason);
-            await afterMutationRefresh(item.conversationId);
+            await dismissMutation.mutateAsync({
+                item,
+                reason,
+                statusFilter: status,
+            });
+            void refreshConversation(item.conversationId);
         } catch (actionError) {
-            setItems((current) => restoreInboxRow(current, previousRow));
-            setRowError(
-                item._id,
-                actionError instanceof ApiHttpError
-                    ? actionError.message
-                    : actionError instanceof Error
-                      ? actionError.message
-                      : "Dismiss failed"
-            );
+            setRowError(item._id, mutationErrorMessage(actionError, "Dismiss failed"));
         } finally {
             setActingId(null);
         }
@@ -278,18 +183,12 @@ export function WorkInboxView() {
         setActingId(item._id);
         setRowError(item._id, null);
         try {
-            await requestTaskExecutionApi(item.convertedTaskId, {
+            await requestExecutionMutation.mutateAsync({
+                taskId: item.convertedTaskId,
                 reason: "Manager requested AI tool execution from work inbox",
             });
         } catch (actionError) {
-            setRowError(
-                item._id,
-                actionError instanceof ApiHttpError
-                    ? actionError.message
-                    : actionError instanceof Error
-                      ? actionError.message
-                      : "Allow AI tools failed"
-            );
+            setRowError(item._id, mutationErrorMessage(actionError, "Allow AI tools failed"));
         } finally {
             setActingId(null);
         }
@@ -302,27 +201,15 @@ export function WorkInboxView() {
         setOwnerById((current) => ({ ...current, [item._id]: assignees }));
 
         try {
-            const response = await assignWorkSuggestionApi(item._id, { assignees });
+            const response = await assignMutation.mutateAsync({ item, assignees });
             setOwnerById((current) => ({
                 ...current,
                 [item._id]: response.task.assignees ?? assignees,
             }));
-            setItems((current) =>
-                current.map((row) =>
-                    row._id === item._id ? response.suggestion : row
-                )
-            );
             void refreshConversation(item.conversationId);
         } catch (actionError) {
             setOwnerById((current) => ({ ...current, [item._id]: previousOwners }));
-            setRowError(
-                item._id,
-                actionError instanceof ApiHttpError
-                    ? actionError.message
-                    : actionError instanceof Error
-                      ? actionError.message
-                      : "Assign failed"
-            );
+            setRowError(item._id, mutationErrorMessage(actionError, "Assign failed"));
         } finally {
             setActingId(null);
         }
@@ -417,7 +304,7 @@ export function WorkInboxView() {
                 </Card>
             ) : null}
 
-            {hasScope && loading ? (
+            {hasScope && loading && !listQuery.data ? (
                 <div className="space-y-3" data-testid="work-inbox-loading">
                     {[0, 1, 2].map((index) => (
                         <div
@@ -428,7 +315,7 @@ export function WorkInboxView() {
                 </div>
             ) : null}
 
-            {hasScope && !loading && error ? (
+            {hasScope && !listQuery.isLoading && error ? (
                 <Card data-testid="work-inbox-error">
                     <CardContent className="space-y-3 p-6 text-sm">
                         <p className="font-medium">Unable to load inbox</p>
@@ -436,7 +323,7 @@ export function WorkInboxView() {
                         <Button
                             data-testid="work-inbox-retry"
                             variant="outline"
-                            onClick={() => void load()}
+                            onClick={() => void listQuery.refetch()}
                         >
                             Retry
                         </Button>
@@ -444,7 +331,7 @@ export function WorkInboxView() {
                 </Card>
             ) : null}
 
-            {hasScope && !loading && !error && items.length === 0 ? (
+            {hasScope && listQuery.isSuccess && items.length === 0 ? (
                 <Card data-testid="work-inbox-empty">
                     <CardContent className="space-y-2 p-6 text-sm">
                         <p className="font-medium">
@@ -459,7 +346,7 @@ export function WorkInboxView() {
                 </Card>
             ) : null}
 
-            {hasScope && !loading && !error && items.length > 0 ? (
+            {hasScope && listQuery.isSuccess && items.length > 0 ? (
                 <div className="space-y-3" data-testid="work-inbox-list">
                     {items.map((item) => (
                         <Card key={item._id} data-testid="work-inbox-row">
@@ -527,7 +414,7 @@ export function WorkInboxView() {
                 </div>
             ) : null}
 
-            {hasScope && !loading && !error && pagination && totalPages > 1 ? (
+            {hasScope && listQuery.isSuccess && pagination && totalPages > 1 ? (
                 <div className="flex items-center justify-between gap-3" data-testid="work-inbox-pagination">
                     <Button
                         variant="outline"

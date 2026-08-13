@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  */
 import React from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { WorkSuggestionRecord } from "@semantask/types";
@@ -46,6 +47,16 @@ jest.mock("@/store/work-suggestion-store", () => {
 
 import { WorkInboxView } from "@/components/work-suggestions/work-inbox";
 
+function renderWithQuery(ui: React.ReactElement) {
+    const client = new QueryClient({
+        defaultOptions: {
+            queries: { retry: false },
+            mutations: { retry: false },
+        },
+    });
+    return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
 function buildSuggestion(overrides: Partial<WorkSuggestionRecord> = {}): WorkSuggestionRecord {
     return {
         _id: "sug-1",
@@ -86,7 +97,7 @@ describe("WorkInboxView", () => {
     });
 
     it("shows onboarding when no org or conversation scope is set", async () => {
-        render(<WorkInboxView />);
+        renderWithQuery(<WorkInboxView />);
         expect(await screen.findByTestId("work-inbox-onboarding")).toBeInTheDocument();
         expect(listWorkSuggestions).not.toHaveBeenCalled();
         expect(screen.queryByTestId("suggestion-accept")).not.toBeInTheDocument();
@@ -102,7 +113,7 @@ describe("WorkInboxView", () => {
             pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
         });
 
-        render(<WorkInboxView />);
+        renderWithQuery(<WorkInboxView />);
 
         await waitFor(() => {
             expect(listWorkSuggestions).toHaveBeenCalledWith({
@@ -141,7 +152,7 @@ describe("WorkInboxView", () => {
             },
         });
 
-        render(<WorkInboxView />);
+        renderWithQuery(<WorkInboxView />);
         expect(await screen.findByTestId("suggestion-accept")).toBeInTheDocument();
 
         fireEvent.click(screen.getByTestId("suggestion-accept"));
@@ -174,7 +185,7 @@ describe("WorkInboxView", () => {
             alreadyPending: false,
         });
 
-        render(<WorkInboxView />);
+        renderWithQuery(<WorkInboxView />);
         fireEvent.change(await screen.findByTestId("work-inbox-status"), {
             target: { value: "converted" },
         });
@@ -206,7 +217,7 @@ describe("WorkInboxView", () => {
             buildSuggestion({ status: "dismissed", dismissReason: "Not useful" })
         );
 
-        render(<WorkInboxView />);
+        renderWithQuery(<WorkInboxView />);
         const dismiss = await screen.findByTestId("suggestion-dismiss");
         expect(dismiss).toBeDisabled();
 
@@ -249,7 +260,7 @@ describe("WorkInboxView", () => {
             },
         });
 
-        render(<WorkInboxView />);
+        renderWithQuery(<WorkInboxView />);
 
         // Switch to converted filter so the converted row is requested
         fireEvent.change(await screen.findByTestId("work-inbox-status"), {
@@ -286,7 +297,7 @@ describe("WorkInboxView", () => {
         });
         acceptWorkSuggestionApi.mockRejectedValue(new ApiHttpError(404, "Work suggestion not found"));
 
-        render(<WorkInboxView />);
+        renderWithQuery(<WorkInboxView />);
         fireEvent.click(await screen.findByTestId("suggestion-accept"));
 
         expect(await screen.findByTestId("suggestion-action-error")).toHaveTextContent(
@@ -303,7 +314,7 @@ describe("WorkInboxView", () => {
             pagination: { page: 1, limit: 20, total: 0, totalPages: 1 },
         });
 
-        render(<WorkInboxView />);
+        renderWithQuery(<WorkInboxView />);
         expect(await screen.findByTestId("work-inbox-empty")).toHaveTextContent(
             "No proposed suggestions"
         );
@@ -313,7 +324,7 @@ describe("WorkInboxView", () => {
         window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
         listWorkSuggestions.mockRejectedValue(new Error("Forbidden"));
 
-        render(<WorkInboxView />);
+        renderWithQuery(<WorkInboxView />);
         expect(await screen.findByTestId("work-inbox-error")).toHaveTextContent("Forbidden");
         expect(screen.getByTestId("work-inbox-retry")).toBeInTheDocument();
     });

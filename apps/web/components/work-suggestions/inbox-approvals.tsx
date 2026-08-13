@@ -1,17 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { type TaskApprovalRecord } from "@/lib/utils/api";
+import { useActiveOrganizationId } from "@/lib/hooks/useActiveOrganizationId";
 import {
-    ApiHttpError,
-    decideTaskApproval,
-    getTaskApprovals,
-    type TaskApprovalRecord,
-} from "@/lib/utils/api";
+    taskApprovalsErrorMessage,
+    useDecideTaskApproval,
+    useTaskApprovalsList,
+} from "@/lib/queries/use-task-approvals";
 
 function formatTimestamp(iso: string) {
     const value = new Date(iso);
@@ -36,91 +37,71 @@ function getPolicySummary(item: TaskApprovalRecord) {
     return reasons.join(" ");
 }
 
-const STORAGE_KEY = "semantask.activeOrganizationId";
-
 export function InboxApprovalsView() {
-    const [approvals, setApprovals] = useState<TaskApprovalRecord[]>([]);
+    const organizationId = useActiveOrganizationId();
     const [conversationId, setConversationId] = useState("");
-    const [organizationId, setOrganizationId] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
     const [actingId, setActingId] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
     const [commentsById, setCommentsById] = useState<Record<string, string>>({});
     const [paramsById, setParamsById] = useState<Record<string, string>>({});
-    const loadSeqRef = useRef(0);
+    const editedCommentIdsRef = useRef<Record<string, true>>({});
+    const editedParamIdsRef = useRef<Record<string, true>>({});
+
+    const scopedConversation = conversationId.trim() || undefined;
+    const hasScope = Boolean(scopedConversation || organizationId);
+
+    const listQuery = useTaskApprovalsList({
+        organizationId,
+        conversationId: scopedConversation,
+    });
+
+    const decideMutation = useDecideTaskApproval();
+
+    const approvals = listQuery.data ?? [];
 
     useEffect(() => {
-        if (typeof window === "undefined") return;
-        setOrganizationId(window.localStorage.getItem(STORAGE_KEY));
-    }, []);
+        if (!listQuery.data) return;
+        const approvalsData = listQuery.data;
+        const liveIds = new Set(approvalsData.map((approval) => approval._id));
 
-    const loadApprovals = useCallback(async () => {
-        const requestId = ++loadSeqRef.current;
-        setLoading(true);
-        setError(null);
-        try {
-            const scopedConversation = conversationId.trim() || undefined;
-            if (!scopedConversation && !organizationId) {
-                if (requestId !== loadSeqRef.current) return;
-                setApprovals([]);
-                setError(
-                    "Select an active organization or enter a conversation id to load execution approvals."
-                );
-                return;
+        setCommentsById((current) => {
+            const next: Record<string, string> = {};
+            for (const approval of approvalsData) {
+                next[approval._id] =
+                    editedCommentIdsRef.current[approval._id] && current[approval._id] !== undefined
+                        ? current[approval._id]
+                        : "";
             }
-
-            const response = await getTaskApprovals({
-                conversationId: scopedConversation,
-                organizationId: scopedConversation ? undefined : organizationId ?? undefined,
-            });
-            if (requestId !== loadSeqRef.current) return;
-            setApprovals(response.approvals);
-            setCommentsById((current) => {
-                const next = { ...current };
-                for (const approval of response.approvals) {
-                    if (next[approval._id] === undefined) {
-                        next[approval._id] = "";
-                    }
-                }
-                return next;
-            });
-            setParamsById((current) => {
-                const next = { ...current };
-                for (const approval of response.approvals) {
-                    if (next[approval._id] === undefined) {
-                        next[approval._id] = JSON.stringify(approval.parameters ?? {}, null, 2);
-                    }
-                }
-                return next;
-            });
-        } catch (loadError) {
-            if (requestId !== loadSeqRef.current) return;
-            setApprovals([]);
-            if (loadError instanceof ApiHttpError) {
-                if (loadError.status === 403) {
-                    setError(
-                        "You do not have permission to review execution approvals for this scope."
-                    );
-                } else {
-                    setError(loadError.message);
-                }
-            } else {
-                setError(loadError instanceof Error ? loadError.message : "Failed to load approvals");
+            return next;
+        });
+        setParamsById((current) => {
+            const next: Record<string, string> = {};
+            for (const approval of approvalsData) {
+                next[approval._id] =
+                    editedParamIdsRef.current[approval._id] && current[approval._id] !== undefined
+                        ? current[approval._id]
+                        : JSON.stringify(approval.parameters ?? {}, null, 2);
             }
-        } finally {
-            if (requestId === loadSeqRef.current) {
-                setLoading(false);
-            }
+            return next;
+        });
+        for (const id of Object.keys(editedCommentIdsRef.current)) {
+            if (!liveIds.has(id)) delete editedCommentIdsRef.current[id];
         }
-    }, [conversationId, organizationId]);
+        for (const id of Object.keys(editedParamIdsRef.current)) {
+            if (!liveIds.has(id)) delete editedParamIdsRef.current[id];
+        }
+    }, [listQuery.data]);
 
-    useEffect(() => {
-        void loadApprovals();
-    }, [loadApprovals]);
+    const loading = hasScope && (listQuery.isLoading || listQuery.isFetching) && !listQuery.data;
+    const scopeError = !hasScope
+        ? "Select an active organization or enter a conversation id to load execution approvals."
+        : null;
+    const loadError = listQuery.error ? taskApprovalsErrorMessage(listQuery.error) : null;
+    const listError = scopeError ?? loadError;
 
     async function decide(item: TaskApprovalRecord, decision: "approve" | "reject") {
         setActingId(item._id);
-        setError(null);
+        setActionError(null);
         try {
             let parsedParameters: Record<string, unknown> | undefined;
             const parameterText = paramsById[item._id] ?? "";
@@ -129,35 +110,24 @@ export function InboxApprovalsView() {
                 try {
                     const parsed = JSON.parse(parameterText) as unknown;
                     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-                        setError("Parameters override must be a JSON object.");
-                        setActingId(null);
+                        setActionError("Parameters override must be a JSON object.");
                         return;
                     }
                     parsedParameters = parsed as Record<string, unknown>;
                 } catch {
-                    setError("Parameters override contains invalid JSON.");
-                    setActingId(null);
+                    setActionError("Parameters override contains invalid JSON.");
                     return;
                 }
             }
 
-            await decideTaskApproval({
+            await decideMutation.mutateAsync({
                 taskActionId: item._id,
                 decision,
                 reviewerComment: commentsById[item._id] || undefined,
                 parameters: parsedParameters,
             });
-            await loadApprovals();
         } catch (decisionError) {
-            if (decisionError instanceof ApiHttpError) {
-                setError(decisionError.message);
-            } else {
-                setError(
-                    decisionError instanceof Error
-                        ? decisionError.message
-                        : "Failed to update approval decision"
-                );
-            }
+            setActionError(taskApprovalsErrorMessage(decisionError));
         } finally {
             setActingId(null);
         }
@@ -197,10 +167,10 @@ export function InboxApprovalsView() {
                         <Button
                             data-testid="inbox-approvals-refresh"
                             variant="outline"
-                            onClick={() => void loadApprovals()}
-                            disabled={loading}
+                            onClick={() => void listQuery.refetch()}
+                            disabled={listQuery.isFetching || !hasScope}
                         >
-                            {loading ? "Loading…" : "Refresh"}
+                            {listQuery.isFetching ? "Loading…" : "Refresh"}
                         </Button>
                     </div>
                 </CardContent>
@@ -217,23 +187,28 @@ export function InboxApprovalsView() {
                 </div>
             ) : null}
 
-            {!loading && error ? (
+            {!loading && listError ? (
                 <Card data-testid="inbox-approvals-error">
                     <CardContent className="space-y-3 p-6 text-sm">
                         <p className="font-medium">Unable to load approvals</p>
-                        <p className="text-muted-foreground">{error}</p>
-                        <Button
-                            data-testid="inbox-approvals-retry"
-                            variant="outline"
-                            onClick={() => void loadApprovals()}
-                        >
-                            Retry
-                        </Button>
+                        <p className="text-muted-foreground">{listError}</p>
+                        {hasScope ? (
+                            <Button
+                                data-testid="inbox-approvals-retry"
+                                variant="outline"
+                                onClick={() => {
+                                    setActionError(null);
+                                    void listQuery.refetch();
+                                }}
+                            >
+                                Retry
+                            </Button>
+                        ) : null}
                     </CardContent>
                 </Card>
             ) : null}
 
-            {!loading && !error && approvals.length === 0 ? (
+            {!loading && !listError && approvals.length === 0 ? (
                 <Card data-testid="inbox-approvals-empty">
                     <CardContent className="space-y-2 p-6 text-sm">
                         <p className="font-medium">No pending approvals</p>
@@ -244,8 +219,13 @@ export function InboxApprovalsView() {
                 </Card>
             ) : null}
 
-            {!loading && !error && approvals.length > 0 ? (
+            {!loading && !listError && approvals.length > 0 ? (
                 <div className="space-y-3" data-testid="inbox-approvals-list">
+                    {actionError ? (
+                        <Card data-testid="inbox-approvals-action-error">
+                            <CardContent className="p-4 text-sm text-red-600">{actionError}</CardContent>
+                        </Card>
+                    ) : null}
                     {approvals.map((item) => (
                         <Card key={item._id} data-testid="inbox-approvals-row">
                             <CardHeader className="pb-2">
@@ -294,12 +274,14 @@ export function InboxApprovalsView() {
                                         id={`comment-${item._id}`}
                                         data-testid="inbox-approvals-comment"
                                         value={commentsById[item._id] ?? ""}
-                                        onChange={(event) =>
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            editedCommentIdsRef.current[item._id] = true;
                                             setCommentsById((current) => ({
                                                 ...current,
-                                                [item._id]: event.target.value,
-                                            }))
-                                        }
+                                                [item._id]: value,
+                                            }));
+                                        }}
                                         placeholder="Add context for this decision"
                                     />
                                 </div>
@@ -312,12 +294,14 @@ export function InboxApprovalsView() {
                                         data-testid="inbox-approvals-params"
                                         className="min-h-[120px] w-full rounded-md border border-input bg-background p-2 font-mono text-xs"
                                         value={paramsById[item._id] ?? "{}"}
-                                        onChange={(event) =>
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            editedParamIdsRef.current[item._id] = true;
                                             setParamsById((current) => ({
                                                 ...current,
-                                                [item._id]: event.target.value,
-                                            }))
-                                        }
+                                                [item._id]: value,
+                                            }));
+                                        }}
                                     />
                                 </div>
                             </CardContent>

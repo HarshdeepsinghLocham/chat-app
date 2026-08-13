@@ -5,60 +5,65 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-    addOrganizationMember,
-    createOrganization,
-    getOrganizationMembers,
-    listOrganizations,
-    updateOrganizationPolicy,
-    updateOrganizationQuota,
-    type ClientOrganization,
-} from "@/lib/utils/api";
+    useAddOrganizationMember,
+    useCreateOrganization,
+    useOrganizationMembers,
+    useOrganizationsList,
+    useUpdateOrganizationPolicy,
+    useUpdateOrganizationQuota,
+} from "@/lib/queries/use-organizations";
 
 const STORAGE_KEY = "semantask.activeOrganizationId";
 
 export default function OrganizationsPage() {
-    const [orgs, setOrgs] = useState<ClientOrganization[]>([]);
     const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
     const [name, setName] = useState("");
     const [slug, setSlug] = useState("");
     const [memberUserId, setMemberUserId] = useState("");
-    const [members, setMembers] = useState<Array<{ id: string; userId: string; role: string }>>([]);
     const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
 
-    async function load() {
-        setLoading(true);
-        setError(null);
-        try {
-            const list = await listOrganizations();
-            setOrgs(list);
-            const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-            if (stored && list.some((org) => org.id === stored)) {
-                setActiveOrgId(stored);
-            }
-        } catch (loadError) {
-            setError(loadError instanceof Error ? loadError.message : "Failed to load organizations");
-        } finally {
-            setLoading(false);
-        }
-    }
+    const orgsQuery = useOrganizationsList();
+    const membersQuery = useOrganizationMembers(activeOrgId);
+    const createMutation = useCreateOrganization();
+    const addMemberMutation = useAddOrganizationMember(activeOrgId);
+
+    const orgs = orgsQuery.data ?? [];
+    const members = membersQuery.data ?? [];
+    const loading = orgsQuery.isLoading;
 
     useEffect(() => {
-        void load();
-    }, []);
-
-    useEffect(() => {
-        if (!activeOrgId) {
-            setMembers([]);
+        if (!orgsQuery.data) return;
+        const stored = window.localStorage.getItem(STORAGE_KEY);
+        if (stored && orgsQuery.data.some((org) => org.id === stored)) {
+            setActiveOrgId(stored);
             return;
         }
-        void getOrganizationMembers(activeOrgId)
-            .then(setMembers)
-            .catch((loadError) => {
-                setError(loadError instanceof Error ? loadError.message : "Failed to load members");
-            });
-    }, [activeOrgId]);
+        if (stored) {
+            setActiveOrgId(null);
+            window.localStorage.removeItem(STORAGE_KEY);
+        }
+    }, [orgsQuery.data]);
+
+    useEffect(() => {
+        if (orgsQuery.error) {
+            setError(
+                orgsQuery.error instanceof Error
+                    ? orgsQuery.error.message
+                    : "Failed to load organizations"
+            );
+        }
+    }, [orgsQuery.error]);
+
+    useEffect(() => {
+        if (membersQuery.error) {
+            setError(
+                membersQuery.error instanceof Error
+                    ? membersQuery.error.message
+                    : "Failed to load members"
+            );
+        }
+    }, [membersQuery.error]);
 
     function selectOrg(id: string | null) {
         setActiveOrgId(id);
@@ -69,18 +74,24 @@ export default function OrganizationsPage() {
                 localStorage.removeItem(STORAGE_KEY);
             }
         }
-        setStatus(id ? `Active organization set. API calls can send X-Organization-Id: ${id}` : "Personal workspace selected.");
+        setStatus(
+            id
+                ? `Active organization set. API calls can send X-Organization-Id: ${id}`
+                : "Personal workspace selected."
+        );
     }
 
     async function handleCreate() {
         setError(null);
         setStatus(null);
         try {
-            const org = await createOrganization({ name: name.trim(), slug: slug.trim() || undefined });
+            const org = await createMutation.mutateAsync({
+                name: name.trim(),
+                slug: slug.trim() || undefined,
+            });
             setName("");
             setSlug("");
             setStatus(`Created ${org.name}`);
-            await load();
             selectOrg(org.id);
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : "Failed to create organization");
@@ -91,18 +102,16 @@ export default function OrganizationsPage() {
         if (!activeOrgId) return;
         setError(null);
         try {
-            await addOrganizationMember(activeOrgId, { userId: memberUserId.trim() });
+            await addMemberMutation.mutateAsync({ userId: memberUserId.trim() });
             setMemberUserId("");
             setStatus("Member added.");
-            const next = await getOrganizationMembers(activeOrgId);
-            setMembers(next);
         } catch (addError) {
             setError(addError instanceof Error ? addError.message : "Failed to add member");
         }
     }
 
     return (
-        <div className="mx-auto max-w-3xl space-y-6 p-6">
+        <div className="mx-auto max-w-3xl space-y-6 p-6" data-testid="organizations-page">
             <Card>
                 <CardHeader>
                     <CardTitle>Organizations</CardTitle>
@@ -127,6 +136,7 @@ export default function OrganizationsPage() {
                                 key={org.id}
                                 variant={activeOrgId === org.id ? "default" : "outline"}
                                 onClick={() => selectOrg(org.id)}
+                                data-testid="organization-option"
                             >
                                 {org.name} ({org.role})
                             </Button>
@@ -142,9 +152,23 @@ export default function OrganizationsPage() {
                     <CardTitle>Create organization</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3 sm:flex-row">
-                    <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-                    <Input placeholder="Slug (optional)" value={slug} onChange={(e) => setSlug(e.target.value)} />
-                    <Button onClick={() => void handleCreate()} disabled={!name.trim()}>
+                    <Input
+                        placeholder="Name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        data-testid="organization-name"
+                    />
+                    <Input
+                        placeholder="Slug (optional)"
+                        value={slug}
+                        onChange={(e) => setSlug(e.target.value)}
+                        data-testid="organization-slug"
+                    />
+                    <Button
+                        onClick={() => void handleCreate()}
+                        disabled={!name.trim() || createMutation.isPending}
+                        data-testid="organization-create"
+                    >
                         Create
                     </Button>
                 </CardContent>
@@ -156,7 +180,7 @@ export default function OrganizationsPage() {
                         <CardTitle>Members</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                        <ul className="space-y-1 text-sm">
+                        <ul className="space-y-1 text-sm" data-testid="organization-members">
                             {members.map((member) => (
                                 <li key={member.id}>
                                     {member.userId} — {member.role}
@@ -168,8 +192,13 @@ export default function OrganizationsPage() {
                                 placeholder="User ID"
                                 value={memberUserId}
                                 onChange={(e) => setMemberUserId(e.target.value)}
+                                data-testid="organization-member-user-id"
                             />
-                            <Button onClick={() => void handleAddMember()} disabled={!memberUserId.trim()}>
+                            <Button
+                                onClick={() => void handleAddMember()}
+                                disabled={!memberUserId.trim() || addMemberMutation.isPending}
+                                data-testid="organization-add-member"
+                            >
                                 Add member
                             </Button>
                         </div>
@@ -177,9 +206,7 @@ export default function OrganizationsPage() {
                 </Card>
             ) : null}
 
-            {activeOrgId ? (
-                <OrgPolicyQuotaPanel organizationId={activeOrgId} />
-            ) : null}
+            {activeOrgId ? <OrgPolicyQuotaPanel organizationId={activeOrgId} /> : null}
         </div>
     );
 }
@@ -190,6 +217,9 @@ function OrgPolicyQuotaPanel({ organizationId }: { organizationId: string }) {
     const [maxMembers, setMaxMembers] = useState("");
     const [message, setMessage] = useState<string | null>(null);
 
+    const policyMutation = useUpdateOrganizationPolicy(organizationId);
+    const quotaMutation = useUpdateOrganizationQuota(organizationId);
+
     async function savePolicy() {
         setMessage(null);
         try {
@@ -197,7 +227,7 @@ function OrgPolicyQuotaPanel({ organizationId }: { organizationId: string }) {
                 .split(",")
                 .map((t) => t.trim())
                 .filter(Boolean);
-            await updateOrganizationPolicy(organizationId, {
+            await policyMutation.mutateAsync({
                 requireApprovalFor: tools,
             });
             setMessage("Policy saved.");
@@ -230,7 +260,7 @@ function OrgPolicyQuotaPanel({ organizationId }: { organizationId: string }) {
                 maxMembersValue = parsed;
             }
 
-            await updateOrganizationQuota(organizationId, {
+            await quotaMutation.mutateAsync({
                 maxTokensPerMonth,
                 maxMembers: maxMembersValue,
             });
@@ -251,7 +281,9 @@ function OrgPolicyQuotaPanel({ organizationId }: { organizationId: string }) {
                     <p className="text-sm font-medium">Require approval for tools (comma-separated)</p>
                     <div className="flex gap-2">
                         <Input value={requireApproval} onChange={(e) => setRequireApproval(e.target.value)} />
-                        <Button onClick={() => void savePolicy()}>Save policy</Button>
+                        <Button onClick={() => void savePolicy()} disabled={policyMutation.isPending}>
+                            Save policy
+                        </Button>
                     </div>
                 </div>
                 <div className="space-y-2">
@@ -267,7 +299,9 @@ function OrgPolicyQuotaPanel({ organizationId }: { organizationId: string }) {
                             value={maxMembers}
                             onChange={(e) => setMaxMembers(e.target.value)}
                         />
-                        <Button onClick={() => void saveQuota()}>Save quota</Button>
+                        <Button onClick={() => void saveQuota()} disabled={quotaMutation.isPending}>
+                            Save quota
+                        </Button>
                     </div>
                 </div>
             </CardContent>

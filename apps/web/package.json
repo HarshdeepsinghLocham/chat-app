@@ -38,6 +38,7 @@
         "@semantask/services": "workspace:*",
         "@semantask/types": "workspace:*",
         "@tailwindcss/postcss": "^4.2.2",
+        "@tanstack/react-query": "^5.100.10",
         "@tanstack/react-virtual": "^3.13.21",
         "@upstash/ratelimit": "^2.0.8",
         "@upstash/redis": "^1.35.6",

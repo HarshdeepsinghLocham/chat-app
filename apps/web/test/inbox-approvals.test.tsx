@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  */
 import React from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { TaskApprovalRecord } from "@/lib/utils/api";
@@ -26,6 +27,16 @@ jest.mock("@/lib/utils/api", () => ({
 
 import { InboxApprovalsView } from "@/components/work-suggestions/inbox-approvals";
 
+function renderWithQuery(ui: React.ReactElement) {
+    const client = new QueryClient({
+        defaultOptions: {
+            queries: { retry: false },
+            mutations: { retry: false },
+        },
+    });
+    return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
 function buildApproval(overrides: Partial<TaskApprovalRecord> = {}): TaskApprovalRecord {
     return {
         _id: "action-1",
@@ -42,9 +53,13 @@ function buildApproval(overrides: Partial<TaskApprovalRecord> = {}): TaskApprova
         error: null,
         patch: {
             before: null,
-            after: { policyDecision: { reasons: ["require_approval"] } },
+            after: {
+                policyDecision: {
+                    reasons: ["Tool requires manager approval"],
+                },
+            },
         },
-        reason: "policy",
+        reason: "",
         idempotencyKey: "idem-1",
         createdAt: "2026-08-08T10:00:00.000Z",
         ...overrides,
@@ -68,8 +83,8 @@ describe("InboxApprovalsView", () => {
                 })
         );
 
-        render(<InboxApprovalsView />);
-        expect(screen.getByTestId("inbox-approvals-loading")).toBeInTheDocument();
+        renderWithQuery(<InboxApprovalsView />);
+        expect(await screen.findByTestId("inbox-approvals-loading")).toBeInTheDocument();
 
         resolveLoad({ approvals: [] });
         expect(await screen.findByTestId("inbox-approvals-empty")).toBeInTheDocument();
@@ -88,7 +103,7 @@ describe("InboxApprovalsView", () => {
         getTaskApprovals.mockResolvedValue({ approvals: [buildApproval()] });
         decideTaskApproval.mockResolvedValue({ approval: buildApproval({ executionState: "approved" }) });
 
-        render(<InboxApprovalsView />);
+        renderWithQuery(<InboxApprovalsView />);
 
         expect(await screen.findByTestId("inbox-approvals-list")).toBeInTheDocument();
         expect(screen.getByText("send_email")).toBeInTheDocument();
@@ -112,7 +127,7 @@ describe("InboxApprovalsView", () => {
             .mockRejectedValueOnce(new ApiHttpError(500, "boom"))
             .mockResolvedValueOnce({ approvals: [] });
 
-        render(<InboxApprovalsView />);
+        renderWithQuery(<InboxApprovalsView />);
 
         expect(await screen.findByTestId("inbox-approvals-error")).toBeInTheDocument();
         fireEvent.click(screen.getByTestId("inbox-approvals-retry"));
@@ -126,9 +141,28 @@ describe("InboxApprovalsView", () => {
     it("surfaces forbidden access clearly for unauthorized callers", async () => {
         getTaskApprovals.mockRejectedValue(new ApiHttpError(403, "Forbidden"));
 
-        render(<InboxApprovalsView />);
+        renderWithQuery(<InboxApprovalsView />);
 
         const error = await screen.findByTestId("inbox-approvals-error");
         expect(error).toHaveTextContent(/permission/i);
+    });
+
+    it("keeps the list mounted when parameter JSON is invalid", async () => {
+        getTaskApprovals.mockResolvedValue({ approvals: [buildApproval()] });
+
+        renderWithQuery(<InboxApprovalsView />);
+        expect(await screen.findByTestId("inbox-approvals-list")).toBeInTheDocument();
+
+        fireEvent.change(screen.getByTestId("inbox-approvals-params"), {
+            target: { value: "not-json" },
+        });
+        fireEvent.click(screen.getByTestId("inbox-approvals-approve"));
+
+        expect(await screen.findByTestId("inbox-approvals-action-error")).toHaveTextContent(
+            "invalid JSON"
+        );
+        expect(screen.getByTestId("inbox-approvals-list")).toBeInTheDocument();
+        expect(screen.getByTestId("inbox-approvals-params")).toHaveValue("not-json");
+        expect(decideTaskApproval).not.toHaveBeenCalled();
     });
 });

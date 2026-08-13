@@ -20,6 +20,8 @@ module.exports = {
   moduleNameMapper: {
     "^@/lib/Db/(.*)$": "<rootDir>/../../packages/db/$1",
     "^@/lib/services/(.*)$": "<rootDir>/../../packages/services/$1",
+    "^@/lib/hooks/(.*)$": "<rootDir>/hooks/$1",
+    "^@/lib/socket/(.*)$": "<rootDir>/hooks/$1",
     "^@/models/(.*)$": "<rootDir>/../../packages/db/models/$1",
     "^@/(.*)$": "<rootDir>/$1",
     "^@semantask/types$": "<rootDir>/../../packages/types/dist/index.js",

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { WorkSuggestionRecord, WorkSuggestionStatus } from "@semantask/types";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,8 @@ import {
     WorkInboxTriage,
     type OrgMemberOption,
 } from "@/components/work-suggestions/work-inbox-triage";
+import { useActiveOrganizationId } from "@/lib/hooks/useActiveOrganizationId";
+import { queryKeys } from "@/lib/queries/keys";
 import { useOrganizationMembers } from "@/lib/queries/use-organizations";
 import {
     WORK_INBOX_PAGE_LIMIT,
@@ -22,9 +25,6 @@ import {
     useRequestTaskExecution,
     useWorkSuggestionsList,
 } from "@/lib/queries/use-work-suggestions";
-import type { WorkSuggestionsListParams } from "@/lib/queries/keys";
-
-const STORAGE_KEY = "semantask.activeOrganizationId";
 
 const STATUS_OPTIONS: Array<{ value: "" | WorkSuggestionStatus; label: string }> = [
     { value: "proposed", label: "proposed" },
@@ -60,10 +60,7 @@ function ownersForSuggestion(
 }
 
 export function WorkInboxView() {
-    const [organizationId] = useState<string | null>(() => {
-        if (typeof window === "undefined") return null;
-        return window.localStorage.getItem(STORAGE_KEY);
-    });
+    const organizationId = useActiveOrganizationId();
     const [conversationId, setConversationId] = useState("");
     const [status, setStatus] = useState<"" | WorkSuggestionStatus>("proposed");
     const [page, setPage] = useState(1);
@@ -71,21 +68,11 @@ export function WorkInboxView() {
     const [actingId, setActingId] = useState<string | null>(null);
     const [actionErrorById, setActionErrorById] = useState<Record<string, string | null>>({});
 
+    const queryClient = useQueryClient();
     const refreshConversation = useWorkSuggestionStore((state) => state.refreshConversation);
 
     const scopedConversationId = conversationId.trim() || undefined;
     const hasScope = Boolean(organizationId || scopedConversationId);
-
-    const listParams: WorkSuggestionsListParams = useMemo(
-        () => ({
-            organizationId: organizationId ?? undefined,
-            conversationId: scopedConversationId,
-            status,
-            page,
-            limit: WORK_INBOX_PAGE_LIMIT,
-        }),
-        [organizationId, scopedConversationId, status, page]
-    );
 
     const listQuery = useWorkSuggestionsList({
         organizationId,
@@ -105,9 +92,9 @@ export function WorkInboxView() {
         [membersQuery.data]
     );
 
-    const acceptMutation = useAcceptWorkSuggestion(listParams);
-    const dismissMutation = useDismissWorkSuggestion(listParams);
-    const assignMutation = useAssignWorkSuggestion(listParams);
+    const acceptMutation = useAcceptWorkSuggestion(listQuery.listParams);
+    const dismissMutation = useDismissWorkSuggestion(listQuery.listParams);
+    const assignMutation = useAssignWorkSuggestion(listQuery.listParams);
     const requestExecutionMutation = useRequestTaskExecution();
 
     const items = listQuery.data?.items ?? [];
@@ -187,6 +174,7 @@ export function WorkInboxView() {
                 taskId: item.convertedTaskId,
                 reason: "Manager requested AI tool execution from work inbox",
             });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.taskApprovals.all });
         } catch (actionError) {
             setRowError(item._id, mutationErrorMessage(actionError, "Allow AI tools failed"));
         } finally {
@@ -304,7 +292,7 @@ export function WorkInboxView() {
                 </Card>
             ) : null}
 
-            {hasScope && loading && !listQuery.data ? (
+            {hasScope && loading && !listQuery.data && !error ? (
                 <div className="space-y-3" data-testid="work-inbox-loading">
                     {[0, 1, 2].map((index) => (
                         <div
@@ -315,7 +303,7 @@ export function WorkInboxView() {
                 </div>
             ) : null}
 
-            {hasScope && !listQuery.isLoading && error ? (
+            {hasScope && error ? (
                 <Card data-testid="work-inbox-error">
                     <CardContent className="space-y-3 p-6 text-sm">
                         <p className="font-medium">Unable to load inbox</p>

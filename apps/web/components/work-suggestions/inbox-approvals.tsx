@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiHttpError, type TaskApprovalRecord } from "@/lib/utils/api";
+import { type TaskApprovalRecord } from "@/lib/utils/api";
+import { useActiveOrganizationId } from "@/lib/hooks/useActiveOrganizationId";
 import {
     taskApprovalsErrorMessage,
     useDecideTaskApproval,
     useTaskApprovalsList,
 } from "@/lib/queries/use-task-approvals";
-import type { TaskApprovalsListParams } from "@/lib/queries/keys";
 
 function formatTimestamp(iso: string) {
     const value = new Date(iso);
@@ -37,59 +37,59 @@ function getPolicySummary(item: TaskApprovalRecord) {
     return reasons.join(" ");
 }
 
-const STORAGE_KEY = "semantask.activeOrganizationId";
-
 export function InboxApprovalsView() {
+    const organizationId = useActiveOrganizationId();
     const [conversationId, setConversationId] = useState("");
-    const [organizationId] = useState<string | null>(() => {
-        if (typeof window === "undefined") return null;
-        return window.localStorage.getItem(STORAGE_KEY);
-    });
     const [actingId, setActingId] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [commentsById, setCommentsById] = useState<Record<string, string>>({});
     const [paramsById, setParamsById] = useState<Record<string, string>>({});
+    const editedCommentIdsRef = useRef<Record<string, true>>({});
+    const editedParamIdsRef = useRef<Record<string, true>>({});
 
     const scopedConversation = conversationId.trim() || undefined;
     const hasScope = Boolean(scopedConversation || organizationId);
-
-    const listParams: TaskApprovalsListParams = useMemo(
-        () => ({
-            conversationId: scopedConversation,
-            organizationId: scopedConversation ? undefined : organizationId ?? undefined,
-        }),
-        [scopedConversation, organizationId]
-    );
 
     const listQuery = useTaskApprovalsList({
         organizationId,
         conversationId: scopedConversation,
     });
 
-    const decideMutation = useDecideTaskApproval(listParams);
+    const decideMutation = useDecideTaskApproval();
 
     const approvals = listQuery.data ?? [];
 
     useEffect(() => {
         if (!listQuery.data) return;
+        const approvalsData = listQuery.data;
+        const liveIds = new Set(approvalsData.map((approval) => approval._id));
+
         setCommentsById((current) => {
-            const next = { ...current };
-            for (const approval of listQuery.data) {
-                if (next[approval._id] === undefined) {
-                    next[approval._id] = "";
-                }
+            const next: Record<string, string> = {};
+            for (const approval of approvalsData) {
+                next[approval._id] =
+                    editedCommentIdsRef.current[approval._id] && current[approval._id] !== undefined
+                        ? current[approval._id]
+                        : "";
             }
             return next;
         });
         setParamsById((current) => {
-            const next = { ...current };
-            for (const approval of listQuery.data) {
-                if (next[approval._id] === undefined) {
-                    next[approval._id] = JSON.stringify(approval.parameters ?? {}, null, 2);
-                }
+            const next: Record<string, string> = {};
+            for (const approval of approvalsData) {
+                next[approval._id] =
+                    editedParamIdsRef.current[approval._id] && current[approval._id] !== undefined
+                        ? current[approval._id]
+                        : JSON.stringify(approval.parameters ?? {}, null, 2);
             }
             return next;
         });
+        for (const id of Object.keys(editedCommentIdsRef.current)) {
+            if (!liveIds.has(id)) delete editedCommentIdsRef.current[id];
+        }
+        for (const id of Object.keys(editedParamIdsRef.current)) {
+            if (!liveIds.has(id)) delete editedParamIdsRef.current[id];
+        }
     }, [listQuery.data]);
 
     const loading = hasScope && (listQuery.isLoading || listQuery.isFetching) && !listQuery.data;
@@ -97,7 +97,7 @@ export function InboxApprovalsView() {
         ? "Select an active organization or enter a conversation id to load execution approvals."
         : null;
     const loadError = listQuery.error ? taskApprovalsErrorMessage(listQuery.error) : null;
-    const error = actionError ?? scopeError ?? loadError;
+    const listError = scopeError ?? loadError;
 
     async function decide(item: TaskApprovalRecord, decision: "approve" | "reject") {
         setActingId(item._id);
@@ -111,13 +111,11 @@ export function InboxApprovalsView() {
                     const parsed = JSON.parse(parameterText) as unknown;
                     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
                         setActionError("Parameters override must be a JSON object.");
-                        setActingId(null);
                         return;
                     }
                     parsedParameters = parsed as Record<string, unknown>;
                 } catch {
                     setActionError("Parameters override contains invalid JSON.");
-                    setActingId(null);
                     return;
                 }
             }
@@ -129,15 +127,7 @@ export function InboxApprovalsView() {
                 parameters: parsedParameters,
             });
         } catch (decisionError) {
-            if (decisionError instanceof ApiHttpError) {
-                setActionError(decisionError.message);
-            } else {
-                setActionError(
-                    decisionError instanceof Error
-                        ? decisionError.message
-                        : "Failed to update approval decision"
-                );
-            }
+            setActionError(taskApprovalsErrorMessage(decisionError));
         } finally {
             setActingId(null);
         }
@@ -178,9 +168,9 @@ export function InboxApprovalsView() {
                             data-testid="inbox-approvals-refresh"
                             variant="outline"
                             onClick={() => void listQuery.refetch()}
-                            disabled={loading || !hasScope}
+                            disabled={listQuery.isFetching || !hasScope}
                         >
-                            {loading ? "Loading…" : "Refresh"}
+                            {listQuery.isFetching ? "Loading…" : "Refresh"}
                         </Button>
                     </div>
                 </CardContent>
@@ -197,11 +187,11 @@ export function InboxApprovalsView() {
                 </div>
             ) : null}
 
-            {!loading && error ? (
+            {!loading && listError ? (
                 <Card data-testid="inbox-approvals-error">
                     <CardContent className="space-y-3 p-6 text-sm">
                         <p className="font-medium">Unable to load approvals</p>
-                        <p className="text-muted-foreground">{error}</p>
+                        <p className="text-muted-foreground">{listError}</p>
                         {hasScope ? (
                             <Button
                                 data-testid="inbox-approvals-retry"
@@ -218,7 +208,7 @@ export function InboxApprovalsView() {
                 </Card>
             ) : null}
 
-            {!loading && !error && approvals.length === 0 ? (
+            {!loading && !listError && approvals.length === 0 ? (
                 <Card data-testid="inbox-approvals-empty">
                     <CardContent className="space-y-2 p-6 text-sm">
                         <p className="font-medium">No pending approvals</p>
@@ -229,8 +219,13 @@ export function InboxApprovalsView() {
                 </Card>
             ) : null}
 
-            {!loading && !error && approvals.length > 0 ? (
+            {!loading && !listError && approvals.length > 0 ? (
                 <div className="space-y-3" data-testid="inbox-approvals-list">
+                    {actionError ? (
+                        <Card data-testid="inbox-approvals-action-error">
+                            <CardContent className="p-4 text-sm text-red-600">{actionError}</CardContent>
+                        </Card>
+                    ) : null}
                     {approvals.map((item) => (
                         <Card key={item._id} data-testid="inbox-approvals-row">
                             <CardHeader className="pb-2">
@@ -279,12 +274,14 @@ export function InboxApprovalsView() {
                                         id={`comment-${item._id}`}
                                         data-testid="inbox-approvals-comment"
                                         value={commentsById[item._id] ?? ""}
-                                        onChange={(event) =>
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            editedCommentIdsRef.current[item._id] = true;
                                             setCommentsById((current) => ({
                                                 ...current,
-                                                [item._id]: event.target.value,
-                                            }))
-                                        }
+                                                [item._id]: value,
+                                            }));
+                                        }}
                                         placeholder="Add context for this decision"
                                     />
                                 </div>
@@ -297,12 +294,14 @@ export function InboxApprovalsView() {
                                         data-testid="inbox-approvals-params"
                                         className="min-h-[120px] w-full rounded-md border border-input bg-background p-2 font-mono text-xs"
                                         value={paramsById[item._id] ?? "{}"}
-                                        onChange={(event) =>
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            editedParamIdsRef.current[item._id] = true;
                                             setParamsById((current) => ({
                                                 ...current,
-                                                [item._id]: event.target.value,
-                                            }))
-                                        }
+                                                [item._id]: value,
+                                            }));
+                                        }}
                                     />
                                 </div>
                             </CardContent>

@@ -84,7 +84,7 @@ describe("InboxApprovalsView", () => {
         );
 
         renderWithQuery(<InboxApprovalsView />);
-        expect(screen.getByTestId("inbox-approvals-loading")).toBeInTheDocument();
+        expect(await screen.findByTestId("inbox-approvals-loading")).toBeInTheDocument();
 
         resolveLoad({ approvals: [] });
         expect(await screen.findByTestId("inbox-approvals-empty")).toBeInTheDocument();
@@ -145,5 +145,24 @@ describe("InboxApprovalsView", () => {
 
         const error = await screen.findByTestId("inbox-approvals-error");
         expect(error).toHaveTextContent(/permission/i);
+    });
+
+    it("keeps the list mounted when parameter JSON is invalid", async () => {
+        getTaskApprovals.mockResolvedValue({ approvals: [buildApproval()] });
+
+        renderWithQuery(<InboxApprovalsView />);
+        expect(await screen.findByTestId("inbox-approvals-list")).toBeInTheDocument();
+
+        fireEvent.change(screen.getByTestId("inbox-approvals-params"), {
+            target: { value: "not-json" },
+        });
+        fireEvent.click(screen.getByTestId("inbox-approvals-approve"));
+
+        expect(await screen.findByTestId("inbox-approvals-action-error")).toHaveTextContent(
+            "invalid JSON"
+        );
+        expect(screen.getByTestId("inbox-approvals-list")).toBeInTheDocument();
+        expect(screen.getByTestId("inbox-approvals-params")).toHaveValue("not-json");
+        expect(decideTaskApproval).not.toHaveBeenCalled();
     });
 });

@@ -93,4 +93,29 @@ describe("OrganizationsPage", () => {
         expect(await screen.findByTestId("organization-option")).toHaveTextContent("Acme");
         expect(window.localStorage.getItem("semantask.activeOrganizationId")).toBe("org-1");
     });
+
+    it("does not load members for an invalid stored organization", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "missing-org");
+        listOrganizations.mockResolvedValue([
+            {
+                id: "org-1",
+                name: "Acme",
+                slug: "acme",
+                status: "active",
+                createdBy: "u1",
+                createdAt: "2026-08-08T10:00:00.000Z",
+                updatedAt: "2026-08-08T10:00:00.000Z",
+                role: "owner",
+            },
+        ]);
+
+        renderWithQuery(<OrganizationsPage />);
+
+        expect(await screen.findByTestId("organization-option")).toHaveTextContent("Acme");
+        await waitFor(() => {
+            expect(window.localStorage.getItem("semantask.activeOrganizationId")).toBeNull();
+        });
+        expect(getOrganizationMembers).not.toHaveBeenCalled();
+        expect(screen.queryByTestId("organization-members")).not.toBeInTheDocument();
+    });
 });

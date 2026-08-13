@@ -23,15 +23,17 @@ export function useTaskApprovalsList(params: {
     };
     const enabled = Boolean(scopedConversation || params.organizationId);
 
-    return useQuery({
+    const query = useQuery({
         queryKey: queryKeys.taskApprovals.list(listParams),
         queryFn: () => getTaskApprovals(listParams),
         enabled,
         select: (data) => data.approvals,
     });
+
+    return { ...query, listParams };
 }
 
-export function useDecideTaskApproval(listParams: TaskApprovalsListParams) {
+export function useDecideTaskApproval() {
     const queryClient = useQueryClient();
 
     return useMutation({
@@ -43,7 +45,7 @@ export function useDecideTaskApproval(listParams: TaskApprovalsListParams) {
         }) => decideTaskApproval(input),
         onSettled: async () => {
             await queryClient.invalidateQueries({
-                queryKey: queryKeys.taskApprovals.list(listParams),
+                queryKey: queryKeys.taskApprovals.all,
             });
         },
     });

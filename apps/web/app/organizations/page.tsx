@@ -22,7 +22,6 @@ export default function OrganizationsPage() {
     const [memberUserId, setMemberUserId] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState<string | null>(null);
-    const [hydrated, setHydrated] = useState(false);
 
     const orgsQuery = useOrganizationsList();
     const membersQuery = useOrganizationMembers(activeOrgId);
@@ -34,26 +33,17 @@ export default function OrganizationsPage() {
     const loading = orgsQuery.isLoading;
 
     useEffect(() => {
-        setHydrated(true);
-        const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-        if (stored) {
-            setActiveOrgId(stored);
-        }
-    }, []);
-
-    useEffect(() => {
-        if (!hydrated || !orgsQuery.data) return;
-        const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+        if (!orgsQuery.data) return;
+        const stored = window.localStorage.getItem(STORAGE_KEY);
         if (stored && orgsQuery.data.some((org) => org.id === stored)) {
             setActiveOrgId(stored);
-        } else if (stored && !orgsQuery.data.some((org) => org.id === stored)) {
-            // Keep selection only if still valid; otherwise fall back to personal.
-            setActiveOrgId(null);
-            if (typeof window !== "undefined") {
-                localStorage.removeItem(STORAGE_KEY);
-            }
+            return;
         }
-    }, [hydrated, orgsQuery.data]);
+        if (stored) {
+            setActiveOrgId(null);
+            window.localStorage.removeItem(STORAGE_KEY);
+        }
+    }, [orgsQuery.data]);
 
     useEffect(() => {
         if (orgsQuery.error) {

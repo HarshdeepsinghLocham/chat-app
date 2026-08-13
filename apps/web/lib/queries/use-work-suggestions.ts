@@ -45,7 +45,7 @@ export function useWorkSuggestionsList(params: {
     };
     const enabled = Boolean(listParams.organizationId || listParams.conversationId);
 
-    return useQuery({
+    const query = useQuery({
         queryKey: queryKeys.workSuggestions.list(listParams),
         queryFn: () =>
             listWorkSuggestions({
@@ -57,6 +57,8 @@ export function useWorkSuggestionsList(params: {
             }),
         enabled,
     });
+
+    return { ...query, listParams };
 }
 
 type AcceptVariables = {
@@ -77,9 +79,23 @@ type AssignVariables = {
 };
 
 type ListCacheContext = {
-    previous?: WorkSuggestionListResult;
+    previousItem?: WorkSuggestionRecord;
     listKey: ReturnType<typeof queryKeys.workSuggestions.list>;
 };
+
+function restoreRecord(
+    current: WorkSuggestionListResult | undefined,
+    previousItem: WorkSuggestionRecord | undefined
+): WorkSuggestionListResult | undefined {
+    if (!current || !previousItem) return current;
+    const index = current.items.findIndex((row) => row._id === previousItem._id);
+    if (index >= 0) {
+        const items = current.items.slice();
+        items[index] = previousItem;
+        return { ...current, items };
+    }
+    return { ...current, items: [previousItem, ...current.items] };
+}
 
 export function useAcceptWorkSuggestion(listParams: WorkSuggestionsListParams) {
     const queryClient = useQueryClient();
@@ -92,7 +108,10 @@ export function useAcceptWorkSuggestion(listParams: WorkSuggestionsListParams) {
             }),
         onMutate: async ({ item, statusFilter }: AcceptVariables): Promise<ListCacheContext> => {
             await queryClient.cancelQueries({ queryKey: listKey });
-            const previous = queryClient.getQueryData<WorkSuggestionListResult>(listKey);
+            const previousItem =
+                queryClient.getQueryData<WorkSuggestionListResult>(listKey)?.items.find(
+                    (row) => row._id === item._id
+                ) ?? item;
             queryClient.setQueryData<WorkSuggestionListResult>(listKey, (current) =>
                 patchListItems(current, (items) => {
                     if (statusFilter === "proposed") {
@@ -103,12 +122,13 @@ export function useAcceptWorkSuggestion(listParams: WorkSuggestionsListParams) {
                     );
                 })
             );
-            return { previous, listKey };
+            return { previousItem, listKey };
         },
         onError: (_error, _variables, context) => {
-            if (context?.previous) {
-                queryClient.setQueryData(context.listKey, context.previous);
-            }
+            if (!context) return;
+            queryClient.setQueryData<WorkSuggestionListResult>(context.listKey, (current) =>
+                restoreRecord(current, context.previousItem)
+            );
         },
         onSettled: async () => {
             await queryClient.invalidateQueries({ queryKey: queryKeys.workSuggestions.all });
@@ -125,7 +145,10 @@ export function useDismissWorkSuggestion(listParams: WorkSuggestionsListParams) 
             dismissWorkSuggestionApi(item._id, reason),
         onMutate: async ({ item, reason, statusFilter }: DismissVariables): Promise<ListCacheContext> => {
             await queryClient.cancelQueries({ queryKey: listKey });
-            const previous = queryClient.getQueryData<WorkSuggestionListResult>(listKey);
+            const previousItem =
+                queryClient.getQueryData<WorkSuggestionListResult>(listKey)?.items.find(
+                    (row) => row._id === item._id
+                ) ?? item;
             queryClient.setQueryData<WorkSuggestionListResult>(listKey, (current) =>
                 patchListItems(current, (items) => {
                     if (statusFilter === "proposed") {
@@ -138,12 +161,13 @@ export function useDismissWorkSuggestion(listParams: WorkSuggestionsListParams) 
                     );
                 })
             );
-            return { previous, listKey };
+            return { previousItem, listKey };
         },
         onError: (_error, _variables, context) => {
-            if (context?.previous) {
-                queryClient.setQueryData(context.listKey, context.previous);
-            }
+            if (!context) return;
+            queryClient.setQueryData<WorkSuggestionListResult>(context.listKey, (current) =>
+                restoreRecord(current, context.previousItem)
+            );
         },
         onSettled: async () => {
             await queryClient.invalidateQueries({ queryKey: queryKeys.workSuggestions.all });

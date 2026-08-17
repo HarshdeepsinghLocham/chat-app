@@ -74,9 +74,9 @@ export function parseDefaultExecutionMode(raw?: string | null): ExecutionMode {
     return isExecutionModeValue(value) ? value : "suggest_only";
 }
 
-/** EXECUTION_MODE_ENFORCE=0|1 (default 0 / shadow). */
+/** EXECUTION_MODE_ENFORCE=0|1 (default 1 / enforce). */
 export function isExecutionModeEnforce(raw?: string | null): boolean {
-    const value = (raw ?? process.env.EXECUTION_MODE_ENFORCE ?? "0").trim().toLowerCase();
+    const value = (raw ?? process.env.EXECUTION_MODE_ENFORCE ?? "1").trim().toLowerCase();
     return value === "1" || value === "true" || value === "enforce";
 }
 
@@ -92,9 +92,9 @@ function isEnvFlagEnabled(raw: string | null | undefined, defaultEnabled: boolea
     return defaultEnabled;
 }
 
-/** SUGGESTION_INGRESS=0|1 (default 0). Dual-write WorkSuggestion on classify. */
+/** SUGGESTION_INGRESS=0|1 (default 1). Dual-write WorkSuggestion on classify. */
 export function isSuggestionIngressEnabled(raw?: string | null): boolean {
-    return isEnvFlagEnabled(raw ?? process.env.SUGGESTION_INGRESS, false);
+    return isEnvFlagEnabled(raw ?? process.env.SUGGESTION_INGRESS, true);
 }
 
 /**
@@ -127,9 +127,9 @@ export function assertAcceptCreatesCoordinationOnly(raw?: string | null): void {
     }
 }
 
-/** WORK_INBOX_UI=0|1 (default 0). Expose /inbox manager surface. */
+/** WORK_INBOX_UI=0|1 (default 1). Expose /inbox manager surface. */
 export function isWorkInboxUiEnabled(raw?: string | null): boolean {
-    return isEnvFlagEnabled(raw ?? process.env.WORK_INBOX_UI, false);
+    return isEnvFlagEnabled(raw ?? process.env.WORK_INBOX_UI, true);
 }
 
 export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {

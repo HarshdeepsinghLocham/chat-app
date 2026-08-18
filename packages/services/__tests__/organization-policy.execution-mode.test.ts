@@ -100,18 +100,21 @@ describe("execution mode flags", () => {
         expect(parseDefaultExecutionMode("auto_execute")).toBe("auto_execute");
     });
 
-    it("isExecutionModeEnforce defaults off", () => {
-        expect(isExecutionModeEnforce()).toBe(false);
+    it("isExecutionModeEnforce defaults on", () => {
+        delete process.env.EXECUTION_MODE_ENFORCE;
+        expect(isExecutionModeEnforce()).toBe(true);
         expect(isExecutionModeEnforce("1")).toBe(true);
         expect(isExecutionModeEnforce("enforce")).toBe(true);
+        expect(isExecutionModeEnforce("0")).toBe(false);
     });
 });
 
 describe("suggestion ingress flags", () => {
-    it("isSuggestionIngressEnabled defaults off", () => {
+    it("isSuggestionIngressEnabled defaults on", () => {
         delete process.env.SUGGESTION_INGRESS;
-        expect(isSuggestionIngressEnabled()).toBe(false);
+        expect(isSuggestionIngressEnabled()).toBe(true);
         expect(isSuggestionIngressEnabled("1")).toBe(true);
+        expect(isSuggestionIngressEnabled("0")).toBe(false);
     });
 
     it("isSuggestionBlockExecEnabled defaults on", () => {
@@ -143,9 +146,9 @@ describe("accept creates execution safety rail", () => {
 });
 
 describe("work inbox UI flag", () => {
-    it("defaults WORK_INBOX_UI off", () => {
+    it("defaults WORK_INBOX_UI on", () => {
         delete process.env.WORK_INBOX_UI;
-        expect(isWorkInboxUiEnabled()).toBe(false);
+        expect(isWorkInboxUiEnabled()).toBe(true);
         expect(isWorkInboxUiEnabled("0")).toBe(false);
     });
 

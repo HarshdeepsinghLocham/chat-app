@@ -7,10 +7,10 @@ if (!process.env.INTERNAL_SECRET?.trim()) {
 }
 
 /**
- * AgentRunner unit tests exercise tool execution. Production now defaults
- * EXECUTION_MODE_ENFORCE=1 with DEFAULT_EXECUTION_MODE=suggest_only, which
- * denies tools in ToolExecutor. Keep shadow mode unless a test sets this.
+ * AgentRunner unit tests exercise tool execution. Production enforces execution
+ * mode (EXECUTION_MODE_ENFORCE=0 is ignored). Default product mode is
+ * suggest_only, which denies tools in ToolExecutor — use auto_execute here.
  */
-if (!process.env.EXECUTION_MODE_ENFORCE?.trim()) {
-    process.env.EXECUTION_MODE_ENFORCE = "0";
+if (!process.env.DEFAULT_EXECUTION_MODE?.trim()) {
+    process.env.DEFAULT_EXECUTION_MODE = "auto_execute";
 }

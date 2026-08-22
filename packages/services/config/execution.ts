@@ -19,20 +19,19 @@ export function parseDefaultExecutionMode(raw?: string | null): ExecutionMode {
 }
 
 /**
- * EXECUTION_MODE_ENFORCE=0|1 (default 1 / enforce).
- * `0` is still honored this release and warns once; the next cutover ignores `0`.
+ * Deploy rail: execution mode is always enforced.
+ * `EXECUTION_MODE_ENFORCE=0` is ignored (warns once). Parser stays until a later delete PR.
  */
 export function isExecutionModeEnforce(raw?: string | null): boolean {
-    const fromEnv = raw === undefined || raw === null;
     const value = (raw ?? process.env.EXECUTION_MODE_ENFORCE ?? "1").trim().toLowerCase();
-    const enforce = value === "1" || value === "true" || value === "enforce";
-    if (fromEnv && !enforce) {
+    const requestedOff = value === "0" || value === "false" || value === "off";
+    if (requestedOff) {
         warnOnce(
             "EXECUTION_MODE_ENFORCE=0",
-            "[config] EXECUTION_MODE_ENFORCE=0 is deprecated; enforce is on by default. Shadow (0) is still honored this release.",
+            "[config] EXECUTION_MODE_ENFORCE=0 is ignored; execution mode is always enforced.",
         );
     }
-    return enforce;
+    return true;
 }
 
 export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {

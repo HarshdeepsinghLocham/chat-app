@@ -102,22 +102,21 @@ describe("execution mode flags", () => {
         expect(parseDefaultExecutionMode("auto_execute")).toBe("auto_execute");
     });
 
-    it("isExecutionModeEnforce defaults on", () => {
+    it("isExecutionModeEnforce is always on", () => {
         delete process.env.EXECUTION_MODE_ENFORCE;
         expect(isExecutionModeEnforce()).toBe(true);
         expect(isExecutionModeEnforce("1")).toBe(true);
         expect(isExecutionModeEnforce("enforce")).toBe(true);
-        expect(isExecutionModeEnforce("0")).toBe(false);
     });
 
-    it("honors EXECUTION_MODE_ENFORCE=0 and warns once", () => {
+    it("ignores EXECUTION_MODE_ENFORCE=0 and warns once", () => {
         process.env.EXECUTION_MODE_ENFORCE = "0";
         const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
         try {
-            expect(isExecutionModeEnforce()).toBe(false);
-            expect(isExecutionModeEnforce()).toBe(false);
+            expect(isExecutionModeEnforce()).toBe(true);
+            expect(isExecutionModeEnforce()).toBe(true);
             expect(warn).toHaveBeenCalledTimes(1);
-            expect(String(warn.mock.calls[0]?.[0])).toContain("EXECUTION_MODE_ENFORCE=0 is deprecated");
+            expect(String(warn.mock.calls[0]?.[0])).toContain("EXECUTION_MODE_ENFORCE=0 is ignored");
         } finally {
             warn.mockRestore();
         }

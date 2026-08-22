@@ -1,6 +1,5 @@
 import { archiveTerminalOutboxEvents } from "@semantask/services/outbox.service";
-
-const ARCHIVE_INTERVAL_MS = Number(process.env.OUTBOX_ARCHIVE_INTERVAL_MS || 60 * 60 * 1000);
+import { getWorkerRuntimeConfig } from "../config/worker.js";
 
 /**
  * Periodically deletes completed / dead-letter outbox rows older than
@@ -10,10 +9,8 @@ export function startOutboxArchivalJob(workerId: string): () => void {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const intervalMs =
-        Number.isFinite(ARCHIVE_INTERVAL_MS) && ARCHIVE_INTERVAL_MS > 0
-            ? ARCHIVE_INTERVAL_MS
-            : 60 * 60 * 1000;
+    const configured = getWorkerRuntimeConfig().outboxArchiveIntervalMs;
+    const intervalMs = configured > 0 ? configured : 60 * 60 * 1000;
 
     const tick = async () => {
         if (stopped) {

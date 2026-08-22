@@ -1,3 +1,5 @@
+import { getWorkerRuntimeConfig } from "../config/worker.js";
+
 export type RetryCategory =
     | "transient_llm"
     | "tool_timeout"
@@ -12,11 +14,9 @@ export interface RetryDecision {
     reason: string;
 }
 
-const BASE_BACKOFF_MS = Number(process.env.TASK_RETRY_BASE_BACKOFF_MS || 2000);
-const MAX_BACKOFF_MS = Number(process.env.TASK_RETRY_MAX_BACKOFF_MS || 300000);
-
 function computeBackoffDelay(attempt: number): number {
-    const exp = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * (2 ** Math.max(0, attempt)));
+    const { retryBaseBackoffMs, retryMaxBackoffMs } = getWorkerRuntimeConfig();
+    const exp = Math.min(retryMaxBackoffMs, retryBaseBackoffMs * (2 ** Math.max(0, attempt)));
     const jitter = 0.5 + Math.random() * 0.5;
     return Math.floor(exp * jitter);
 }

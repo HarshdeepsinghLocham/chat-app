@@ -1,9 +1,6 @@
-import { config as loadEnv } from "dotenv";
+import "./config/env.js";
 import Redis from "ioredis";
 import mongoose from "mongoose";
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { MessageSemanticType, TaskExecutionActionType, TaskExecutionUpdatedPayload, TaskResult, TaskUpdatedPayload } from "@semantask/types";
 import { claimOutboxEvents, markOutboxEventCompleted, markOutboxEventDeadLetter, markOutboxEventDeferred, markOutboxEventFailed } from "@semantask/services/outbox.service";
 import { processMessageTaskIntelligence as processMessageTaskIntelligenceFromService } from "@semantask/services/task-intelligence.service";
@@ -61,32 +58,9 @@ import {
 import { refreshOutboxMetrics } from "@semantask/services/outbox-metrics.service";
 import { bootstrapWorkerObservability } from "./services/observability-bootstrap.js";
 import { startWorkerMetricsServer } from "./services/metrics-server.js";
+import { getRedisUrl, getSocketServerUrl, getWorkerRuntimeConfig } from "./config/worker.js";
 
 bootstrapWorkerObservability();
-
-const currentDir = path.dirname(fileURLToPath(import.meta.url));
-const visitedEnvPaths = new Set<string>();
-let scanDir = currentDir;
-
-for (let depth = 0; depth < 8; depth += 1) {
-    const envCandidates = [
-        path.join(scanDir, ".env.local"),
-        path.join(scanDir, ".env"),
-    ];
-
-    for (const envPath of envCandidates) {
-        if (!visitedEnvPaths.has(envPath) && existsSync(envPath)) {
-            loadEnv({ path: envPath });
-            visitedEnvPaths.add(envPath);
-        }
-    }
-
-    const parent = path.dirname(scanDir);
-    if (parent === scanDir) {
-        break;
-    }
-    scanDir = parent;
-}
 
 configureMessageClassifier({
     llmClassify: classifyMessageWithLlm,
@@ -107,22 +81,22 @@ configureMessageClassifier({
 });
 
 const WORKER_ID = `${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
-const BATCH_SIZE = Number(process.env.TASK_WORKER_BATCH_SIZE || 10);
-const POLL_INTERVAL_MS = Number(process.env.TASK_WORKER_POLL_MS || 800);
-const OUTBOX_MAX_ATTEMPTS = Number(process.env.OUTBOX_MAX_ATTEMPTS || 12);
-const OUTBOX_RETRY_JITTER_PCT = Number(process.env.OUTBOX_RETRY_JITTER_PCT || 0.2);
+const runtime = getWorkerRuntimeConfig();
+const BATCH_SIZE = runtime.batchSize;
+const POLL_INTERVAL_MS = runtime.pollMs;
+const OUTBOX_MAX_ATTEMPTS = runtime.outboxMaxAttempts;
+const OUTBOX_RETRY_JITTER_PCT = runtime.outboxRetryJitterPct;
 
-const redisUrl = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL;
+const redisUrl = getRedisUrl();
 const redis = redisUrl
     ? new (Redis as unknown as any)(redisUrl, { lazyConnect: true, maxRetriesPerRequest: null })
     : null;
 
-const internalBaseUrl = process.env.SOCKET_SERVER_URL || process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
-const PERSISTENT_LOOP_ENABLED = process.env.TASK_AGENT_PERSISTENT_LOOP_ENABLED === "true";
+const internalBaseUrl = getSocketServerUrl();
+const PERSISTENT_LOOP_ENABLED = runtime.persistentLoopEnabled;
 
 function assertInternalSecretConfigured(): void {
-    const isProduction = process.env.NODE_ENV === "production";
-    if (!isProduction) {
+    if (!getWorkerRuntimeConfig().isProduction) {
         return;
     }
 
@@ -137,20 +111,18 @@ function assertInternalSecretConfigured(): void {
 }
 
 function assertRedisConfiguredForProduction(): void {
-    if (process.env.NODE_ENV !== "production") {
+    const current = getWorkerRuntimeConfig();
+    if (!current.isProduction) {
         return;
     }
-    if (process.env.TASK_WORKER_ALLOW_NO_REDIS === "1") {
+    if (current.allowNoRedis) {
         console.warn(
             "task-worker starting without Redis in production (TASK_WORKER_ALLOW_NO_REDIS=1)"
         );
         return;
     }
 
-    const hasRedis =
-        Boolean(process.env.REDIS_URL?.trim())
-        || Boolean(process.env.UPSTASH_REDIS_REST_URL?.trim());
-    if (!hasRedis) {
+    if (!current.redisUrl?.trim()) {
         throw new Error(
             "REDIS_URL or UPSTASH_REDIS_REST_URL is required in production for task-worker (set TASK_WORKER_ALLOW_NO_REDIS=1 to override)"
         );
@@ -1294,7 +1266,7 @@ async function ensureDatabaseConnection() {
         return;
     }
 
-    const uri = process.env.MONGODB_URI;
+    const uri = getWorkerRuntimeConfig().mongodbUri;
     if (!uri) {
         throw new Error("MONGODB_URI is not defined");
     }
@@ -1467,7 +1439,7 @@ async function processOneEvent(event: {
 async function run() {
     const { claim, fail, defer, deadLetter } = getOutboxFns();
 
-    if (!process.env.MONGODB_URI) {
+    if (!getWorkerRuntimeConfig().mongodbUri) {
         console.warn("task-worker disabled: MONGODB_URI is not set. Set MONGODB_URI to enable task processing.");
         // Keep process alive so monorepo dev does not fail hard when worker env is missing.
         // eslint-disable-next-line no-constant-condition

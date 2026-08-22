@@ -5,11 +5,12 @@ import {
     renderPrometheusMetrics,
 } from "@semantask/observability/metrics";
 import { logExecution } from "./execution-logger.js";
+import { getWorkerRuntimeConfig } from "../config/worker.js";
 
 /**
  * Lightweight scrape server for the task-worker (no Express).
  */
-export function startWorkerMetricsServer(port = Number(process.env.METRICS_PORT || 9091)): http.Server {
+export function startWorkerMetricsServer(port = getWorkerRuntimeConfig().metricsPort): http.Server {
     ensureDefaultMetrics("task-worker");
 
     const server = http.createServer(async (req, res) => {

@@ -4,13 +4,13 @@ import type { PlannerContext } from "@semantask/types";
 import { createDefaultLLMProvider } from "./llm/index.js";
 import { parseJsonText } from "./llm/response-parser.js";
 import { buildFencedTaskFields } from "./prompt-guard.js";
+import { getPlannerModel } from "../config/llm.js";
 
 const connectToDatabase =
     (dbModule as unknown as { connectToDatabase?: () => Promise<unknown> }).connectToDatabase
     || ((dbModule as unknown as { default?: { connectToDatabase?: () => Promise<unknown> } }).default?.connectToDatabase)
     || (async () => undefined);
 
-const DEFAULT_PLANNER_MODEL = process.env.TASK_PLANNER_MODEL || "gpt-4o-mini";
 const DEFAULT_PLANNER_VERSION = "planner-v1";
 
 type PlannerLlmRequest = { model: string; input: string };
@@ -277,7 +277,7 @@ async function requestPlanFromLlm(
 
     if (options?.llmRequestFn) {
         try {
-            const llmResponse = await options.llmRequestFn({ model: DEFAULT_PLANNER_MODEL, input: `${prompt}\n\n${taskPayload}` });
+            const llmResponse = await options.llmRequestFn({ model: getPlannerModel(), input: `${prompt}\n\n${taskPayload}` });
             content = extractLlmResponseText(llmResponse);
         } catch {
             content = "";
@@ -288,7 +288,7 @@ async function requestPlanFromLlm(
         try {
             const provider = createDefaultLLMProvider();
             const llmResponse = await provider.generate({
-                model: DEFAULT_PLANNER_MODEL,
+                model: getPlannerModel(),
                 input: [
                     { role: "system", content: prompt },
                     { role: "user", content: taskPayload },
@@ -330,7 +330,7 @@ function buildGeneratedTaskPlan(
         conversationId: context.conversationId,
         goal: plan.goal,
         successDefinition: plan.successDefinition,
-        plannerModel: DEFAULT_PLANNER_MODEL,
+        plannerModel: getPlannerModel(),
         plannerVersion: DEFAULT_PLANNER_VERSION,
         status: "active",
         steps: plan.steps,
@@ -363,7 +363,7 @@ export async function createOrRefreshTaskPlan(context: PlannerContext, options?:
                 conversationId: context.conversationId,
                 goal: plan.goal,
                 successDefinition: plan.successDefinition,
-                plannerModel: DEFAULT_PLANNER_MODEL,
+                plannerModel: getPlannerModel(),
                 plannerVersion: DEFAULT_PLANNER_VERSION,
                 status: "active",
                 steps: plan.steps,

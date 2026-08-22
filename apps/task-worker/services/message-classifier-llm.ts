@@ -4,24 +4,13 @@ import type { MessageClassification } from "@semantask/services/message-classifi
 import { createDefaultLLMProvider } from "./llm/provider-factory.js";
 import { parseJsonText } from "./llm/response-parser.js";
 import { LLMError } from "./llm/types.js";
+import { getClassifierModel, getClassifierTimeoutMs, getLlmApiKey } from "../config/llm.js";
 
 const classifierResponseSchema = z.object({
     semanticType: z.enum(CLASSIFIABLE_SEMANTIC_TYPES),
     confidence: z.number().min(0).max(1),
     reasoning: z.string().min(1).max(2000),
 });
-
-function getClassifierModel(): string {
-    return process.env.TASK_CLASSIFIER_MODEL
-        || process.env.TASK_AGENT_MODEL
-        || process.env.LLM_MODEL
-        || "gpt-4o-mini";
-}
-
-function getClassifierTimeoutMs(): number {
-    const configured = Number(process.env.TASK_CLASSIFIER_LLM_TIMEOUT_MS || 3000);
-    return Number.isFinite(configured) && configured > 0 ? configured : 3000;
-}
 
 function buildClassifierPrompt(content: string): string {
     return JSON.stringify({
@@ -72,12 +61,9 @@ function extractResponseText(response: { output_text?: string; output?: unknown 
 }
 
 export async function classifyMessageWithLlm(content: string): Promise<MessageClassification | null> {
-    const apiKey = process.env.OPENAI_API_KEY
-        || process.env.LLM_API_KEY
-        || process.env.HUGGINGFACE_API_KEY
-        || process.env.AMD_API_KEY;
+    const apiKey = getLlmApiKey();
 
-    if (!apiKey?.trim()) {
+    if (!apiKey.trim()) {
         return null;
     }
 

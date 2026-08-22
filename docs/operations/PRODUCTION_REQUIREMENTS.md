@@ -245,9 +245,12 @@ Fine-grained execution state is persisted in **shadow mode** alongside legacy `T
 |----------|---------|--------|
 | `TASK_EXECUTION_FSM_SHADOW_MODE` | on (any value except `"0"`) | `AgentRunner` writes `Task.executionState` + `stateHistory` |
 | `TASK_EXECUTION_FSM_SHADOW_MODE=0` | off | Shadow FSM writes disabled; legacy lifecycle remains authoritative |
+| `TASK_STATE_PROJECTION_MODE` | `off` | `off` / `shadow` (log only) / `enforce` (write projected lifecycle+status) |
 | `TASK_STATE_DIVERGENCE_CHECK` | off | Set to `1` to log `state_diverged` when `lifecycleState` ≠ FSM projection (Phase 1.1) |
 | `TASK_POLICY_SHADOW_EMIT` | off | Set to `1` to emit `POLICY_BLOCKED` / `POLICY_APPROVAL_REQUIRED` on policy early returns and align `lifecycleState` with the FSM projection (Phase 1.2; requires shadow mode on) |
 | `TASK_RETRY_SHADOW_EMIT` | off | Set to `1` to emit `RETRY_DUE` when the retry scanner promotes a task (Phase 1.3; requires shadow mode on) |
+
+These five names still control behavior. `getFsmRollout()` (`legacy` / `shadow` / `align` / `authoritative`) is a derived summary in `apps/task-worker/config/migration.ts` for the later cutover; mixed flag combinations continue to honor each parser.
 
 **Production guidance:** leave shadow **enabled** (`!== "0"`) until Phase 5.2 projection cutover. Enable `TASK_STATE_DIVERGENCE_CHECK=1` in staging/production task-worker to sample dual-state drift. Once divergence sampling looks clean, enable `TASK_POLICY_SHADOW_EMIT=1` to close the policy-path gap (blocked/approval requests otherwise leave the shadow FSM stale). Both flags are best-effort and do not drive indexes or UI today ([ADR-001](../decisions/ADR-001-task-lifecycle-state-machine.md)).
 

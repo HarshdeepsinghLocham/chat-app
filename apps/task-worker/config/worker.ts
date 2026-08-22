@@ -82,8 +82,9 @@ export function getSocketServerUrl(): string {
     ) ?? SOCKET_SERVER_URL_FALLBACK;
 }
 
+/** ioredis TCP URL only. `UPSTASH_REDIS_REST_URL` is web REST, not a Redis protocol URL. */
 export function getRedisUrl(): string | undefined {
-    return process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL;
+    return firstNonEmpty(process.env.REDIS_URL);
 }
 
 export function getWorkerRuntimeConfig(): WorkerRuntimeConfig {

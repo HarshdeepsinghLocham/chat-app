@@ -58,6 +58,7 @@ import {
 import { refreshOutboxMetrics } from "@semantask/services/outbox-metrics.service";
 import { bootstrapWorkerObservability } from "./services/observability-bootstrap.js";
 import { startWorkerMetricsServer } from "./services/metrics-server.js";
+import { warnDeprecatedWorkerAliases } from "./config/aliases.js";
 import { getRedisUrl, getSocketServerUrl, getWorkerRuntimeConfig } from "./config/worker.js";
 
 bootstrapWorkerObservability();
@@ -124,7 +125,7 @@ function assertRedisConfiguredForProduction(): void {
 
     if (!current.redisUrl?.trim()) {
         throw new Error(
-            "REDIS_URL or UPSTASH_REDIS_REST_URL is required in production for task-worker (set TASK_WORKER_ALLOW_NO_REDIS=1 to override)"
+            "REDIS_URL is required in production for task-worker (set TASK_WORKER_ALLOW_NO_REDIS=1 to override)"
         );
     }
 }
@@ -1524,6 +1525,7 @@ async function run() {
     }
 }
 
+warnDeprecatedWorkerAliases();
 assertInternalSecretConfigured();
 assertRedisConfiguredForProduction();
 

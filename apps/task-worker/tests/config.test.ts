@@ -8,10 +8,13 @@ import {
 } from "../config/llm.js";
 import {
     getLeaseMs,
+    getRedisUrl,
     getStuckRemediationMode,
     getWorkerRuntimeConfig,
     LEASE_MS_FALLBACK,
 } from "../config/worker.js";
+import { warnDeprecatedWorkerAliases } from "../config/aliases.js";
+import { resetAliasWarnings } from "../config/parse.js";
 
 function withEnv(values: Record<string, string | undefined>, fn: () => void) {
     const previous: Record<string, string | undefined> = {};
@@ -113,4 +116,55 @@ test("TASK_AGENT_MAX_ITERATIONS overrides both loop defaults when set", () => {
         assert.equal(runtime.agentMaxIterationsPlan, 4);
         assert.equal(runtime.agentMaxIterationsPersistent, 4);
     });
+});
+
+test("worker Redis is REDIS_URL only; Upstash REST is ignored", () => {
+    withEnv({
+        REDIS_URL: undefined,
+        UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
+    }, () => {
+        assert.equal(getRedisUrl(), undefined);
+        assert.equal(getWorkerRuntimeConfig().redisUrl, undefined);
+    });
+
+    withEnv({
+        REDIS_URL: "redis://localhost:6379",
+        UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
+    }, () => {
+        assert.equal(getRedisUrl(), "redis://localhost:6379");
+    });
+});
+
+test("boot warns when only an alias or Upstash REST URL is set", () => {
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (message?: unknown) => {
+        warnings.push(String(message));
+    };
+    resetAliasWarnings();
+    try {
+        withEnv({
+            TASK_AGENT_MODEL: undefined,
+            LLM_MODEL: "alias-model",
+            HUGGINGFACE_MODEL: undefined,
+            TASK_WORKER_ALLOWED_EMAIL_DOMAINS: undefined,
+            ALLOWED_EMAIL_DOMAINS: "example.com",
+            INTERNAL_SECRET_SOCKET: undefined,
+            INTERNAL_SECRET: "legacy-secret",
+            REDIS_URL: undefined,
+            UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
+        }, () => {
+            warnDeprecatedWorkerAliases();
+            warnDeprecatedWorkerAliases();
+        });
+    } finally {
+        console.warn = originalWarn;
+        resetAliasWarnings();
+    }
+
+    assert.equal(warnings.length, 4);
+    assert.ok(warnings.some((line) => line.includes("LLM_MODEL")));
+    assert.ok(warnings.some((line) => line.includes("ALLOWED_EMAIL_DOMAINS")));
+    assert.ok(warnings.some((line) => line.includes("INTERNAL_SECRET")));
+    assert.ok(warnings.some((line) => line.includes("UPSTASH_REDIS_REST_URL")));
 });

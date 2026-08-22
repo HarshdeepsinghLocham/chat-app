@@ -88,7 +88,7 @@ Confirm socket startup logs do not show the mock-adapter warning.
 
 ### Task-worker Redis enforcement (Phase 6.3)
 
-In `NODE_ENV=production`, task-worker requires `REDIS_URL` or `UPSTASH_REDIS_REST_URL` and exits on missing config. Emergency override: `TASK_WORKER_ALLOW_NO_REDIS=1` (dedupe remains skipped).
+In `NODE_ENV=production`, task-worker requires `REDIS_URL` and exits on missing config. `UPSTASH_REDIS_REST_URL` is the web REST client only — not an ioredis URL. Emergency override: `TASK_WORKER_ALLOW_NO_REDIS=1` (dedupe remains skipped).
 
 ### Outbox worker partitions (Phase 6.3)
 
@@ -307,7 +307,7 @@ Deploy script: `scripts/ci/deploy/vps-task-worker.sh`.
 | `INTERNAL_SECRET` (legacy) | Transitional fallback | Transitional fallback | Transitional fallback |
 | `SOCKET_SERVER_URL` / `WEB_SERVER_URL` | Yes | Yes | Yes (`SOCKET_SERVER_URL` for emits) |
 | `LLM_*`, tool API keys | Optional on web | No | **Required** for agent runs |
-| `ALLOWED_EMAIL_DOMAINS` | Optional | No | **Required** if email tools used |
+| `TASK_WORKER_ALLOWED_EMAIL_DOMAINS` | Optional | No | **Required** if email tools used (`ALLOWED_EMAIL_DOMAINS` still accepted as an alias) |
 
 Prefer distinct `INTERNAL_SECRET_SOCKET` / `INTERNAL_SECRET_WORKER`. Legacy `INTERNAL_SECRET` remains accepted on both audiences during the deprecation window — remove it after rotation (see [INTERNAL_SECRET_ROTATION.md](./INTERNAL_SECRET_ROTATION.md)).
 
@@ -320,7 +320,7 @@ Prefer distinct `INTERNAL_SECRET_SOCKET` / `INTERNAL_SECRET_WORKER`. Legacy `INT
 | Standalone Mongo + task worker | Retries promote via non-transactional fallback (weaker atomicity); enable `TASK_RETRY_SHADOW_EMIT=1` to align shadow FSM on promote |
 | No Redis on socket (multi pod) | Clients on different pods miss realtime events |
 | No Redis on worker | Duplicate outbox processing possible under race; **production boot fails** unless `TASK_WORKER_ALLOW_NO_REDIS=1` |
-| Missing Redis (prod worker) | Worker refuses to start (`REDIS_URL` / `UPSTASH_REDIS_REST_URL`) |
+| Missing Redis (prod worker) | Worker refuses to start (`REDIS_URL`) |
 | Overlapping `OUTBOX_PARTITION_ID` | Two replicas may claim the same outbox `_id` — use one replica per partition id |
 | Mismatched `INTERNAL_SECRET_SOCKET` / callers vs socket | Task updates never reach clients; 401 on socket `/internal/*` |
 | Mismatched `INTERNAL_SECRET_WORKER` / callers vs web | Socket authz bridges fail; 401 on web `/api/internal/*` |

@@ -805,31 +805,6 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
         }
     }
 
-    if (!executionModeEnforce) {
-        const enforcedWould = evaluateExecutionPolicy({
-            ...payload,
-            participantEmails: promptGuardContext.participantEmails,
-            contactEmails: promptGuardContext.contactEmails,
-            taskId: payload.taskId,
-            organizationId,
-            orgPolicy: orgPolicyOverlay,
-            executionModeEnforce: true,
-        });
-        if (enforcedWould.outcome !== policyDecision.outcome) {
-            logExecution("info", {
-                event: "execution.mode.shadow",
-                workerId: WORKER_ID,
-                taskId: payload.taskId,
-                conversationId: payload.conversationId,
-                actionType: payload.actionType,
-                "execution.mode": effectiveExecutionMode,
-                currentOutcome: policyDecision.outcome,
-                wouldOutcome: enforcedWould.outcome,
-                wouldReasons: enforcedWould.reasons.slice(0, 3),
-            });
-        }
-    }
-
     if (
         policyDecision.outcome === "auto_execute"
         && policyDecision.confidence < GLOBAL_EXECUTION_CONFIDENCE_BASELINE
@@ -1526,7 +1501,6 @@ async function run() {
 }
 
 warnDeprecatedWorkerAliases();
-isExecutionModeEnforce();
 assertInternalSecretConfigured();
 assertRedisConfiguredForProduction();
 

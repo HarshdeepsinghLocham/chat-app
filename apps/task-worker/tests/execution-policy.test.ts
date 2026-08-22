@@ -8,7 +8,6 @@ import { getExecutionConfidenceThreshold } from "../services/execution-confidenc
 
 const ENV_KEYS = [
     "TASK_EXECUTION_CONFIDENCE_THRESHOLDS",
-    "EXECUTION_MODE_ENFORCE",
     "DEFAULT_EXECUTION_MODE",
     "GRANDFATHER_AUTO_TENANTS",
     "TASK_WORKER_ALLOWED_EMAIL_DOMAINS",

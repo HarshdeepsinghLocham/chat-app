@@ -11,12 +11,10 @@ import {
     parseDefaultExecutionMode,
     shouldBlockExecutionEnqueue,
 } from "../config";
-import { resetConfigWarnings } from "../config/parse";
 import { ConflictError } from "../organization-errors";
 
 const ENV_KEYS = [
     "DEFAULT_EXECUTION_MODE",
-    "EXECUTION_MODE_ENFORCE",
     "GRANDFATHER_AUTO_TENANTS",
     "SUGGESTION_INGRESS",
     "SUGGESTION_BLOCK_EXEC",
@@ -42,7 +40,6 @@ afterEach(() => {
             process.env[key] = value;
         }
     }
-    resetConfigWarnings();
 });
 
 describe("getEffectiveExecutionMode", () => {
@@ -103,23 +100,7 @@ describe("execution mode flags", () => {
     });
 
     it("isExecutionModeEnforce is always on", () => {
-        delete process.env.EXECUTION_MODE_ENFORCE;
         expect(isExecutionModeEnforce()).toBe(true);
-        expect(isExecutionModeEnforce("1")).toBe(true);
-        expect(isExecutionModeEnforce("enforce")).toBe(true);
-    });
-
-    it("ignores EXECUTION_MODE_ENFORCE=0 and warns once", () => {
-        process.env.EXECUTION_MODE_ENFORCE = "0";
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
-        try {
-            expect(isExecutionModeEnforce()).toBe(true);
-            expect(isExecutionModeEnforce()).toBe(true);
-            expect(warn).toHaveBeenCalledTimes(1);
-            expect(String(warn.mock.calls[0]?.[0])).toContain("EXECUTION_MODE_ENFORCE=0 is ignored");
-        } finally {
-            warn.mockRestore();
-        }
     });
 });
 

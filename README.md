@@ -28,7 +28,7 @@
 
 Product direction: [ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md) (roadmap lives in Notion, not this repo).
 
-**Product contract:** Suggest → (approve when policy requires) → coordinate. Proposals and audit records are persisted before any tool execution. Autonomy is an optional, policy-gated capability — not the product promise. Execution mode is always enforced: false tool side effects under effective `suggest_only` are a **P0** product bug. `EXECUTION_MODE_ENFORCE=0` is ignored. See [ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md).
+**Product contract:** Suggest → (approve when policy requires) → coordinate. Proposals and audit records are persisted before any tool execution. Autonomy is an optional, policy-gated capability — not the product promise. Execution mode is always enforced: false tool side effects under effective `suggest_only` are a **P0** product bug. See [ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md).
 
 ## Why Semantask
 

@@ -1,5 +1,5 @@
 import type { ExecutionMode } from "@semantask/types";
-import { parseCsvSet } from "./parse";
+import { parseCsvSet, warnOnce } from "./parse";
 
 const EXECUTION_MODES: readonly ExecutionMode[] = [
     "suggest_only",
@@ -18,10 +18,21 @@ export function parseDefaultExecutionMode(raw?: string | null): ExecutionMode {
     return isExecutionModeValue(value) ? value : "suggest_only";
 }
 
-/** EXECUTION_MODE_ENFORCE=0|1 (default 1 / enforce). */
+/**
+ * EXECUTION_MODE_ENFORCE=0|1 (default 1 / enforce).
+ * `0` is still honored this release and warns once; the next cutover ignores `0`.
+ */
 export function isExecutionModeEnforce(raw?: string | null): boolean {
+    const fromEnv = raw === undefined || raw === null;
     const value = (raw ?? process.env.EXECUTION_MODE_ENFORCE ?? "1").trim().toLowerCase();
-    return value === "1" || value === "true" || value === "enforce";
+    const enforce = value === "1" || value === "true" || value === "enforce";
+    if (fromEnv && !enforce) {
+        warnOnce(
+            "EXECUTION_MODE_ENFORCE=0",
+            "[config] EXECUTION_MODE_ENFORCE=0 is deprecated; enforce is on by default. Shadow (0) is still honored this release.",
+        );
+    }
+    return enforce;
 }
 
 export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {

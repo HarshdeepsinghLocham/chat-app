@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createGoogleOAuthState } from "@semantask/auth";
+import { getGoogleClientId } from "@/lib/config/app";
 import {
     buildAppRedirectUrl,
     getGoogleOAuthBaseUrl,
@@ -7,10 +8,6 @@ import {
 
 const GOOGLE_STATE_COOKIE = "google_oauth_state";
 const GOOGLE_CALLBACK_COOKIE = "google_oauth_callback";
-
-function getGoogleClientId(): string {
-    return process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
-}
 
 function buildGoogleOAuthAuthorizeUrl(input: {
     clientId: string;

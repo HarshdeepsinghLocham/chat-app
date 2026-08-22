@@ -1,3 +1,5 @@
+import { isProduction } from "../../../config/runtime.js";
+
 function trimUrlValue(value: string): string {
     return value.trim().replace(/\/$/, "");
 }
@@ -50,7 +52,7 @@ export function isOriginAllowed(origin: string | undefined, allowedOrigins: stri
         return true;
     }
 
-    if (process.env.NODE_ENV !== "production") {
+    if (!isProduction()) {
         if (origin.startsWith("exp://")) {
             return true;
         }
@@ -94,6 +96,6 @@ export function isOriginAllowed(origin: string | undefined, allowedOrigins: stri
 }
 
 export function resolveInternalBaseUrl(value: string): string | null {
-    const defaultProtocol = process.env.NODE_ENV === "production" ? "https:" : "http:";
+    const defaultProtocol = isProduction() ? "https:" : "http:";
     return parseUrlLikeValue(value, defaultProtocol)?.origin ?? null;
 }

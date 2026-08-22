@@ -1,7 +1,4 @@
-import { config as loadEnv } from "dotenv";
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import "./config/env.js";
 import express from "express";
 import http from "http";
 import cors from "cors";
@@ -21,34 +18,12 @@ import {
     renderPrometheusMetrics,
 } from "@semantask/observability";
 import { startTracing } from "@semantask/observability/tracing";
-import {
-    isOriginAllowed,
-    parseCommaSeparatedValues,
-} from "./server/socket/utils/url.js";
+import { getAllowedOrigins, getSocketPort } from "./config/runtime.js";
+import { isOriginAllowed } from "./server/socket/utils/url.js";
 import { correlationMiddleware, logSocketEvent } from "./server/socket/observability.js";
 
-const currentDir = path.dirname(fileURLToPath(import.meta.url));
-const visitedEnvPaths = new Set<string>();
-let scanDir = currentDir;
-
-for (let depth = 0; depth < 8; depth++) {
-    const envPath = path.join(scanDir, ".env");
-
-    if (!visitedEnvPaths.has(envPath) && existsSync(envPath)) {
-        loadEnv({ path: envPath });
-        visitedEnvPaths.add(envPath);
-    }
-
-    const parent = path.dirname(scanDir);
-    if (parent === scanDir) {
-        break;
-    }
-    scanDir = parent;
-}
-
-
 const app = express();
-const allowedOrigins = parseCommaSeparatedValues(process.env.ORIGIN);
+const allowedOrigins = getAllowedOrigins();
 app.use(cors({
     origin: (origin, callback) => {
         if (isOriginAllowed(origin, allowedOrigins)) {
@@ -249,7 +224,7 @@ app.post("/internal/message-semantic-updated", (req, res) => {
     return res.json({ success: true });
 });
 
-const port = parseInt(process.env.PORT || '3001', 10);
+const port = getSocketPort();
 server.listen(port, '0.0.0.0', () => {
     logSocketEvent("info", { event: "socket.listening", port });
 });

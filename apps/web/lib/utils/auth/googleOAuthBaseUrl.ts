@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { getAppUrl } from "@/lib/config/app";
 
 function stripTrailingSlash(value: string): string {
     return value.replace(/\/$/, "");
@@ -19,7 +20,7 @@ export function getGoogleOAuthBaseUrl(req: NextRequest): string {
         return stripTrailingSlash(`${proto}://${host}`);
     }
 
-    const appUrl = process.env.APP_URL?.trim();
+    const appUrl = getAppUrl();
     if (appUrl) {
         return stripTrailingSlash(appUrl);
     }

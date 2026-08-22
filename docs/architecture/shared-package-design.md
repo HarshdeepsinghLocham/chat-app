@@ -198,6 +198,8 @@ exports) would be safer but the choice keeps the surface area small.
     Worker LLM, runtime knobs, and FSM migration flags live in
     `apps/task-worker/config` (call-time reads; env names unchanged).
     `getFsmRollout()` is derived from the existing shadow/projection/emit vars.
+    Web server knobs live in `apps/web/lib/config`; socket boot knobs live in
+    `apps/socket/config`. `NEXT_PUBLIC_*` stays client-readable.
 - **Constraints**: Server-only. Depends on `@semantask/db`, `@semantask/types`, and
   `zod`.
 - **Why separate**: The web app and the task worker both need the same

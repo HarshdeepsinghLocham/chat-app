@@ -10,12 +10,26 @@ import OrganizationPolicyModel, {
 import type { ExecutionMode } from "@semantask/types";
 import { assertCanManageMembers, assertMembership } from "./organization.service";
 import { AuthorizationError } from "./authorization-errors";
-import { ConflictError, ValidationError } from "./organization-errors";
+import { ValidationError } from "./organization-errors";
+import {
+    getEffectiveExecutionMode,
+    isExecutionModeValue,
+} from "./config/execution";
 
-function isExecutionModeValue(value: unknown): value is ExecutionMode {
-    return typeof value === "string"
-        && (EXECUTION_MODES as readonly string[]).includes(value);
-}
+export {
+    getEffectiveExecutionMode,
+    isExecutionModeEnforce,
+    parseDefaultExecutionMode,
+    parseGrandfatherAutoTenants,
+} from "./config/execution";
+export {
+    assertAcceptCreatesCoordinationOnly,
+    isAcceptCreatesExecutionEnabled,
+    isSuggestionBlockExecEnabled,
+    isSuggestionIngressEnabled,
+    isWorkInboxUiEnabled,
+    shouldBlockExecutionEnqueue,
+} from "./config/flags";
 
 export type ResolvedOrganizationPolicy = {
     organizationId: string;
@@ -66,99 +80,6 @@ function normalizeStoredExecutionMode(
 ): ExecutionMode | null {
     if (value == null) return null;
     return isExecutionModeValue(value) ? value : null;
-}
-
-/** Parse DEFAULT_EXECUTION_MODE (default suggest_only). */
-export function parseDefaultExecutionMode(raw?: string | null): ExecutionMode {
-    const value = (raw ?? process.env.DEFAULT_EXECUTION_MODE ?? "suggest_only").trim().toLowerCase();
-    return isExecutionModeValue(value) ? value : "suggest_only";
-}
-
-/** EXECUTION_MODE_ENFORCE=0|1 (default 1 / enforce). */
-export function isExecutionModeEnforce(raw?: string | null): boolean {
-    const value = (raw ?? process.env.EXECUTION_MODE_ENFORCE ?? "1").trim().toLowerCase();
-    return value === "1" || value === "true" || value === "enforce";
-}
-
-function isEnvFlagEnabled(raw: string | null | undefined, defaultEnabled: boolean): boolean {
-    const source = raw ?? (defaultEnabled ? "1" : "0");
-    const value = source.trim().toLowerCase();
-    if (value === "1" || value === "true" || value === "on") {
-        return true;
-    }
-    if (value === "0" || value === "false" || value === "off") {
-        return false;
-    }
-    return defaultEnabled;
-}
-
-/** SUGGESTION_INGRESS=0|1 (default 1). Dual-write WorkSuggestion on classify. */
-export function isSuggestionIngressEnabled(raw?: string | null): boolean {
-    return isEnvFlagEnabled(raw ?? process.env.SUGGESTION_INGRESS, true);
-}
-
-/**
- * SUGGESTION_BLOCK_EXEC=0|1 (default 1).
- * When enabled with effective suggest_only, hard-block execution enqueue.
- */
-export function isSuggestionBlockExecEnabled(raw?: string | null): boolean {
-    return isEnvFlagEnabled(raw ?? process.env.SUGGESTION_BLOCK_EXEC, true);
-}
-
-/** True when execution enqueue must be refused for the given effective mode. */
-export function shouldBlockExecutionEnqueue(executionMode: ExecutionMode): boolean {
-    return isSuggestionBlockExecEnabled() && executionMode === "suggest_only";
-}
-
-/**
- * ACCEPT_CREATES_EXECUTION=0|1 (default 0).
- * Must stay 0 so suggestion accept creates coordination Tasks only.
- */
-export function isAcceptCreatesExecutionEnabled(raw?: string | null): boolean {
-    return isEnvFlagEnabled(raw ?? process.env.ACCEPT_CREATES_EXECUTION, false);
-}
-
-/** Fail closed when accept would be allowed to enqueue execution. */
-export function assertAcceptCreatesCoordinationOnly(raw?: string | null): void {
-    if (isAcceptCreatesExecutionEnabled(raw)) {
-        throw new ConflictError(
-            "ACCEPT_CREATES_EXECUTION is enabled; coordination-only accept is refused"
-        );
-    }
-}
-
-/** WORK_INBOX_UI=0|1 (default 1). Expose /inbox manager surface. */
-export function isWorkInboxUiEnabled(raw?: string | null): boolean {
-    return isEnvFlagEnabled(raw ?? process.env.WORK_INBOX_UI, true);
-}
-
-export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {
-    const source = raw ?? process.env.GRANDFATHER_AUTO_TENANTS ?? "";
-    return new Set(
-        source
-            .split(",")
-            .map((entry) => entry.trim())
-            .filter((entry) => entry.length > 0)
-    );
-}
-
-/**
- * Resolve effective workspace execution mode.
- * Grandfather list → org field → DEFAULT_EXECUTION_MODE / suggest_only.
- * Missing org field is treated as suggest_only via the default env path.
- */
-export function getEffectiveExecutionMode(args: {
-    organizationId?: string | null;
-    executionMode?: ExecutionMode | null;
-}): ExecutionMode {
-    const organizationId = args.organizationId ?? null;
-    if (organizationId && parseGrandfatherAutoTenants().has(organizationId)) {
-        return "auto_execute";
-    }
-    if (args.executionMode && isExecutionModeValue(args.executionMode)) {
-        return args.executionMode;
-    }
-    return parseDefaultExecutionMode();
 }
 
 export async function getOrganizationPolicy(

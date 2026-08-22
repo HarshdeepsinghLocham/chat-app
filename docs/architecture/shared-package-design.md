@@ -188,6 +188,13 @@ exports) would be safer but the choice keeps the surface area small.
   - `normalizers/*` and `tool-normalizers.ts` — shape transformations
     between DB models and DTOs.
   - `validators/*` — Zod schemas re-used across apps.
+  - `config/*` — deploy-wide product-flag parsers (`WORK_INBOX_UI`,
+    suggestion ingress, execution-mode defaults). Call-time `process.env`
+    reads; `organization-policy.service.ts` re-exports the same helpers.
+    Overlay order: code defaults → env → `OrganizationPolicy` field →
+    `GRANDFATHER_AUTO_TENANTS` for execution mode. Personal workspaces
+    (`organizationId` null) stay env/default-driven (ADR-004 / ADR-005).
+    New tenant behavior belongs on `OrganizationPolicy`, not a new env var.
 - **Constraints**: Server-only. Depends on `@semantask/db`, `@semantask/types`, and
   `zod`.
 - **Why separate**: The web app and the task worker both need the same
@@ -196,7 +203,7 @@ exports) would be safer but the choice keeps the surface area small.
 
 The `exports` field declares many fine-grained subpaths
 (`@semantask/services/outbox.service`, `@semantask/services/execution-event.service`,
-`@semantask/services/contact.service`, …). This is important because:
+`@semantask/services/contact.service`, `@semantask/services/config`, …). This is important because:
 
 - Tree-shaking from compiled JS is unreliable; explicit subpath imports
   let apps include only the modules they need.

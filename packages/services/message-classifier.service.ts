@@ -2,6 +2,9 @@ import type { MessageSemanticType } from "@semantask/types";
 import {
     classifierClassificationsCounter,
 } from "@semantask/observability/metrics";
+import { getClassifierMode, type ClassifierMode } from "./config/flags";
+
+export { getClassifierMode, type ClassifierMode };
 
 const ACTIONABLE_SEMANTIC_TYPES = new Set<MessageSemanticType>([
     "task",
@@ -20,8 +23,6 @@ export type MessageClassification = {
     reasoning: string;
     source: "regex" | "llm" | "llm_fallback";
 };
-
-export type ClassifierMode = "regex" | "shadow" | "llm";
 
 export type LlmClassifyFn = (content: string) => Promise<MessageClassification | null>;
 
@@ -47,15 +48,6 @@ export function configureMessageClassifier(options: {
     if (options.onDisagreement !== undefined) {
         disagreementLogger = options.onDisagreement;
     }
-}
-
-export function getClassifierMode(): ClassifierMode {
-    const raw = (process.env.TASK_CLASSIFIER_MODE || "regex").trim().toLowerCase();
-    if (raw === "shadow" || raw === "llm") {
-        return raw;
-    }
-
-    return "regex";
 }
 
 export function getClassifierThreshold(): number {

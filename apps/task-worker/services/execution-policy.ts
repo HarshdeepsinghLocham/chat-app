@@ -13,6 +13,7 @@ import {
     type PromptGuardMode,
     validateToolArgsAgainstContext,
 } from "./prompt-guard.js";
+import { getEnvAllowedEmailDomains } from "../config/tools.js";
 
 export type OrganizationPolicyOverlay = {
     version: number;
@@ -73,14 +74,6 @@ function emailDomain(email: string): string {
     const at = email.lastIndexOf("@");
     if (at < 0 || at === email.length - 1) return "";
     return email.slice(at + 1).toLowerCase();
-}
-
-function getEnvAllowedEmailDomains(): string[] {
-    const raw = process.env.TASK_WORKER_ALLOWED_EMAIL_DOMAINS || process.env.ALLOWED_EMAIL_DOMAINS || "";
-    return raw
-        .split(",")
-        .map((entry) => entry.trim().toLowerCase())
-        .filter((entry) => entry.length > 0);
 }
 
 function resolveAllowedEmailDomains(orgPolicy?: OrganizationPolicyOverlay | null): string[] {

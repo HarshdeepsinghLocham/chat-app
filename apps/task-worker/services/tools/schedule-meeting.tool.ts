@@ -1,5 +1,6 @@
 import type { Tool, ToolResult } from "./tool-registry.js";
 import { z } from "zod";
+import { getScheduleMeetingWebhookUrl } from "../../config/tools.js";
 
 export class ScheduleMeetingTool implements Tool {
     name = "schedule_meeting";
@@ -14,7 +15,7 @@ export class ScheduleMeetingTool implements Tool {
     }).passthrough() as unknown as z.ZodType<Record<string, unknown>>;
 
     async execute(input: Record<string, unknown>, context: { taskId: string; conversationId: string; messageId: string | null; signal?: AbortSignal; metadata?: { idempotencyKey?: string } }): Promise<ToolResult> {
-        const webhookUrl = process.env.SCHEDULE_MEETING_WEBHOOK_URL;
+        const webhookUrl = getScheduleMeetingWebhookUrl();
         if (!webhookUrl) {
             throw new Error("Schedule meeting adapter is not configured. Set SCHEDULE_MEETING_WEBHOOK_URL.");
         }

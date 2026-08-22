@@ -29,9 +29,15 @@ export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {
 }
 
 /**
- * Resolve effective workspace execution mode.
- * Grandfather list → org field → DEFAULT_EXECUTION_MODE / suggest_only.
- * Missing org field is treated as suggest_only via the default env path.
+ * Overlay order for workspace execution mode (call-time; do not cache):
+ *
+ *   1. Code default — `suggest_only`
+ *   2. `DEFAULT_EXECUTION_MODE` env
+ *   3. `OrganizationPolicy.executionMode` when set
+ *   4. `GRANDFATHER_AUTO_TENANTS` — listed org IDs force `auto_execute`
+ *
+ * Personal workspaces (`organizationId` null) use 1–2 only.
+ * `EXECUTION_MODE_ENFORCE` is a deploy rail, not a layer in this resolver.
  */
 export function getEffectiveExecutionMode(args: {
     organizationId?: string | null;

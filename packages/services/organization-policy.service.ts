@@ -8,7 +8,7 @@ import OrganizationPolicyModel, {
     type PromptGuardMode,
 } from "@semantask/db/models/OrganizationPolicy";
 import type { ExecutionMode } from "@semantask/types";
-import { assertCanManageMembers, assertMembership } from "./organization.service";
+import { assertCanManageMembers, assertMembership, getOrganizationById } from "./organization.service";
 import { AuthorizationError } from "./authorization-errors";
 import { ValidationError } from "./organization-errors";
 import {
@@ -302,6 +302,166 @@ export function serializeOrganizationPolicy(doc: IOrganizationPolicy | null, org
         executionModeUpdatedAt: doc.executionModeUpdatedAt?.toISOString?.() ?? null,
         updatedAt: doc.updatedAt?.toISOString?.() ?? null,
     };
+}
+
+export type GrandfatherApplyStatus =
+    | "applied"
+    | "would_apply"
+    | "already_auto_execute"
+    | "invalid_id"
+    | "missing_org";
+
+export type GrandfatherApplyRow = {
+    organizationId: string;
+    status: GrandfatherApplyStatus;
+    previousMode: ExecutionMode | null;
+};
+
+export type GrandfatherApplyResult = {
+    ok: boolean;
+    dryRun: boolean;
+    rows: GrandfatherApplyRow[];
+};
+
+function uniqueOrganizationIds(ids: Iterable<string>): string[] {
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const raw of ids) {
+        const organizationId = raw.trim();
+        if (!organizationId || seen.has(organizationId)) {
+            continue;
+        }
+        seen.add(organizationId);
+        unique.push(organizationId);
+    }
+    return unique;
+}
+
+async function persistGrandfatherAutoExecute(
+    organizationId: string,
+    previousMode: ExecutionMode | null
+): Promise<void> {
+    const organizationObjectId = new Types.ObjectId(organizationId);
+    const maxAttempts = 5;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const previous = await OrganizationPolicyModel.findOne({
+            organizationId: organizationObjectId,
+        }).lean<IOrganizationPolicy>();
+        const currentMode = normalizeStoredExecutionMode(previous?.executionMode);
+        if (currentMode === "auto_execute") {
+            return;
+        }
+
+        const filter: Record<string, unknown> = {
+            organizationId: organizationObjectId,
+        };
+        if (previous) {
+            filter.version = previous.version;
+        }
+
+        try {
+            const updated = await OrganizationPolicyModel.findOneAndUpdate(
+                filter,
+                {
+                    $set: {
+                        executionMode: "auto_execute",
+                        executionModeUpdatedAt: new Date(),
+                    },
+                    $inc: { version: 1 },
+                    $setOnInsert: {
+                        organizationId: organizationObjectId,
+                    },
+                },
+                {
+                    upsert: !previous,
+                    new: true,
+                }
+            ).lean<IOrganizationPolicy>();
+
+            if (!updated) {
+                continue;
+            }
+
+            console.info(JSON.stringify({
+                event: "policy.execution_mode.changed",
+                organizationId,
+                actorUserId: "system:grandfather-auto-execute",
+                previousMode,
+                executionMode: "auto_execute",
+                version: updated.version,
+            }));
+            return;
+        } catch (error) {
+            const maybeMongo = error as { code?: number };
+            if (maybeMongo?.code === 11000) {
+                continue;
+            }
+            throw error;
+        }
+    }
+
+    throw new Error(`Failed to persist grandfather auto_execute for ${organizationId}`);
+}
+
+/**
+ * Ops-only. No membership check. Writes `executionMode: auto_execute` so listed
+ * orgs keep today's grandfather behavior after `GRANDFATHER_AUTO_TENANTS` is cleared.
+ * Does not delete the env parser. Fails closed (no writes) if any id is invalid
+ * or the organization is missing.
+ */
+export async function applyGrandfatherAutoExecute(args: {
+    organizationIds: Iterable<string>;
+    dryRun?: boolean;
+}): Promise<GrandfatherApplyResult> {
+    const dryRun = Boolean(args.dryRun);
+    const organizationIds = uniqueOrganizationIds(args.organizationIds);
+    const rows: GrandfatherApplyRow[] = [];
+
+    await connectToDatabase();
+
+    for (const organizationId of organizationIds) {
+        if (!isValidObjectId(organizationId)) {
+            rows.push({ organizationId, status: "invalid_id", previousMode: null });
+            continue;
+        }
+
+        const organization = await getOrganizationById(organizationId);
+        if (!organization) {
+            rows.push({ organizationId, status: "missing_org", previousMode: null });
+            continue;
+        }
+
+        const policy = await getOrganizationPolicy(organizationId);
+        const previousMode = normalizeStoredExecutionMode(policy?.executionMode);
+        if (previousMode === "auto_execute") {
+            rows.push({ organizationId, status: "already_auto_execute", previousMode });
+            continue;
+        }
+
+        rows.push({
+            organizationId,
+            status: "would_apply",
+            previousMode,
+        });
+    }
+
+    const ok = rows.every((row) => (
+        row.status !== "invalid_id" && row.status !== "missing_org"
+    ));
+    if (!ok || dryRun) {
+        return { ok, dryRun, rows };
+    }
+
+    for (const row of rows) {
+        if (row.status !== "would_apply") {
+            continue;
+        }
+        await persistGrandfatherAutoExecute(row.organizationId, row.previousMode);
+        row.status = "applied";
+    }
+
+    return { ok: true, dryRun: false, rows };
 }
 
 export { AuthorizationError };

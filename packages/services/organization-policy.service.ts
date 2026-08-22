@@ -132,6 +132,11 @@ export function isWorkInboxUiEnabled(raw?: string | null): boolean {
     return isEnvFlagEnabled(raw ?? process.env.WORK_INBOX_UI, true);
 }
 
+/** COORDINATION_BOARD=0|1 (default 0). Expose /inbox/board coordination surface. */
+export function isCoordinationBoardEnabled(raw?: string | null): boolean {
+    return isEnvFlagEnabled(raw ?? process.env.COORDINATION_BOARD, false);
+}
+
 export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {
     const source = raw ?? process.env.GRANDFATHER_AUTO_TENANTS ?? "";
     return new Set(

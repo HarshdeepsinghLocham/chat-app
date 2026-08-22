@@ -1,9 +1,17 @@
-import type { WorkSuggestionStatus } from "@semantask/types";
+import type { BoardStatus, WorkSuggestionStatus } from "@semantask/types";
 
 export type WorkSuggestionsListParams = {
     organizationId?: string;
     conversationId?: string;
     status?: WorkSuggestionStatus | "";
+    page: number;
+    limit: number;
+};
+
+export type WorkBoardListParams = {
+    organizationId?: string;
+    conversationId?: string;
+    boardStatus?: BoardStatus | "";
     page: number;
     limit: number;
 };
@@ -23,6 +31,19 @@ export const queryKeys = {
                 params.organizationId ?? null,
                 params.conversationId ?? null,
                 params.status || null,
+                params.page,
+                params.limit,
+            ] as const,
+    },
+    workBoard: {
+        all: ["workBoard"] as const,
+        list: (params: WorkBoardListParams) =>
+            [
+                "workBoard",
+                "list",
+                params.organizationId ?? null,
+                params.conversationId ?? null,
+                params.boardStatus || null,
                 params.page,
                 params.limit,
             ] as const,

@@ -254,9 +254,11 @@ function TaskInlineCard({ task, onStatusChange, onCancel }: TaskInlineCardProps)
                     )}
                 </div>
 
-                <select
+                <label className="flex flex-col gap-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                    Run status
+                    <select
                     value={task.status}
-                    className="rounded-lg border border-input bg-background px-2.5 py-2 text-xs text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+                    className="rounded-lg border border-input bg-background px-2.5 py-2 text-xs normal-case tracking-normal text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                     onChange={(event) => onStatusChange(task._id, event.target.value as TaskStatus)}
                 >
                     {TASK_STATUSES.map((status) => (
@@ -265,6 +267,7 @@ function TaskInlineCard({ task, onStatusChange, onCancel }: TaskInlineCardProps)
                         </option>
                     ))}
                 </select>
+                </label>
             </div>
 
             <div className="mt-4">

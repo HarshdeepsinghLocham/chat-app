@@ -29,6 +29,7 @@ import {
     isExecutionModeEnforce,
     isSuggestionBlockExecEnabled,
     isSuggestionIngressEnabled,
+    isCoordinationBoardEnabled,
     isWorkInboxUiEnabled,
     parseDefaultExecutionMode,
     shouldBlockExecutionEnqueue,
@@ -44,6 +45,7 @@ const ENV_KEYS = [
     "SUGGESTION_BLOCK_EXEC",
     "ACCEPT_CREATES_EXECUTION",
     "WORK_INBOX_UI",
+    "COORDINATION_BOARD",
 ] as const;
 
 const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
@@ -155,6 +157,19 @@ describe("work inbox UI flag", () => {
     it("enables WORK_INBOX_UI when set", () => {
         expect(isWorkInboxUiEnabled("1")).toBe(true);
         expect(isWorkInboxUiEnabled("true")).toBe(true);
+    });
+});
+
+describe("coordination board flag", () => {
+    it("defaults COORDINATION_BOARD off", () => {
+        delete process.env.COORDINATION_BOARD;
+        expect(isCoordinationBoardEnabled()).toBe(false);
+        expect(isCoordinationBoardEnabled("0")).toBe(false);
+    });
+
+    it("enables COORDINATION_BOARD when set", () => {
+        expect(isCoordinationBoardEnabled("1")).toBe(true);
+        expect(isCoordinationBoardEnabled("true")).toBe(true);
     });
 });
 

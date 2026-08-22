@@ -1,4 +1,4 @@
-import type { TaskRecord } from "@semantask/types";
+import { resolveBoardStatus, type TaskRecord } from "@semantask/types";
 import type { ITask } from "@semantask/db/models/Task";
 
 export function normalizeTask(doc: ITask): TaskRecord {
@@ -10,6 +10,10 @@ export function normalizeTask(doc: ITask): TaskRecord {
         title: doc.title,
         description: doc.description,
         status: doc.status,
+        boardStatus: resolveBoardStatus({
+            boardStatus: doc.boardStatus,
+            status: doc.status,
+        }),
         priority: doc.priority,
         assignees: doc.assignees.map((assignee) => assignee.toString()),
         dueAt: doc.dueAt ? new Date(doc.dueAt).toISOString() : null,

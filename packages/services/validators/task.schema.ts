@@ -14,6 +14,7 @@ const taskLifecycleStateSchema = z.enum([
     "failed",
 ]);
 const taskPrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
+const boardStatusSchema = z.enum(["todo", "doing", "done"]);
 
 export const CreateTaskSchema = z.object({
     conversationId: z.string().min(1),
@@ -25,6 +26,7 @@ export const CreateTaskSchema = z.object({
     assignees: z.array(z.string().min(1)).max(32).optional().default([]),
     dueAt: z.coerce.date().nullable().optional().default(null),
     priority: taskPrioritySchema.optional().default("medium"),
+    boardStatus: boardStatusSchema.optional().default("todo"),
     source: z.enum(["ai", "manual", "imported"]).default("manual"),
     sourceMessageIds: z.array(z.string().min(1)).optional().default([]),
     latestContextMessageId: z.string().min(1).nullable().optional().default(null),
@@ -79,6 +81,7 @@ export const UpdateTaskSchema = z.object({
     description: z.string().max(8000).optional(),
     status: taskStatusSchema.optional(),
     lifecycleState: taskLifecycleStateSchema.optional(),
+    boardStatus: boardStatusSchema.optional(),
     priority: taskPrioritySchema.optional(),
     assignees: z.array(z.string().min(1)).max(32).optional(),
     dueAt: z.coerce.date().nullable().optional(),

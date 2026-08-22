@@ -10,7 +10,8 @@ export type OutboxTopic =
     | "billing.usage.recorded"
     | "billing.quota.exceeded"
     | "work.suggestion.accepted"
-    | "work.suggestion.dismissed";
+    | "work.suggestion.dismissed"
+    | "task.board.updated";
 
 export type OutboxStatus = "pending" | "processing" | "completed" | "failed" | "dead_letter";
 
@@ -46,6 +47,7 @@ const OutboxEventSchema = new Schema<IOutboxEvent>(
                 "billing.quota.exceeded",
                 "work.suggestion.accepted",
                 "work.suggestion.dismissed",
+                "task.board.updated",
             ],
             required: true,
             index: true,

@@ -12,13 +12,17 @@ jest.mock("next/navigation", () => ({
 
 jest.mock("@semantask/services/organization-policy.service", () => ({
     isWorkInboxUiEnabled: jest.fn(),
+    isCoordinationBoardEnabled: jest.fn(() => false),
 }));
 
 jest.mock("@/components/inbox/inbox-subnav", () => ({
     InboxSubnav: () => null,
 }));
 
-import { isWorkInboxUiEnabled } from "@semantask/services/organization-policy.service";
+import {
+    isCoordinationBoardEnabled,
+    isWorkInboxUiEnabled,
+} from "@semantask/services/organization-policy.service";
 import InboxLayout from "../app/inbox/layout";
 
 describe("InboxLayout flag gate", () => {
@@ -34,6 +38,7 @@ describe("InboxLayout flag gate", () => {
 
     it("renders children when WORK_INBOX_UI is enabled", () => {
         (isWorkInboxUiEnabled as jest.Mock).mockReturnValue(true);
+        (isCoordinationBoardEnabled as jest.Mock).mockReturnValue(false);
         const element = InboxLayout({ children: "child" });
         expect(notFound).not.toHaveBeenCalled();
         expect(element).toBeTruthy();

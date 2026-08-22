@@ -13,6 +13,32 @@ export type TaskLifecycleState =
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 
+export const BOARD_STATUSES = ["todo", "doing", "done"] as const;
+export type BoardStatus = (typeof BOARD_STATUSES)[number];
+
+export function isBoardStatus(value: unknown): value is BoardStatus {
+    return typeof value === "string" && (BOARD_STATUSES as readonly string[]).includes(value);
+}
+
+/** Read-time default when `boardStatus` was never persisted. Does not write. */
+export function resolveBoardStatus(input: {
+    boardStatus?: BoardStatus | null;
+    status: TaskStatus;
+}): BoardStatus {
+    if (isBoardStatus(input.boardStatus)) {
+        return input.boardStatus;
+    }
+    if (input.status === "completed") return "done";
+    if (
+        input.status === "executing"
+        || input.status === "partial"
+        || input.status === "waiting_for_input"
+    ) {
+        return "doing";
+    }
+    return "todo";
+}
+
 export type TaskSource = "ai" | "manual" | "imported";
 
 import type { MessageSemanticType } from "./semantic.js";
@@ -120,6 +146,8 @@ export interface TaskRecord {
     title: string;
     description: string;
     status: TaskStatus;
+    /** Coordination column — orthogonal to execution `status` / `lifecycleState`. */
+    boardStatus: BoardStatus;
     lifecycleState?: TaskLifecycleState;
     priority: TaskPriority;
     assignees: string[];

@@ -18,7 +18,7 @@ Use this before promoting **staging** or **production** (web, socket, and task w
 | 1 | **MongoDB replica set** (or `mongos`) | Task retry scanner, transactional message+outbox writes | `rs.status()` succeeds; no `Transaction numbers are only allowed on a replica set` in worker logs |
 | 2 | **`REDIS_URL` reachable** from web, socket, task-worker | Socket.IO horizontal scale, outbox dedupe, presence, rate limits | Socket log does **not** show Redis adapter mock warning; worker has Redis connected |
 | 3 | **Per-service internal secrets** (`INTERNAL_SECRET_SOCKET` / `INTERNAL_SECRET_WORKER`, or legacy `INTERNAL_SECRET`) | Internal bridge (`/internal/*`, `/api/internal/*`) | Worker starts in prod; socket accepts worker emits; see [rotation runbook](./INTERNAL_SECRET_ROTATION.md) |
-| 4 | **Auth secrets** (`ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, `NEXTAUTH_SECRET`) | Web + socket JWT validation | Login and socket handshake succeed |
+| 4 | **Auth secrets** (`ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`) | Web + socket JWT validation | Login and socket handshake succeed |
 | 5 | **`ORIGIN` / `NEXT_PUBLIC_SOCKET_URL` aligned** with public URLs | CORS and socket connections | Browser connects to `/api/socket` without origin errors |
 | 6 | **`TASK_EXECUTION_FSM_SHADOW_MODE` understood** | FSM shadow telemetry (default: on) | Set `0` only when intentionally disabling shadow writes |
 | 7 | **`ALLOWED_EMAIL_DOMAINS` or `TASK_WORKER_ALLOWED_EMAIL_DOMAINS`** when email tools are enabled | Autonomous `send_email` policy | Comma-separated domains; empty = no domain restriction (higher risk) |
@@ -229,8 +229,9 @@ db.toolgrants.aggregate([
 |----------|---------|
 | `ACCESS_TOKEN_SECRET` | JWT access tokens (socket + API) |
 | `REFRESH_TOKEN_SECRET` | Refresh tokens |
-| `NEXTAUTH_SECRET` | NextAuth session encryption |
-| `NEXTAUTH_URL` | Canonical app URL |
+| `APP_URL` | Canonical public origin fallback when `Host` / `X-Forwarded-*` are missing (Google OAuth) |
+
+`NEXTAUTH_SECRET` / `NEXTAUTH_URL` are unused leftovers (this repo uses custom JWT auth, not NextAuth).
 
 See [`env.sample`](../../env.sample) for the full list.
 
@@ -238,7 +239,7 @@ See [`env.sample`](../../env.sample) for the full list.
 
 ## Task worker: FSM shadow mode
 
-Fine-grained execution state is persisted in **shadow mode** alongside legacy `Task.lifecycleState`.
+Fine-grained execution state is persisted in **shadow mode** alongside legacy `Task.lifecycleState`. These flags are **migration scaffolding** (ADR-001 Phase 5), not permanent product knobs. Exit: `TASK_STATE_PROJECTION_MODE=enforce`, then delete the shadow/emit/divergence flags.
 
 | Variable | Default | Effect |
 |----------|---------|--------|

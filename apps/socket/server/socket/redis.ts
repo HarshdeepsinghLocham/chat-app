@@ -1,4 +1,5 @@
 import { Redis } from "ioredis";
+import { getRedisUrl, isProduction } from "../../config/runtime.js";
 
 type InMemoryValue = {
     value: string;
@@ -166,9 +167,9 @@ export interface RedisAdapterClients {
 }
 
 export async function initRedis(): Promise<RedisAdapterClients> {
-    const redisUrl = process.env.REDIS_URL;
+    const redisUrl = getRedisUrl();
     if (!redisUrl) {
-        if (process.env.NODE_ENV === "production") {
+        if (isProduction()) {
             throw new Error("REDIS_URL is required to initialize socket Redis clients");
         }
 
@@ -197,7 +198,7 @@ export async function initRedis(): Promise<RedisAdapterClients> {
         await subClient.connect();
         await appClient.connect();
     } catch (error) {
-        if (process.env.NODE_ENV === "production") {
+        if (isProduction()) {
             throw error;
         }
 

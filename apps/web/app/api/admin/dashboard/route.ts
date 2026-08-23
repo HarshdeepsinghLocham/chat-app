@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "redis";
+import { getRedisUrl } from "@/lib/config/redis";
 import { requireAdminUser } from "@/lib/utils/auth/requireAdminUser";
 
 const redis = createClient({
-    url: process.env.REDIS_URL,
+    url: getRedisUrl(),
 });
 
 async function connectRedis() {

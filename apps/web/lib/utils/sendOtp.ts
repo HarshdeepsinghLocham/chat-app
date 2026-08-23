@@ -1,28 +1,27 @@
 import nodemailer from "nodemailer";
+import { getSmtpConfig } from "@/lib/config/smtp";
 
 function getTransporter() {
-    const host = process.env.SMTP_HOST;
-    const port = Number(process.env.SMTP_PORT || 587);
-    const user = process.env.SMTP_USER || process.env.EMAIL_USER;
-    const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+    const smtp = getSmtpConfig();
 
-    if (!user || !pass) {
+    if (!smtp.user || !smtp.pass) {
         throw new Error("SMTP credentials are not configured");
     }
 
     return nodemailer.createTransport({
-        host: host || "smtp.gmail.com",
-        port,
-        secure: port === 465,
-        auth: { user, pass },
+        host: smtp.host,
+        port: smtp.port,
+        secure: smtp.port === 465,
+        auth: { user: smtp.user, pass: smtp.pass },
     });
 }
 
 export async function sendOtpEmail(email: string, otp: string): Promise<void> {
     const transporter = getTransporter();
+    const smtp = getSmtpConfig();
 
     await transporter.sendMail({
-        from: process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.EMAIL_USER,
+        from: smtp.from,
         to: email,
         subject: "Your verification code",
         text: `Your OTP is ${otp}. It expires in 5 minutes.`,

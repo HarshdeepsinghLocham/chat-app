@@ -1,6 +1,7 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { NextResponse } from "next/server";
+import { getUpstashRestConfig } from "@/lib/config/redis";
 
 type RateLimitResult = {
     success: boolean;
@@ -44,8 +45,9 @@ class InMemoryRateLimiter {
     }
 }
 
-const upstashUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
-const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+const upstash = getUpstashRestConfig();
+const upstashUrl = upstash?.url;
+const upstashToken = upstash?.token;
 
 let upstashRedisClient: Redis | null = null;
 if (upstashUrl && upstashToken) {

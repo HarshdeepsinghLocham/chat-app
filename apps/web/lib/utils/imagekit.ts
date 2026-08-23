@@ -1,4 +1,5 @@
 import { authenticatedFetch } from "@/lib/utils/api";
+import { getPublicImageKitEndpoint, getPublicImageKitKey } from "@/lib/config/public";
 
 function isTrustedImageKitUrl(value: string): boolean {
     try {
@@ -50,7 +51,7 @@ export async function getImageKitUploadAuth(): Promise<ImageKitUploadAuth> {
         throw new Error(auth.error || "Unable to authenticate image upload.");
     }
 
-    const publicKey = auth.publicKey || process.env.NEXT_PUBLIC_PUBLIC_KEY;
+    const publicKey = auth.publicKey || getPublicImageKitKey();
 
     if (!publicKey || !auth.signature || typeof auth.expire !== "number" || !auth.token) {
         throw new Error("Image upload authentication response is incomplete.");
@@ -71,7 +72,7 @@ export function getAvatarUrl(source?: string, size = 128): string {
         return appendImageKitTransform(source, size);
     }
 
-    const endpoint = process.env.NEXT_PUBLIC_URI_ENDPOINT?.replace(/\/$/, "");
+    const endpoint = getPublicImageKitEndpoint();
     const normalized = source.replace(/^\/+/, "");
 
     if (!endpoint) {

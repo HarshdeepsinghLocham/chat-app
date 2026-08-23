@@ -2,16 +2,16 @@ import { Server as SocketIOServer } from "socket.io";
 import type { Server as HTTPServer } from "http";
 import { createAdapter } from "@socket.io/redis-adapter";
 import type { RedisAdapterClients } from "./redis.js";
+import { getAllowedOrigins } from "../../config/runtime.js";
 import {
     isOriginAllowed,
-    parseCommaSeparatedValues,
 } from "./utils/url.js";
 
 export function initIO(
     httpServer: HTTPServer,
     redis: RedisAdapterClients
 ) {
-    const allowedOrigins = parseCommaSeparatedValues(process.env.ORIGIN);
+    const allowedOrigins = getAllowedOrigins();
 
     const io = new SocketIOServer(httpServer, {
         path: "/api/socket",

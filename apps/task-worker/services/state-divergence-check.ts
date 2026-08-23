@@ -1,11 +1,10 @@
 import type { ExecutionState, TaskLifecycleState } from "@semantask/types";
 import { deriveLegacyLifecycleState, taskLifecycleMatchesExecutionProjection } from "@semantask/types";
+import { isStateDivergenceCheckEnabled } from "../config/migration.js";
 import { isExecutionState } from "./execution-state-shadow.js";
 import { logExecution } from "./execution-logger.js";
 
-export function isTaskStateDivergenceCheckEnabled(): boolean {
-    return process.env.TASK_STATE_DIVERGENCE_CHECK === "1";
-}
+export { isStateDivergenceCheckEnabled as isTaskStateDivergenceCheckEnabled };
 
 export type TaskStateDivergence = {
     lifecycleState: TaskLifecycleState;
@@ -44,7 +43,7 @@ export interface MaybeLogTaskStateDivergenceInput {
 
 /** When `TASK_STATE_DIVERGENCE_CHECK=1`, logs `state_diverged` if legacy and FSM projection disagree. */
 export function maybeLogTaskStateDivergence(input: MaybeLogTaskStateDivergenceInput): boolean {
-    if (!isTaskStateDivergenceCheckEnabled()) {
+    if (!isStateDivergenceCheckEnabled()) {
         return false;
     }
 

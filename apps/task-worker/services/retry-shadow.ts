@@ -7,6 +7,7 @@ import {
     resolveCurrentShadowState,
     type ShadowExecutionStateHistoryEntry,
 } from "./execution-state-shadow.js";
+import { isRetryShadowEmitEnabled } from "../config/migration.js";
 import { logExecution } from "./execution-logger.js";
 import { maybeLogTaskStateDivergence } from "./state-divergence-check.js";
 
@@ -16,12 +17,7 @@ import { maybeLogTaskStateDivergence } from "./state-divergence-check.js";
  * (and shadow mode is on), emit `RETRY_DUE` so the FSM moves to `queued`
  * (projects to `ready`, matching the scanner's legacy write).
  */
-export function isRetryShadowEmitEnabled(): boolean {
-    return (
-        process.env.TASK_RETRY_SHADOW_EMIT === "1"
-        && process.env.TASK_EXECUTION_FSM_SHADOW_MODE !== "0"
-    );
-}
+export { isRetryShadowEmitEnabled };
 
 export interface EmitRetryDueShadowStateInput {
     taskId: string;

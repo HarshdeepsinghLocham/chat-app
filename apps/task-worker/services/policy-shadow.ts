@@ -7,6 +7,7 @@ import {
     resolveCurrentShadowState,
     type ShadowExecutionStateHistoryEntry,
 } from "./execution-state-shadow.js";
+import { isPolicyShadowEmitEnabled } from "../config/migration.js";
 import { logExecution } from "./execution-logger.js";
 import { maybeLogTaskStateDivergence } from "./state-divergence-check.js";
 import { applyLifecycleProjection } from "./state-projection.js";
@@ -18,12 +19,7 @@ import { applyLifecycleProjection } from "./state-projection.js";
  * matching `POLICY_BLOCKED` / `POLICY_APPROVAL_REQUIRED` events and keep the legacy
  * `lifecycleState` aligned with the FSM projection so dual-state stays consistent.
  */
-export function isPolicyShadowEmitEnabled(): boolean {
-    return (
-        process.env.TASK_POLICY_SHADOW_EMIT === "1"
-        && process.env.TASK_EXECUTION_FSM_SHADOW_MODE !== "0"
-    );
-}
+export { isPolicyShadowEmitEnabled };
 
 function baselineForPolicyEvaluation(executionState: unknown): ExecutionState {
     const current = resolveCurrentShadowState(executionState);

@@ -15,6 +15,11 @@ import {
 } from "./prompt-guard.js";
 import { getEnvAllowedEmailDomains } from "../config/tools.js";
 
+/**
+ * Org `OrganizationPolicy` fields overlay env when set:
+ * `confidenceThresholds`, `allowedEmailDomains`, `promptGuardMode`.
+ * Execution mode uses `getEffectiveExecutionMode` (grandfather wins).
+ */
 export type OrganizationPolicyOverlay = {
     version: number;
     confidenceThresholds?: Record<string, number> | null;

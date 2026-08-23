@@ -27,3 +27,30 @@ export function parsePort(raw: string | undefined, fallback: number): number {
     const parsed = Number.parseInt(raw || String(fallback), 10);
     return Number.isFinite(parsed) ? parsed : fallback;
 }
+
+const warnedKeys = new Set<string>();
+
+export function resetAliasWarnings(): void {
+    warnedKeys.clear();
+}
+
+export function warnOnce(key: string, message: string): void {
+    if (warnedKeys.has(key)) {
+        return;
+    }
+    warnedKeys.add(key);
+    console.warn(message);
+}
+
+/** Boot-time: warn when only the deprecated alias is set. Canonical still dual-reads. */
+export function warnIfAliasOnly(canonical: string, alias: string): void {
+    const canonicalSet = Boolean(process.env[canonical]?.trim());
+    const aliasSet = Boolean(process.env[alias]?.trim());
+    if (canonicalSet || !aliasSet) {
+        return;
+    }
+    warnOnce(
+        `${canonical}:${alias}`,
+        `[config] ${alias} is deprecated; set ${canonical}. Alias still accepted.`,
+    );
+}

@@ -10,6 +10,9 @@ export async function register() {
         return;
     }
 
+    const { warnDeprecatedWebAliases } = await import("./lib/config/aliases");
+    warnDeprecatedWebAliases();
+
     const { ensureDefaultMetrics, getCorrelationId } = await import(
         /* webpackIgnore: true */
         "@semantask/observability"

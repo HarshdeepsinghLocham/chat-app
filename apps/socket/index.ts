@@ -19,6 +19,7 @@ import {
 } from "@semantask/observability";
 import { startTracing } from "@semantask/observability/tracing";
 import { getAllowedOrigins, getSocketPort } from "./config/runtime.js";
+import { warnDeprecatedSocketAliases } from "./config/aliases.js";
 import { isOriginAllowed } from "./server/socket/utils/url.js";
 import { correlationMiddleware, logSocketEvent } from "./server/socket/observability.js";
 
@@ -63,6 +64,7 @@ app.get("/metrics", async (_req, res) => {
     }
 });
 
+warnDeprecatedSocketAliases();
 assertInternalAudienceConfigured("socket");
 
 app.use("/internal", (req, res, next) => {

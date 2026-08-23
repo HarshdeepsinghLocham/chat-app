@@ -5,6 +5,8 @@ import {
     getSocketPort,
     getWebServerUrl,
 } from "../config/runtime.js";
+import { warnDeprecatedSocketAliases } from "../config/aliases.js";
+import { resetAliasWarnings } from "../config/parse.js";
 
 function withEnv(values: Record<string, string | undefined>, fn: () => void) {
     const previous: Record<string, string | undefined> = {};
@@ -45,4 +47,28 @@ test("WEB_SERVER_URL is trimmed", () => {
     withEnv({ WEB_SERVER_URL: "  http://web.internal  " }, () => {
         assert.equal(getWebServerUrl(), "http://web.internal");
     });
+});
+
+test("boot warns when only legacy INTERNAL_SECRET is set", () => {
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (message?: unknown) => {
+        warnings.push(String(message));
+    };
+    resetAliasWarnings();
+    try {
+        withEnv({
+            INTERNAL_SECRET_SOCKET: undefined,
+            INTERNAL_SECRET: "legacy-secret",
+        }, () => {
+            warnDeprecatedSocketAliases();
+            warnDeprecatedSocketAliases();
+        });
+    } finally {
+        console.warn = originalWarn;
+        resetAliasWarnings();
+    }
+
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0]?.includes("INTERNAL_SECRET"));
 });

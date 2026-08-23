@@ -1,4 +1,6 @@
 import { getGoogleClientId } from "@/lib/config/app";
+import { warnDeprecatedWebAliases } from "@/lib/config/aliases";
+import { resetAliasWarnings } from "@/lib/config/parse";
 import { getInternalSocketServerUrl } from "@/lib/config/socket";
 import { getSmtpConfig } from "@/lib/config/smtp";
 
@@ -61,5 +63,35 @@ describe("web lib/config", () => {
         }, () => {
             expect(getInternalSocketServerUrl()).toBe("http://socket.internal:3001");
         });
+    });
+
+    it("boot warns once when only SMTP / Google aliases are set", () => {
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+        resetAliasWarnings();
+        try {
+            withEnv({
+                SMTP_USER: undefined,
+                EMAIL_USER: "alias-user",
+                SMTP_PASS: undefined,
+                EMAIL_PASS: "alias-pass",
+                GOOGLE_CLIENT_ID: undefined,
+                NEXT_PUBLIC_GOOGLE_CLIENT_ID: "public-id",
+                IMAGEKIT_PUBLIC_KEY: "ik-public",
+                NEXT_PUBLIC_PUBLIC_KEY: undefined,
+                INTERNAL_SECRET_WORKER: "worker-secret",
+                INTERNAL_SECRET: undefined,
+            }, () => {
+                warnDeprecatedWebAliases();
+                warnDeprecatedWebAliases();
+            });
+            expect(warn).toHaveBeenCalledTimes(3);
+            const messages = warn.mock.calls.map((call) => String(call[0]));
+            expect(messages.some((line) => line.includes("EMAIL_USER"))).toBe(true);
+            expect(messages.some((line) => line.includes("EMAIL_PASS"))).toBe(true);
+            expect(messages.some((line) => line.includes("NEXT_PUBLIC_GOOGLE_CLIENT_ID"))).toBe(true);
+        } finally {
+            warn.mockRestore();
+            resetAliasWarnings();
+        }
     });
 });

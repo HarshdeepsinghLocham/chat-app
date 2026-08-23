@@ -41,6 +41,7 @@ export {
     type StuckRemediationMode,
     type WorkerRuntimeConfig,
 } from "./worker.js";
+export { warnDeprecatedWorkerAliases } from "./aliases.js";
 
 import { getLlmProviderConfig } from "./llm.js";
 import { getFsmMigrationConfig } from "./migration.js";

@@ -231,7 +231,7 @@ db.toolgrants.aggregate([
 | `REFRESH_TOKEN_SECRET` | Refresh tokens |
 | `APP_URL` | Canonical public origin fallback when `Host` / `X-Forwarded-*` are missing (Google OAuth) |
 
-`NEXTAUTH_SECRET` / `NEXTAUTH_URL` are unused leftovers (this repo uses custom JWT auth, not NextAuth).
+Auth is custom JWT (`ACCESS_TOKEN_SECRET` / `REFRESH_TOKEN_SECRET`), not NextAuth.
 
 See [`env.sample`](../../env.sample) for the full list.
 

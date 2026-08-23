@@ -20,6 +20,7 @@
     "release": "echo \"Skipping npm publish for private repository\"",
     "typecheck": "turbo run typecheck --filter=./apps/* --filter=./packages/*",
     "seed:contacts": "tsx scripts/seed/contacts.ts",
+    "grandfather:auto-execute": "tsx scripts/ops/grandfather-auto-execute.ts",
     "ci:verify-artifacts": "bash ./scripts/ci/verify-artifacts.sh",
     "security:audit": "pnpm audit --prod --audit-level high"
   },

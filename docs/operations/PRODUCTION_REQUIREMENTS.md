@@ -223,6 +223,16 @@ db.toolgrants.aggregate([
 |--------|---------|
 | `X-Organization-Id` | Optional. When set after auth, scopes conversation list/create and related APIs to that org. Omit for personal workspace. User must be an active member. See [ADR-004](../decisions/ADR-004-personal-and-optional-organizations.md). |
 
+### Grandfather `auto_execute` (one-shot)
+
+`GRANDFATHER_AUTO_TENANTS` still wins over the org policy field. To make that durable:
+
+1. `pnpm grandfather:auto-execute --dry-run` (reads `GRANDFATHER_AUTO_TENANTS` or `--ids=`)
+2. `pnpm grandfather:auto-execute`
+3. Clear `GRANDFATHER_AUTO_TENANTS` in the **same** deploy
+
+The env parser stays until the list is empty. Invalid or missing org IDs fail closed (no writes).
+
 ### Other required secrets (web)
 
 | Variable | Purpose |

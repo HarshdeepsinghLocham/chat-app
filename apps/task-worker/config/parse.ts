@@ -31,3 +31,10 @@ export function firstNonEmpty(...values: Array<string | undefined | null>): stri
     }
     return undefined;
 }
+
+export function parseCsvLowercase(raw: string | undefined): string[] {
+    return (raw ?? "")
+        .split(",")
+        .map((entry) => entry.trim().toLowerCase())
+        .filter((entry) => entry.length > 0);
+}

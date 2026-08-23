@@ -195,7 +195,7 @@ exports) would be safer but the choice keeps the surface area small.
     `GRANDFATHER_AUTO_TENANTS` for execution mode. Personal workspaces
     (`organizationId` null) stay env/default-driven (ADR-004 / ADR-005).
     New tenant behavior belongs on `OrganizationPolicy`, not a new env var.
-    Worker LLM, runtime knobs, and FSM migration flags live in
+    Worker LLM, runtime knobs, FSM migration flags, and tool adapters live in
     `apps/task-worker/config` (call-time reads; env names unchanged).
     `getFsmRollout()` is derived from the existing shadow/projection/emit vars.
     Web server knobs live in `apps/web/lib/config`; socket boot knobs live in

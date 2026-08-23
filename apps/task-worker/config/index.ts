@@ -22,6 +22,15 @@ export {
     type TaskStateProjectionMode,
 } from "./migration.js";
 export {
+    getEnvAllowedEmailDomains,
+    getGitHubIssueConfig,
+    getResendConfig,
+    getScheduleMeetingWebhookUrl,
+    getWorkerToolsConfig,
+    type GitHubIssueConfig,
+    type ResendConfig,
+} from "./tools.js";
+export {
     getLeaseMs,
     getRedisUrl,
     getSocketServerUrl,
@@ -35,6 +44,7 @@ export {
 
 import { getLlmProviderConfig } from "./llm.js";
 import { getFsmMigrationConfig } from "./migration.js";
+import { getWorkerToolsConfig } from "./tools.js";
 import { getWorkerRuntimeConfig } from "./worker.js";
 
 export function getWorkerConfig() {
@@ -42,5 +52,6 @@ export function getWorkerConfig() {
         runtime: getWorkerRuntimeConfig(),
         llm: getLlmProviderConfig(),
         fsm: getFsmMigrationConfig(),
+        tools: getWorkerToolsConfig(),
     };
 }

@@ -1,5 +1,6 @@
 import type { Tool, ToolResult } from "./tool-registry.js";
 import { z } from "zod";
+import { getResendConfig } from "../../config/tools.js";
 
 export class SendEmailTool implements Tool {
     name = "send_email";
@@ -11,8 +12,7 @@ export class SendEmailTool implements Tool {
     }) as unknown as z.ZodType<Record<string, unknown>>;
 
     async execute(input: Record<string, unknown>, context: { taskId: string; signal?: AbortSignal; metadata?: { idempotencyKey?: string } }): Promise<ToolResult> {
-        const apiKey = process.env.RESEND_API_KEY;
-        const from = process.env.RESEND_FROM_EMAIL;
+        const { apiKey, from } = getResendConfig();
 
         if (!apiKey || !from) {
             throw new Error("Email adapter is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.");

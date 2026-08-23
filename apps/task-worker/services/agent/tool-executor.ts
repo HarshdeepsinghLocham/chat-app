@@ -22,6 +22,7 @@ import {
 } from "@semantask/services/organization-policy.service";
 import type { AgentContext } from "./context.js";
 import { combineAbortSignals } from "./types.js";
+import { getWorkerRuntimeConfig } from "../../config/worker.js";
 import type {
     ActionExecutionResult,
     ExecutionActionRecord,
@@ -76,11 +77,7 @@ export class ToolExecutor {
     constructor(private readonly ctx: AgentContext) {}
 
     getToolTimeoutMs() {
-        const parsed = Number(process.env.TASK_AGENT_TOOL_TIMEOUT_MS || 60000);
-        if (!Number.isFinite(parsed) || parsed <= 0) {
-            return 60000;
-        }
-        return Math.max(1000, parsed);
+        return getWorkerRuntimeConfig().agentToolTimeoutMs;
     }
 
     stableStringify(value: unknown): string {

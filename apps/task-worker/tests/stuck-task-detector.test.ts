@@ -10,7 +10,7 @@ import {
     STUCK_ERROR_MESSAGE,
     type StuckTaskSnapshot,
 } from "../services/stuck-task-detector.js";
-import { DEFAULT_LEASE_MS, getLeaseRenewalIntervalMs } from "../services/task-lease.js";
+import { getLeaseRenewalIntervalMs } from "../services/task-lease.js";
 
 function createStuckTask(overrides?: Partial<StuckTaskSnapshot>): StuckTaskSnapshot {
     return {
@@ -58,7 +58,7 @@ test("getStuckRemediationMode accepts fail and retry", () => {
 test("getStuckHeartbeatCutoffMs defaults to 2x lease renewal interval", () => {
     const previousHeartbeat = process.env.TASK_STUCK_HEARTBEAT_MS;
     delete process.env.TASK_STUCK_HEARTBEAT_MS;
-    assert.equal(getStuckHeartbeatCutoffMs(), 2 * getLeaseRenewalIntervalMs(DEFAULT_LEASE_MS));
+    assert.equal(getStuckHeartbeatCutoffMs(), 2 * getLeaseRenewalIntervalMs());
     restoreEnvVar("TASK_STUCK_HEARTBEAT_MS", previousHeartbeat);
 });
 

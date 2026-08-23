@@ -276,7 +276,7 @@ score returned by `verify` is `passedChecks / totalChecks`, falling back to
 - `OpenAIProvider`: implements the OpenAI/OpenAI-compatible Responses API.
   Used for `openai`, `openai-compatible`, `amd-openai-compatible`.
 - `HuggingFaceProvider`: implements the HF Inference API. May also operate in
-  OpenAI-compatible mode when `HUGGINGFACE_BASE_URL` ends with `/v1`.
+  OpenAI-compatible mode when `LLM_BASE_URL` ends with `/v1`.
 - `provider-factory.ts`: reads `LLM_PROVIDER`, applies provider-specific
   capability overrides, exposes
   `createDefaultLLMProvider`, `validateProviderStartup`, and

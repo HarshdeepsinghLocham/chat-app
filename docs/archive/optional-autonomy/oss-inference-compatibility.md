@@ -29,8 +29,7 @@ Ready-to-use environment recipes live under `examples/` (this archive folder):
 
 ## Supported Providers (Provider Matrix)
 
-The provider type is selected by the `LLM_PROVIDER` env (or
-`TASK_LLM_PROVIDER` as fallback) and validated against the enum in
+The provider type is selected by `LLM_PROVIDER` and validated against the enum in
 `LLMProviderConfig.provider` (`types.ts:37`):
 
 | `LLM_PROVIDER` | Concrete class | Transport options | Intended backends |
@@ -46,15 +45,15 @@ with `LLM_PROVIDER_NOT_SUPPORTED`.
 
 ## Environment Surface
 
-These are the variables the factory reads. The first non-empty value
-wins; nothing here is required to exist, but a few must be set for the
-provider to be functional (see "Required for…" column).
+These are the variables the factory reads. Nothing here is required to exist,
+but a few must be set for the provider to be functional (see "Required for…"
+column).
 
 | Variable | Default | Purpose | Required for |
 |---|---|---|---|
-| `LLM_PROVIDER` or `TASK_LLM_PROVIDER` | `openai` | Pick provider class. | All non-OpenAI backends. |
-| `LLM_API_KEY` / `OPENAI_API_KEY` / `HUGGINGFACE_API_KEY` / `AMD_API_KEY` | empty | First non-empty wins. Sent as `Authorization: Bearer ...`. | All backends. |
-| `LLM_BASE_URL` / `OPENAI_BASE_URL` / `HUGGINGFACE_BASE_URL` / `AMD_BASE_URL` | provider-default | Override gateway URL. First non-empty wins. | Non-OpenAI backends. |
+| `LLM_PROVIDER` | `openai` | Pick provider class. | All non-OpenAI backends. |
+| `LLM_API_KEY` | empty | Sent as `Authorization: Bearer ...`. | All backends. |
+| `LLM_BASE_URL` | provider-default | Override gateway URL. | Non-OpenAI backends. |
 | `LLM_MODEL` / `TASK_AGENT_MODEL` / `HUGGINGFACE_MODEL` | empty | Model identifier passed to the provider. | All backends. |
 | `TASK_AGENT_LLM_TIMEOUT_MS` / `LLM_REQUEST_TIMEOUT_MS` | `30000` | Per-request timeout. Composed with `signal` on every call. | Optional. |
 | `LLM_LOG_REQUESTS` | `true` (any value `!== "false"`) | Emits `llm:request` / `llm:response` / `llm:error` / `llm:downgrade` console logs. | Optional. |
@@ -66,19 +65,17 @@ provider to be functional (see "Required for…" column).
 | `LLM_SUPPORTS_JSON_MODE` | `true` for OpenAI, **`false`** for HF and AMD | Whether `response_format: { type: "json_object" }` is supported. | Critical for OSS — see below. |
 | `HUGGINGFACE_OPENAI_COMPATIBLE` | inferred from URL suffix `/v1` | Forces HF transport to `openai-compatible` or `inference-api`. | Optional override. |
 
-Reference: `provider-factory.ts:23-58` for the precedence chain, and
-`provider-factory.ts:60-81` for the per-provider capability defaults
-(`applyProviderDefaults`).
+Reference: `apps/task-worker/config/llm.ts` for env reads, and
+`provider-factory.ts` `applyProviderDefaults` for per-provider capability
+defaults.
 
-### A note on env precedence
+### A note on env names
 
-`HUGGINGFACE_API_KEY` is **not** the highest-priority key. The factory
-reads `OPENAI_API_KEY || HUGGINGFACE_API_KEY || AMD_API_KEY || LLM_API_KEY`
-in that order. If both `OPENAI_API_KEY` and `HUGGINGFACE_API_KEY` are
-set, the OpenAI key is used — even when `LLM_PROVIDER=huggingface`. The
-same precedence applies to `*_BASE_URL`. To avoid cross-contamination,
-unset the unused vars or rely on `LLM_API_KEY`/`LLM_BASE_URL` as a single
-source.
+Credential, gateway URL, and provider class come from `LLM_API_KEY`,
+`LLM_BASE_URL`, and `LLM_PROVIDER` only. Vendor aliases
+(`OPENAI_API_KEY`, `HUGGINGFACE_API_KEY`, `AMD_API_KEY`, and the matching
+`*_BASE_URL` names) are not read. `HUGGINGFACE_OPENAI_COMPATIBLE` remains
+as a Hugging Face transport switch.
 
 ## How a Request Flows
 
@@ -123,7 +120,7 @@ The parser is intentionally forgiving: a successful repair sets
 
 ```bash
 export LLM_PROVIDER=openai
-export OPENAI_API_KEY=sk-...
+export LLM_API_KEY=sk-...
 export LLM_MODEL=gpt-4o-mini
 ```
 
@@ -166,8 +163,8 @@ instruction-tuned 7B+ models.
 
 ```bash
 export LLM_PROVIDER=huggingface
-export HUGGINGFACE_API_KEY=hf_xxx
-export HUGGINGFACE_BASE_URL=https://<your-endpoint>.endpoints.huggingface.cloud/v1
+export LLM_API_KEY=hf_xxx
+export LLM_BASE_URL=https://<your-endpoint>.endpoints.huggingface.cloud/v1
 export HUGGINGFACE_OPENAI_COMPATIBLE=true
 export HUGGINGFACE_MODEL=meta-llama/Llama-3.1-8B-Instruct
 ```
@@ -185,9 +182,9 @@ HF default of `false`.
 
 ```bash
 export LLM_PROVIDER=huggingface
-export HUGGINGFACE_API_KEY=hf_xxx
+export LLM_API_KEY=hf_xxx
 export HUGGINGFACE_MODEL=mistralai/Mistral-7B-Instruct-v0.3
-# leave HUGGINGFACE_BASE_URL unset, leave HUGGINGFACE_OPENAI_COMPATIBLE=false
+# leave LLM_BASE_URL unset, leave HUGGINGFACE_OPENAI_COMPATIBLE=false
 ```
 
 This is the `inference-api` transport. The provider POSTs to
@@ -231,8 +228,8 @@ inference-API usage numbers for cost accounting.
 
 ```bash
 export LLM_PROVIDER=amd-openai-compatible
-export AMD_API_KEY=your-token
-export AMD_BASE_URL=https://your-gateway.example/v1
+export LLM_API_KEY=your-token
+export LLM_BASE_URL=https://your-gateway.example/v1
 export LLM_MODEL=meta-llama/Llama-3.1-8B-Instruct
 # defaults from provider-factory:
 #   LLM_SUPPORTS_RESPONSES_API=false
@@ -461,10 +458,8 @@ retries when appropriate. See `ADR-002` for the retry envelope.
    imply that `chat.completions.create` with the configured model will
    succeed. Models that exist in the catalog but are unloaded by the
    gateway will pass startup and fail at runtime.
-8. **Env precedence is OpenAI-first.** Mixed env (an `OPENAI_API_KEY`
-   in `.env.local` plus `HUGGINGFACE_API_KEY` for the new provider)
-   silently sends the OpenAI key to HuggingFace. Use `LLM_API_KEY` and
-   `LLM_BASE_URL` for OSS deployments to avoid this trap.
+8. **Vendor key aliases are gone.** `OPENAI_API_KEY`, `HUGGINGFACE_API_KEY`,
+   and `AMD_API_KEY` are not read. Set `LLM_API_KEY` and `LLM_BASE_URL`.
 9. **HF model id is URL-encoded into the path** when no base URL is
    set. Custom slugs with unusual characters may behave unexpectedly.
 
@@ -472,9 +467,7 @@ retries when appropriate. See `ADR-002` for the retry envelope.
 
 Before a deploy against an OSS gateway, confirm:
 
-1. `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` are set
-   and the unrelated provider envs (`OPENAI_*`, `HUGGINGFACE_*`) are
-   **unset** to avoid env-precedence surprises.
+1. `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` are set.
 2. `LLM_SUPPORTS_RESPONSES_API=false` unless the gateway has been
    explicitly tested with `/v1/responses`.
 3. `LLM_SUPPORTS_JSON_MODE=false` unless the gateway has been

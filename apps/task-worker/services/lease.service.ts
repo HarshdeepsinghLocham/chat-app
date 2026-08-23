@@ -1,11 +1,11 @@
 import TaskModel from "@semantask/db/models/Task";
 import * as dbModule from "@semantask/db";
 import {
-    DEFAULT_LEASE_MS,
     getLeaseRenewalIntervalMs,
     heartbeatTaskLease,
     releaseTaskLease,
 } from "./task-lease.js";
+import { getLeaseMs } from "../config/worker.js";
 import { logExecution } from "./execution-logger.js";
 
 const connectToDatabase =
@@ -35,7 +35,7 @@ export async function acquireExecutionLease(args: {
 }): Promise<LeaseHandle | null> {
     await connectToDatabase();
 
-    const leaseMs = args.leaseMs ?? DEFAULT_LEASE_MS;
+    const leaseMs = args.leaseMs ?? getLeaseMs();
     const now = new Date();
     const leaseExpiresAt = new Date(now.getTime() + leaseMs);
     const runId = args.runId ?? generateRunId(args.taskId);
@@ -119,7 +119,7 @@ export async function withExecutionLease<T>(
         return { skipped: "lease_busy" };
     }
 
-    const leaseMs = args.leaseMs ?? DEFAULT_LEASE_MS;
+    const leaseMs = args.leaseMs ?? getLeaseMs();
     const intervalMs = getLeaseRenewalIntervalMs(leaseMs);
     const abortController = new AbortController();
     let heartbeatLost = false;

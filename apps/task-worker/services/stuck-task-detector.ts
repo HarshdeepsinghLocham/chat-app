@@ -2,7 +2,15 @@ import TaskModel, { type ITask } from "@semantask/db/models/Task";
 import * as dbModule from "@semantask/db";
 import type { TaskExecutionUpdatedPayload, TaskResult } from "@semantask/types";
 import { taskStuckDetectedCounter } from "@semantask/observability/metrics";
-import { DEFAULT_LEASE_MS, getLeaseRenewalIntervalMs } from "./task-lease.js";
+import { getLeaseRenewalIntervalMs } from "./task-lease.js";
+import {
+    getLeaseMs,
+    getStuckHeartbeatMs,
+    getStuckRemediationMode,
+    getWorkerRuntimeConfig,
+    STUCK_DETECTION_INTERVAL_MS_FALLBACK,
+    type StuckRemediationMode,
+} from "../config/worker.js";
 import { scheduleTaskRetry } from "./schedule-retry.js";
 import { logExecution } from "./execution-logger.js";
 
@@ -11,10 +19,11 @@ const connectToDatabase =
     || ((dbModule as unknown as { default?: { connectToDatabase?: () => Promise<unknown> } }).default?.connectToDatabase)
     || (async () => undefined);
 
-export const STUCK_DETECTION_INTERVAL_MS = Number(process.env.TASK_STUCK_DETECTION_INTERVAL_MS || 60000);
+export const STUCK_DETECTION_INTERVAL_MS = STUCK_DETECTION_INTERVAL_MS_FALLBACK;
 export const STUCK_ERROR_MESSAGE = "Task execution stalled: heartbeat timeout.";
 
-export type StuckRemediationMode = "log" | "fail" | "retry";
+export type { StuckRemediationMode };
+export { getStuckRemediationMode };
 
 export type StuckRemediationOutcome = "logged" | "failed" | "retry_scheduled" | "retry_exhausted" | "skipped";
 
@@ -40,23 +49,13 @@ export type StuckTaskDetectorHooks = {
     onExecutionUpdate?: (payload: TaskExecutionUpdatedPayload) => Promise<void>;
 };
 
-export function getStuckRemediationMode(): StuckRemediationMode {
-    const raw = (process.env.TASK_STUCK_REMEDIATION || "log").trim().toLowerCase();
-    if (raw === "fail" || raw === "retry") {
-        return raw;
-    }
-
-    return "log";
-}
-
-/** Default: 2× lease renewal interval (per roadmap acceptance). Override with TASK_STUCK_HEARTBEAT_MS. */
 export function getStuckHeartbeatCutoffMs(): number {
-    const configured = Number(process.env.TASK_STUCK_HEARTBEAT_MS);
-    if (Number.isFinite(configured) && configured > 0) {
+    const configured = getStuckHeartbeatMs();
+    if (configured != null) {
         return configured;
     }
 
-    return 2 * getLeaseRenewalIntervalMs(DEFAULT_LEASE_MS);
+    return 2 * getLeaseRenewalIntervalMs(getLeaseMs());
 }
 
 function buildStuckFailureResult(lastHeartbeatAt?: Date | null): TaskResult {
@@ -286,7 +285,7 @@ export function startStuckTaskDetector(workerId: string, hooks?: StuckTaskDetect
         }
 
         if (!stopped) {
-            setTimeout(tick, STUCK_DETECTION_INTERVAL_MS);
+            setTimeout(tick, getWorkerRuntimeConfig().stuckDetectionIntervalMs);
         }
     };
 

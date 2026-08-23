@@ -125,7 +125,7 @@ Copy [`env.sample`](env.sample) to `.env` at the repository root and adjust for 
 
 **Task-worker runtime:** `TASK_*`, outbox/lease, and Redis settings in `env.sample` (needed for classification and outbox processing even when tools are off).
 
-**Optional LLM / autonomy providers:** set `LLM_PROVIDER` and either OpenAI-style keys or provider-specific variables when policy-enabled tool execution is used. Supports **OpenAI**, **OpenAI-compatible** bases (including **AMD**), and **Hugging Face**. See `env.sample` for `LLM_*` and optional `AMD_*` / `HUGGINGFACE_*` overrides.
+**Optional LLM / autonomy providers:** set `LLM_PROVIDER`, `LLM_API_KEY`, and `LLM_BASE_URL` when policy-enabled tool execution is used. Supports **OpenAI**, **OpenAI-compatible** bases (including **AMD**), and **Hugging Face**. See `env.sample`.
 
 ```env
 # Core (abbreviated — see env.sample for full list)
@@ -139,12 +139,8 @@ NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
 
 # Optional LLM / autonomy settings (see env.sample)
 LLM_PROVIDER=openai
-OPENAI_API_KEY=
-# OPENAI_BASE_URL=          # OpenAI-compatible / vLLM / custom gateway
-# HUGGINGFACE_API_KEY=
-# HUGGINGFACE_BASE_URL=
-# AMD_API_KEY=
-# AMD_BASE_URL=
+LLM_API_KEY=
+# LLM_BASE_URL=             # OpenAI-compatible / vLLM / custom gateway
 ```
 
 ## Local development

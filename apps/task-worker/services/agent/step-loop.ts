@@ -17,6 +17,8 @@ import type { ClarificationHandler } from "./clarification-handler.js";
 import type { ShadowFsmWriter } from "./shadow-fsm-writer.js";
 import type { ToolExecutor } from "./tool-executor.js";
 import { combineAbortSignals } from "./types.js";
+import { getAgentModelOrDefault } from "../../config/llm.js";
+import { getWorkerRuntimeConfig } from "../../config/worker.js";
 import type {
     ActionExecutionResult,
     AvailableToolForDecision,
@@ -67,9 +69,7 @@ export class StepLoop {
     }
 
     private getConfidenceThreshold() {
-        const configured = Number(process.env.TASK_AGENT_CONFIDENCE_THRESHOLD ?? 0.7);
-        if (Number.isNaN(configured)) return 0.7;
-        return Math.max(0, Math.min(1, configured));
+        return getWorkerRuntimeConfig().agentConfidenceThreshold;
     }
 
     private buildPreviousStepOutputs(plan: TaskPlanLike): PreviousStepOutputs {
@@ -99,8 +99,7 @@ export class StepLoop {
     }
 
     private getCancelPollIntervalMs(): number {
-        const configured = Number(process.env.TASK_CANCEL_POLL_MS || 250);
-        return Math.max(100, Math.min(2000, configured));
+        return getWorkerRuntimeConfig().agentCancelPollMs;
     }
 
     private startCancelWatcher(taskId: string, runAbortController: AbortController) {
@@ -247,7 +246,7 @@ export class StepLoop {
         availableTools: AvailableToolForDecision[],
         iterationContext: IterationContextEntry[]
     ): Promise<NextActionDecision> {
-        const model = process.env.TASK_AGENT_MODEL || "gpt-4o-mini";
+        const model = getAgentModelOrDefault();
         const confidenceThreshold = this.getConfidenceThreshold();
         const fenced = buildFencedTaskFields(task.title, task.description);
 
@@ -723,7 +722,7 @@ Reply to confirm receipt or contact support if you have questions.
                 verification: null,
             };
             const availableTools = await this.listToolsForUser(task);
-            const maxIterations = Math.max(1, Number(process.env.TASK_AGENT_MAX_ITERATIONS || 5));
+            const maxIterations = getWorkerRuntimeConfig().agentMaxIterationsPlan;
             let iteration = 0;
             let goalAchieved = false;
             const iterationContext: IterationContextEntry[] = [];
@@ -1735,7 +1734,7 @@ Reply to confirm receipt or contact support if you have questions.
     }): Promise<NextActionDecision> {
         const ranked = input.rankedTools;
 
-        const model = process.env.TASK_AGENT_MODEL || "gpt-4o-mini";
+        const model = getAgentModelOrDefault();
         const confidenceThreshold = this.getConfidenceThreshold();
         const fenced = buildFencedTaskFields(input.task.title, input.task.description);
 
@@ -1874,9 +1873,10 @@ Reply to confirm receipt or contact support if you have questions.
             }
         }
 
-        const maxIterations = Math.max(1, Number(process.env.TASK_AGENT_MAX_ITERATIONS || 8));
-        const iterationTimeoutMs = Math.max(1000, Number(process.env.TASK_AGENT_ITERATION_TIMEOUT_MS || 120000));
-        const leaseMs = Math.max(1000, Number(process.env.TASK_LEASE_MS || 30000));
+        const runtime = getWorkerRuntimeConfig();
+        const maxIterations = runtime.agentMaxIterationsPersistent;
+        const iterationTimeoutMs = runtime.agentIterationTimeoutMs;
+        const leaseMs = runtime.leaseMs;
         const watchdogIntervalMs = Math.max(1000, Math.floor(leaseMs / 3));
         let iteration = typeof task.iterationCount === "number" ? task.iterationCount : 0;
         let lastResult: ActionExecutionResult | null = null;

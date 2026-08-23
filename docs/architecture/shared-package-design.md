@@ -195,6 +195,8 @@ exports) would be safer but the choice keeps the surface area small.
     `GRANDFATHER_AUTO_TENANTS` for execution mode. Personal workspaces
     (`organizationId` null) stay env/default-driven (ADR-004 / ADR-005).
     New tenant behavior belongs on `OrganizationPolicy`, not a new env var.
+    Worker LLM and runtime knobs live in `apps/task-worker/config` (call-time
+    reads; env names unchanged).
 - **Constraints**: Server-only. Depends on `@semantask/db`, `@semantask/types`, and
   `zod`.
 - **Why separate**: The web app and the task worker both need the same

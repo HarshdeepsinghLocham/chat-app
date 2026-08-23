@@ -1,18 +1,19 @@
 import TaskModel from "@semantask/db/models/Task";
 import * as dbModule from "@semantask/db";
+import { getLeaseMs, LEASE_MS_FALLBACK } from "../config/worker.js";
 
 const connectToDatabase =
     (dbModule as unknown as { connectToDatabase?: () => Promise<unknown> }).connectToDatabase
     || ((dbModule as unknown as { default?: { connectToDatabase?: () => Promise<unknown> } }).default?.connectToDatabase)
     || (async () => undefined);
 
-export const DEFAULT_LEASE_MS = Number(process.env.TASK_LEASE_MS || 30000);
+export const DEFAULT_LEASE_MS = LEASE_MS_FALLBACK;
 
-export function getLeaseRenewalIntervalMs(leaseMs = DEFAULT_LEASE_MS) {
+export function getLeaseRenewalIntervalMs(leaseMs = getLeaseMs()) {
     return Math.max(1000, Math.floor(leaseMs / 3));
 }
 
-export async function acquireTaskLease(taskId: string, workerId: string, leaseMs = DEFAULT_LEASE_MS) {
+export async function acquireTaskLease(taskId: string, workerId: string, leaseMs = getLeaseMs()) {
     await connectToDatabase();
 
     const now = new Date();
@@ -41,7 +42,7 @@ export async function acquireTaskLease(taskId: string, workerId: string, leaseMs
     return task;
 }
 
-export async function heartbeatTaskLease(taskId: string, workerId: string, leaseMs = DEFAULT_LEASE_MS) {
+export async function heartbeatTaskLease(taskId: string, workerId: string, leaseMs = getLeaseMs()) {
     await connectToDatabase();
 
     const now = new Date();

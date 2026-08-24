@@ -27,7 +27,6 @@ import {
     getEffectiveExecutionMode,
     isAcceptCreatesExecutionEnabled,
     isExecutionModeEnforce,
-    isSuggestionBlockExecEnabled,
     isSuggestionIngressEnabled,
     isWorkInboxUiEnabled,
     parseDefaultExecutionMode,
@@ -41,7 +40,6 @@ describe("organization-policy.service config re-exports", () => {
         expect(isExecutionModeEnforce).toBe(config.isExecutionModeEnforce);
         expect(parseDefaultExecutionMode).toBe(config.parseDefaultExecutionMode);
         expect(isSuggestionIngressEnabled).toBe(config.isSuggestionIngressEnabled);
-        expect(isSuggestionBlockExecEnabled).toBe(config.isSuggestionBlockExecEnabled);
         expect(shouldBlockExecutionEnqueue).toBe(config.shouldBlockExecutionEnqueue);
         expect(isAcceptCreatesExecutionEnabled).toBe(config.isAcceptCreatesExecutionEnabled);
         expect(isWorkInboxUiEnabled).toBe(config.isWorkInboxUiEnabled);

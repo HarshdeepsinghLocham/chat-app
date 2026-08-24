@@ -23,8 +23,6 @@ services:
     build:
       context: .
       dockerfile: docker/web.Dockerfile
-      args:
-        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
     expose:
       - "3000"
     env_file:
@@ -33,7 +31,6 @@ services:
       NODE_ENV: production
       REDIS_URL: redis://redis:6379
       ORIGIN: ${ORIGIN:-http://localhost}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
       APP_URL: ${APP_URL:-}
       SOCKET_SERVER_URL: http://socket:3001
     depends_on:

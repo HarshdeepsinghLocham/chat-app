@@ -17,7 +17,6 @@ import {
     updateMessageSemanticState,
 } from "./repositories/task.repo";
 import { connectToDatabase } from "@semantask/db";
-import { enqueueOutboxEvent } from "./outbox.service";
 import {
     classifyMessage,
     isActionableClassification,
@@ -26,7 +25,6 @@ import { upsertMessageIntent, type ParticipantHint } from "./message-intent.serv
 import { createWorkSuggestion } from "./work-suggestion.service.js";
 import {
     getEffectiveExecutionMode,
-    isSuggestionIngressEnabled,
     resolveOrganizationPolicy,
     shouldBlockExecutionEnqueue,
 } from "./organization-policy.service.js";
@@ -232,8 +230,7 @@ export async function processMessageTaskIntelligence(
 
     const organizationId = conversationContext.organizationId;
     const executionMode = await resolveEffectiveModeForConversation(organizationId);
-    const suggestionIngress = isSuggestionIngressEnabled();
-    const blockExecution = suggestionIngress && shouldBlockExecutionEnqueue(executionMode);
+    const blockExecution = shouldBlockExecutionEnqueue(executionMode);
 
     const intent = await upsertMessageIntent({
         messageId: input.messageId,
@@ -246,27 +243,25 @@ export async function processMessageTaskIntelligence(
         participants: conversationContext.participants,
     });
 
-    if (suggestionIngress) {
-        const { created } = await createWorkSuggestion({
-            messageId: input.messageId,
-            conversationId: input.conversationId,
-            organizationId,
-            intentId: intent._id,
-            title: preprocessed.title,
-            summary: preprocessed.description,
-            confidence: classification.confidence,
-            extractorVersion: AI_VERSION,
-            candidates: {
-                assigneeCandidates: intent.entities.assigneeUserIds,
-                dueAtCandidate: intent.entities.dueAtCandidate,
-                priorityCandidate: intent.entities.priorityCandidate,
-            },
-        });
+    const { created } = await createWorkSuggestion({
+        messageId: input.messageId,
+        conversationId: input.conversationId,
+        organizationId,
+        intentId: intent._id,
+        title: preprocessed.title,
+        summary: preprocessed.description,
+        confidence: classification.confidence,
+        extractorVersion: AI_VERSION,
+        candidates: {
+            assigneeCandidates: intent.entities.assigneeUserIds,
+            dueAtCandidate: intent.entities.dueAtCandidate,
+            priorityCandidate: intent.entities.priorityCandidate,
+        },
+    });
 
-        suggestionLatencyMs.observe(Date.now() - startedAt);
-        if (created) {
-            suggestionsCreatedCounter.inc();
-        }
+    suggestionLatencyMs.observe(Date.now() - startedAt);
+    if (created) {
+        suggestionsCreatedCounter.inc();
     }
 
     if (blockExecution) {
@@ -385,21 +380,11 @@ export async function processMessageTaskIntelligence(
     const executionDedupeKey =
         `task.execution.requested:${task._id.toString()}:${input.messageId}:none`;
 
-    if (suggestionIngress) {
-        // Guarded boundary: classifier bugs cannot enqueue under suggest_only+block
-        await enqueueTaskExecutionRequested({
-            dedupeKey: executionDedupeKey,
-            payload: executionPayload,
-            executionMode,
-        });
-    } else {
-        // Preserve legacy behavior when SUGGESTION_INGRESS=0
-        await enqueueOutboxEvent({
-            topic: "task.execution.requested",
-            dedupeKey: executionDedupeKey,
-            payload: executionPayload,
-        });
-    }
+    await enqueueTaskExecutionRequested({
+        dedupeKey: executionDedupeKey,
+        payload: executionPayload,
+        executionMode,
+    });
 
     try {
         await createTaskAction({

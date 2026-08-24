@@ -41,7 +41,7 @@ export interface MaybeLogTaskStateDivergenceInput {
     source?: string;
 }
 
-/** When `TASK_STATE_DIVERGENCE_CHECK=1`, logs `state_diverged` if legacy and FSM projection disagree. */
+/** Logs `state_diverged` if legacy and FSM projection disagree. */
 export function maybeLogTaskStateDivergence(input: MaybeLogTaskStateDivergenceInput): boolean {
     if (!isStateDivergenceCheckEnabled()) {
         return false;

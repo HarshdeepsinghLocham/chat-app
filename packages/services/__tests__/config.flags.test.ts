@@ -5,21 +5,15 @@ import {
     getEffectiveExecutionMode,
     isAcceptCreatesExecutionEnabled,
     isExecutionModeEnforce,
-    isSuggestionBlockExecEnabled,
     isSuggestionIngressEnabled,
     isWorkInboxUiEnabled,
     parseDefaultExecutionMode,
     shouldBlockExecutionEnqueue,
 } from "../config";
-import { ConflictError } from "../organization-errors";
 
 const ENV_KEYS = [
     "DEFAULT_EXECUTION_MODE",
     "GRANDFATHER_AUTO_TENANTS",
-    "SUGGESTION_INGRESS",
-    "SUGGESTION_BLOCK_EXEC",
-    "ACCEPT_CREATES_EXECUTION",
-    "WORK_INBOX_UI",
     "TASK_CLASSIFIER_MODE",
 ] as const;
 
@@ -104,52 +98,28 @@ describe("execution mode flags", () => {
     });
 });
 
-describe("suggestion ingress flags", () => {
-    it("isSuggestionIngressEnabled defaults on", () => {
-        delete process.env.SUGGESTION_INGRESS;
+describe("suggestion ingress", () => {
+    it("isSuggestionIngressEnabled is always on", () => {
         expect(isSuggestionIngressEnabled()).toBe(true);
-        expect(isSuggestionIngressEnabled("1")).toBe(true);
-        expect(isSuggestionIngressEnabled("0")).toBe(false);
     });
 
-    it("isSuggestionBlockExecEnabled defaults on", () => {
-        delete process.env.SUGGESTION_BLOCK_EXEC;
-        expect(isSuggestionBlockExecEnabled()).toBe(true);
-        expect(isSuggestionBlockExecEnabled("0")).toBe(false);
-    });
-
-    it("shouldBlockExecutionEnqueue requires suggest_only and block flag", () => {
-        process.env.SUGGESTION_BLOCK_EXEC = "1";
+    it("shouldBlockExecutionEnqueue is true only for suggest_only", () => {
         expect(shouldBlockExecutionEnqueue("suggest_only")).toBe(true);
         expect(shouldBlockExecutionEnqueue("auto_execute")).toBe(false);
-        process.env.SUGGESTION_BLOCK_EXEC = "0";
-        expect(shouldBlockExecutionEnqueue("suggest_only")).toBe(false);
+        expect(shouldBlockExecutionEnqueue("require_approval")).toBe(false);
     });
 });
 
-describe("accept creates execution safety rail", () => {
-    it("defaults ACCEPT_CREATES_EXECUTION off", () => {
-        delete process.env.ACCEPT_CREATES_EXECUTION;
+describe("accept creates execution", () => {
+    it("never enables execution from accept; assert is a no-op", () => {
         expect(isAcceptCreatesExecutionEnabled()).toBe(false);
         expect(() => assertAcceptCreatesCoordinationOnly()).not.toThrow();
     });
-
-    it("fails closed when ACCEPT_CREATES_EXECUTION is enabled", () => {
-        expect(isAcceptCreatesExecutionEnabled("1")).toBe(true);
-        expect(() => assertAcceptCreatesCoordinationOnly("1")).toThrow(ConflictError);
-    });
 });
 
-describe("work inbox UI flag", () => {
-    it("defaults WORK_INBOX_UI on", () => {
-        delete process.env.WORK_INBOX_UI;
+describe("work inbox UI", () => {
+    it("isWorkInboxUiEnabled is always on", () => {
         expect(isWorkInboxUiEnabled()).toBe(true);
-        expect(isWorkInboxUiEnabled("0")).toBe(false);
-    });
-
-    it("enables WORK_INBOX_UI when set", () => {
-        expect(isWorkInboxUiEnabled("1")).toBe(true);
-        expect(isWorkInboxUiEnabled("true")).toBe(true);
     });
 });
 

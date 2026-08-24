@@ -4,6 +4,7 @@ import test from "node:test";
 import {
     getLlmApiKey,
     getLlmBaseUrl,
+    getLlmModel,
     getLlmProviderConfig,
 } from "../config/llm.js";
 import {
@@ -92,6 +93,25 @@ test("TASK_LLM_PROVIDER is ignored when LLM_PROVIDER is unset", () => {
     });
 });
 
+test("TASK_AGENT_MODEL is canonical; LLM_MODEL / HUGGINGFACE_MODEL are ignored", () => {
+    withEnv({
+        TASK_AGENT_MODEL: undefined,
+        LLM_MODEL: "alias-model",
+        HUGGINGFACE_MODEL: "hf-model",
+    }, () => {
+        assert.equal(getLlmModel(), undefined);
+        assert.equal(getLlmProviderConfig().model, undefined);
+    });
+
+    withEnv({
+        TASK_AGENT_MODEL: "canonical-model",
+        LLM_MODEL: "alias-model",
+        HUGGINGFACE_MODEL: "hf-model",
+    }, () => {
+        assert.equal(getLlmModel(), "canonical-model");
+    });
+});
+
 test("lease and worker knobs use documented fallbacks", () => {
     withEnv({
         TASK_LEASE_MS: undefined,
@@ -135,7 +155,7 @@ test("worker Redis is REDIS_URL only; Upstash REST is ignored", () => {
     });
 });
 
-test("boot warns when only an alias or Upstash REST URL is set", () => {
+test("boot warns when only INTERNAL_SECRET or Upstash REST URL is set", () => {
     const warnings: string[] = [];
     const originalWarn = console.warn;
     console.warn = (message?: unknown) => {
@@ -162,9 +182,9 @@ test("boot warns when only an alias or Upstash REST URL is set", () => {
         resetAliasWarnings();
     }
 
-    assert.equal(warnings.length, 4);
-    assert.ok(warnings.some((line) => line.includes("LLM_MODEL")));
-    assert.ok(warnings.some((line) => line.includes("ALLOWED_EMAIL_DOMAINS")));
+    assert.equal(warnings.length, 2);
     assert.ok(warnings.some((line) => line.includes("INTERNAL_SECRET")));
     assert.ok(warnings.some((line) => line.includes("UPSTASH_REDIS_REST_URL")));
+    assert.ok(!warnings.some((line) => line.includes("LLM_MODEL")));
+    assert.ok(!warnings.some((line) => line.includes("ALLOWED_EMAIL_DOMAINS")));
 });

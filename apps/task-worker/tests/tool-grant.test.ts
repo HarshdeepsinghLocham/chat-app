@@ -13,12 +13,12 @@ test("isHighRiskToolName recognizes the three autonomous tools", () => {
     assert.equal(isHighRiskToolName("none"), false);
 });
 
-test("getToolRbacMode defaults to off", () => {
+test("getToolRbacMode defaults to enforce", () => {
     delete process.env.TASK_TOOL_RBAC;
-    assert.equal(getToolRbacMode(), "off");
+    assert.equal(getToolRbacMode(), "enforce");
 });
 
-test("getToolRbacMode accepts enforce", () => {
-    process.env.TASK_TOOL_RBAC = "enforce";
-    assert.equal(getToolRbacMode(), "enforce");
+test("getToolRbacMode honors explicit off", () => {
+    process.env.TASK_TOOL_RBAC = "off";
+    assert.equal(getToolRbacMode(), "off");
 });

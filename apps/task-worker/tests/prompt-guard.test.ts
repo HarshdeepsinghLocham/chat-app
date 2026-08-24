@@ -14,13 +14,13 @@ afterEach(() => {
     delete process.env.TASK_PROMPT_GUARD;
 });
 
-test("getPromptGuardMode defaults to off", () => {
-    assert.equal(getPromptGuardMode(), "off");
+test("getPromptGuardMode defaults to monitor", () => {
+    assert.equal(getPromptGuardMode(), "monitor");
 });
 
-test("getPromptGuardMode accepts monitor and enforce", () => {
-    process.env.TASK_PROMPT_GUARD = "monitor";
-    assert.equal(getPromptGuardMode(), "monitor");
+test("getPromptGuardMode accepts off and enforce", () => {
+    process.env.TASK_PROMPT_GUARD = "off";
+    assert.equal(getPromptGuardMode(), "off");
     process.env.TASK_PROMPT_GUARD = "ENFORCE";
     assert.equal(getPromptGuardMode(), "enforce");
 });

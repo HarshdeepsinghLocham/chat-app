@@ -20,7 +20,6 @@ if [[ ! -f .env ]]; then
 fi
 
 echo "Building and starting Semantask stack..."
-export NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-}"
 docker compose build --no-cache nextapp
 docker compose up -d
 

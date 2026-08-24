@@ -9,9 +9,9 @@ export type SmtpConfig = {
 };
 
 export function getSmtpConfig(): SmtpConfig {
-    const user = firstNonEmpty(process.env.SMTP_USER, process.env.EMAIL_USER);
-    const pass = firstNonEmpty(process.env.SMTP_PASS, process.env.EMAIL_PASS);
-    const from = firstNonEmpty(process.env.EMAIL_FROM, process.env.SMTP_USER, process.env.EMAIL_USER);
+    const user = firstNonEmpty(process.env.SMTP_USER);
+    const pass = firstNonEmpty(process.env.SMTP_PASS);
+    const from = firstNonEmpty(process.env.EMAIL_FROM, process.env.SMTP_USER);
 
     return {
         host: firstNonEmpty(process.env.SMTP_HOST) ?? "smtp.gmail.com",

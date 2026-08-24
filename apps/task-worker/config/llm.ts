@@ -24,13 +24,9 @@ export function getLlmBaseUrl(): string | undefined {
     return firstNonEmpty(process.env.LLM_BASE_URL);
 }
 
-/** Factory model: TASK_AGENT_MODEL → LLM_MODEL → HUGGINGFACE_MODEL (may be unset). */
+/** Factory model: TASK_AGENT_MODEL (may be unset). */
 export function getLlmModel(): string | undefined {
-    return firstNonEmpty(
-        process.env.TASK_AGENT_MODEL,
-        process.env.LLM_MODEL,
-        process.env.HUGGINGFACE_MODEL,
-    );
+    return firstNonEmpty(process.env.TASK_AGENT_MODEL);
 }
 
 /** Step-loop model: TASK_AGENT_MODEL only, then gpt-4o-mini. */
@@ -50,7 +46,6 @@ export function getClassifierModel(): string {
     return firstNonEmpty(
         process.env.TASK_CLASSIFIER_MODEL,
         process.env.TASK_AGENT_MODEL,
-        process.env.LLM_MODEL,
     ) ?? "gpt-4o-mini";
 }
 

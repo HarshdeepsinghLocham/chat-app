@@ -20,8 +20,8 @@ Use this before promoting **staging** or **production** (web, socket, and task w
 | 3 | **Per-service internal secrets** (`INTERNAL_SECRET_SOCKET` / `INTERNAL_SECRET_WORKER`, or legacy `INTERNAL_SECRET`) | Internal bridge (`/internal/*`, `/api/internal/*`) | Worker starts in prod; socket accepts worker emits; see [rotation runbook](./INTERNAL_SECRET_ROTATION.md) |
 | 4 | **Auth secrets** (`ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`) | Web + socket JWT validation | Login and socket handshake succeed |
 | 5 | **`ORIGIN` / `NEXT_PUBLIC_SOCKET_URL` aligned** with public URLs | CORS and socket connections | Browser connects to `/api/socket` without origin errors |
-| 6 | **`TASK_EXECUTION_FSM_SHADOW_MODE` understood** | FSM shadow telemetry (default: on) | Set `0` only when intentionally disabling shadow writes |
-| 7 | **`ALLOWED_EMAIL_DOMAINS` or `TASK_WORKER_ALLOWED_EMAIL_DOMAINS`** when email tools are enabled | Autonomous `send_email` policy | Comma-separated domains; empty = no domain restriction (higher risk) |
+| 6 | **FSM authoritative** | Task lifecycle projection from `executionState` | Shadow dual-write, projection, policy/retry emit, and divergence check are always on |
+| 7 | **`TASK_WORKER_ALLOWED_EMAIL_DOMAINS`** when email tools are enabled | Autonomous `send_email` policy | Comma-separated domains; empty = no domain restriction (higher risk) |
 | 8 | **LLM + tool credentials** (`LLM_*`, `RESEND_API_KEY`, etc.) | Task execution | Worker logs show successful provider startup |
 
 Copy this table into release notes when cutting a production deploy ([`.github/RELEASES.md`](../../.github/RELEASES.md)).
@@ -247,24 +247,13 @@ See [`env.sample`](../../env.sample) for the full list.
 
 ---
 
-## Task worker: FSM shadow mode
+## Task worker: FSM authoritative
 
-Fine-grained execution state is persisted in **shadow mode** alongside legacy `Task.lifecycleState`. These flags are **migration scaffolding** (ADR-001 Phase 5), not permanent product knobs. Exit: `TASK_STATE_PROJECTION_MODE=enforce`, then delete the shadow/emit/divergence flags.
+Fine-grained execution state is always dual-written (`Task.executionState` + `stateHistory`). Legacy `Task.lifecycleState` / `status` are projected from `executionState`. Policy and retry paths emit matching shadow events. Divergence between legacy lifecycle and the FSM projection is logged.
 
-| Variable | Default | Effect |
-|----------|---------|--------|
-| `TASK_EXECUTION_FSM_SHADOW_MODE` | on (any value except `"0"`) | `AgentRunner` writes `Task.executionState` + `stateHistory` |
-| `TASK_EXECUTION_FSM_SHADOW_MODE=0` | off | Shadow FSM writes disabled; legacy lifecycle remains authoritative |
-| `TASK_STATE_PROJECTION_MODE` | `off` | `off` / `shadow` (log only) / `enforce` (write projected lifecycle+status) |
-| `TASK_STATE_DIVERGENCE_CHECK` | off | Set to `1` to log `state_diverged` when `lifecycleState` ≠ FSM projection (Phase 1.1) |
-| `TASK_POLICY_SHADOW_EMIT` | off | Set to `1` to emit `POLICY_BLOCKED` / `POLICY_APPROVAL_REQUIRED` on policy early returns and align `lifecycleState` with the FSM projection (Phase 1.2; requires shadow mode on) |
-| `TASK_RETRY_SHADOW_EMIT` | off | Set to `1` to emit `RETRY_DUE` when the retry scanner promotes a task (Phase 1.3; requires shadow mode on) |
+The former migration env vars (`TASK_EXECUTION_FSM_SHADOW_MODE`, `TASK_STATE_PROJECTION_MODE`, `TASK_STATE_DIVERGENCE_CHECK`, `TASK_POLICY_SHADOW_EMIT`, `TASK_RETRY_SHADOW_EMIT`) are not read. `getFsmRollout()` is the constant `"authoritative"`.
 
-These five names still control behavior. `getFsmRollout()` (`legacy` / `shadow` / `align` / `authoritative`) is a derived summary in `apps/task-worker/config/migration.ts` for the later cutover; mixed flag combinations continue to honor each parser.
-
-**Production guidance:** leave shadow **enabled** (`!== "0"`) until Phase 5.2 projection cutover. Enable `TASK_STATE_DIVERGENCE_CHECK=1` in staging/production task-worker to sample dual-state drift. Once divergence sampling looks clean, enable `TASK_POLICY_SHADOW_EMIT=1` to close the policy-path gap (blocked/approval requests otherwise leave the shadow FSM stale). Both flags are best-effort and do not drive indexes or UI today ([ADR-001](../decisions/ADR-001-task-lifecycle-state-machine.md)).
-
-**Code:** `apps/task-worker/services/state-divergence-check.ts`, `policy-shadow.ts`, `retry-shadow.ts`, `retry-scheduler.ts`, `agent-runner.ts`.
+**Code:** `apps/task-worker/config/migration.ts`, `apps/task-worker/services/state-divergence-check.ts`, `policy-shadow.ts`, `retry-shadow.ts`, `retry-scheduler.ts`, `agent-runner.ts`.
 
 ---
 
@@ -274,8 +263,7 @@ Autonomous `send_email` actions are gated by `evaluateExecutionPolicy` (`apps/ta
 
 | Variable | Precedence |
 |----------|------------|
-| `TASK_WORKER_ALLOWED_EMAIL_DOMAINS` | Preferred |
-| `ALLOWED_EMAIL_DOMAINS` | Fallback |
+| `TASK_WORKER_ALLOWED_EMAIL_DOMAINS` | Deploy-wide allowlist (org `allowedEmailDomains` still wins when set) |
 
 Format: comma-separated domains, case-insensitive (e.g. `example.com,mail.example.com`).
 
@@ -317,7 +305,7 @@ Deploy script: `scripts/ci/deploy/vps-task-worker.sh`.
 | `INTERNAL_SECRET` (legacy) | Transitional fallback | Transitional fallback | Transitional fallback |
 | `SOCKET_SERVER_URL` / `WEB_SERVER_URL` | Yes | Yes | Yes (`SOCKET_SERVER_URL` for emits) |
 | `LLM_*`, tool API keys | Optional on web | No | **Required** for agent runs |
-| `TASK_WORKER_ALLOWED_EMAIL_DOMAINS` | Optional | No | **Required** if email tools used (`ALLOWED_EMAIL_DOMAINS` still accepted as an alias) |
+| `TASK_WORKER_ALLOWED_EMAIL_DOMAINS` | Optional | No | **Required** if email tools used |
 
 Prefer distinct `INTERNAL_SECRET_SOCKET` / `INTERNAL_SECRET_WORKER`. Legacy `INTERNAL_SECRET` remains accepted on both audiences during the deprecation window — remove it after rotation (see [INTERNAL_SECRET_ROTATION.md](./INTERNAL_SECRET_ROTATION.md)).
 
@@ -327,7 +315,7 @@ Prefer distinct `INTERNAL_SECRET_SOCKET` / `INTERNAL_SECRET_WORKER`. Legacy `INT
 
 | Misconfiguration | User-visible / ops symptom |
 |------------------|----------------------------|
-| Standalone Mongo + task worker | Retries promote via non-transactional fallback (weaker atomicity); enable `TASK_RETRY_SHADOW_EMIT=1` to align shadow FSM on promote |
+| Standalone Mongo + task worker | Retries promote via non-transactional fallback (weaker atomicity); shadow FSM still emits `RETRY_DUE` on promote |
 | No Redis on socket (multi pod) | Clients on different pods miss realtime events |
 | No Redis on worker | Duplicate outbox processing possible under race; **production boot fails** unless `TASK_WORKER_ALLOW_NO_REDIS=1` |
 | Missing Redis (prod worker) | Worker refuses to start (`REDIS_URL`) |

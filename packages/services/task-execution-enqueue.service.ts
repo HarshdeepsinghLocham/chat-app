@@ -4,10 +4,7 @@ import {
     executionEnqueueAttemptedWhileSuggestOnlyCounter,
 } from "@semantask/observability/metrics";
 import { enqueueOutboxEvent, type EnqueueOutboxEventInput } from "./outbox.service";
-import {
-    isAcceptCreatesExecutionEnabled,
-    shouldBlockExecutionEnqueue,
-} from "./organization-policy.service";
+import { shouldBlockExecutionEnqueue } from "./organization-policy.service";
 
 /** Consumer fail-closed when a leaked execution event arrives under suggest_only. */
 export function shouldFailClosedOnLeakedExecution(executionMode: ExecutionMode): boolean {
@@ -28,9 +25,8 @@ export type EnqueueTaskExecutionRequestedInput = {
      */
     explicitManagerRequest?: boolean;
     /**
-     * Call-site marker. When set to suggestion.accept and ACCEPT_CREATES_EXECUTION=0,
-     * enqueue is blocked and a safety metric/alert signal is recorded (does not alter
-     * the fail-closed rail when the flag is enabled).
+     * Call-site marker. `suggestion.accept` is always refused — accept creates
+     * coordination Tasks only and never enqueues execution.
      */
     source?: string;
 };
@@ -51,9 +47,7 @@ export async function enqueueTaskExecutionRequested(
         ?? (typeof input.payload.source === "string" ? input.payload.source : undefined);
     const fromSuggestionAccept = source === SUGGESTION_ACCEPT_EXECUTION_SOURCE;
 
-    // Observability: accept must never enqueue execution while the safety rail flag is off.
-    // Does not change assertAcceptCreatesCoordinationOnly (fail-closed when flag is on).
-    if (fromSuggestionAccept && !isAcceptCreatesExecutionEnabled()) {
+    if (fromSuggestionAccept) {
         acceptExecutionEnqueueAttemptedWhileDisabledCounter.inc();
         console.error(JSON.stringify({
             event: "execution.enqueue.accept_while_disabled_invariant",

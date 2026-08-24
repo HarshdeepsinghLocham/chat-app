@@ -13,9 +13,9 @@ import { resolveOrganizationPolicy } from "./organization-policy.service";
 export type ToolRbacMode = "off" | "enforce";
 
 export function getToolRbacMode(): ToolRbacMode {
-    const raw = (process.env.TASK_TOOL_RBAC || "off").trim().toLowerCase();
-    if (raw === "enforce") return "enforce";
-    return "off";
+    const raw = (process.env.TASK_TOOL_RBAC || "enforce").trim().toLowerCase();
+    if (raw === "off") return "off";
+    return "enforce";
 }
 
 function isValidObjectId(value: string | null | undefined): value is string {

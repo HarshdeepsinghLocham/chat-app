@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
+import { beforeEach, describe, expect, it } from "@jest/globals";
 
 jest.mock("@semantask/db", () => ({
     connectToDatabase: jest.fn().mockResolvedValue(undefined),
@@ -43,29 +43,10 @@ import {
     SUGGESTION_ACCEPT_EXECUTION_SOURCE,
 } from "../task-execution-enqueue.service";
 
-const ENV_KEYS = [
-    "ACCEPT_CREATES_EXECUTION",
-] as const;
-const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
-
 beforeEach(() => {
-    for (const key of ENV_KEYS) {
-        originalEnv[key] = process.env[key];
-    }
     enqueueOutboxEvent.mockReset();
     executionEnqueueAttemptedWhileSuggestOnlyCounter.inc.mockReset();
     acceptExecutionEnqueueAttemptedWhileDisabledCounter.inc.mockReset();
-});
-
-afterEach(() => {
-    for (const key of ENV_KEYS) {
-        const value = originalEnv[key];
-        if (value === undefined) {
-            delete process.env[key];
-        } else {
-            process.env[key] = value;
-        }
-    }
 });
 
 describe("enqueueTaskExecutionRequested", () => {
@@ -129,8 +110,7 @@ describe("enqueueTaskExecutionRequested", () => {
         expect(executionEnqueueAttemptedWhileSuggestOnlyCounter.inc).not.toHaveBeenCalled();
     });
 
-    it("blocks suggestion.accept enqueue while ACCEPT_CREATES_EXECUTION is disabled and records metric", async () => {
-        delete process.env.ACCEPT_CREATES_EXECUTION;
+    it("always blocks suggestion.accept enqueue and records metric", async () => {
         const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
 
         const result = await enqueueTaskExecutionRequested({

@@ -28,7 +28,7 @@ function withEnv(values: Record<string, string | undefined>, fn: () => void) {
 }
 
 describe("web lib/config", () => {
-    it("SMTP_USER aliases EMAIL_USER / EMAIL_PASS", () => {
+    it("SMTP_USER / SMTP_PASS are canonical; EMAIL_USER / EMAIL_PASS are ignored", () => {
         withEnv({
             SMTP_HOST: undefined,
             SMTP_PORT: undefined,
@@ -41,18 +41,37 @@ describe("web lib/config", () => {
             const smtp = getSmtpConfig();
             expect(smtp.host).toBe("smtp.gmail.com");
             expect(smtp.port).toBe(587);
-            expect(smtp.user).toBe("alias-user");
-            expect(smtp.pass).toBe("alias-pass");
-            expect(smtp.from).toBe("alias-user");
+            expect(smtp.user).toBeUndefined();
+            expect(smtp.pass).toBeUndefined();
+            expect(smtp.from).toBeUndefined();
+        });
+
+        withEnv({
+            SMTP_USER: "smtp-user",
+            SMTP_PASS: "smtp-pass",
+            EMAIL_FROM: "from@example.com",
+            EMAIL_USER: "alias-user",
+        }, () => {
+            const smtp = getSmtpConfig();
+            expect(smtp.user).toBe("smtp-user");
+            expect(smtp.pass).toBe("smtp-pass");
+            expect(smtp.from).toBe("from@example.com");
         });
     });
 
-    it("prefers GOOGLE_CLIENT_ID over NEXT_PUBLIC_GOOGLE_CLIENT_ID", () => {
+    it("GOOGLE_CLIENT_ID is canonical; NEXT_PUBLIC_GOOGLE_CLIENT_ID is ignored", () => {
         withEnv({
             GOOGLE_CLIENT_ID: "server-id",
             NEXT_PUBLIC_GOOGLE_CLIENT_ID: "public-id",
         }, () => {
             expect(getGoogleClientId()).toBe("server-id");
+        });
+
+        withEnv({
+            GOOGLE_CLIENT_ID: undefined,
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID: "public-id",
+        }, () => {
+            expect(getGoogleClientId()).toBe("");
         });
     });
 
@@ -65,7 +84,7 @@ describe("web lib/config", () => {
         });
     });
 
-    it("boot warns once when only SMTP / Google aliases are set", () => {
+    it("boot warns once when only legacy INTERNAL_SECRET is set", () => {
         const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
         resetAliasWarnings();
         try {
@@ -78,17 +97,17 @@ describe("web lib/config", () => {
                 NEXT_PUBLIC_GOOGLE_CLIENT_ID: "public-id",
                 IMAGEKIT_PUBLIC_KEY: "ik-public",
                 NEXT_PUBLIC_PUBLIC_KEY: undefined,
-                INTERNAL_SECRET_WORKER: "worker-secret",
-                INTERNAL_SECRET: undefined,
+                INTERNAL_SECRET_WORKER: undefined,
+                INTERNAL_SECRET: "legacy-secret",
             }, () => {
                 warnDeprecatedWebAliases();
                 warnDeprecatedWebAliases();
             });
-            expect(warn).toHaveBeenCalledTimes(3);
+            expect(warn).toHaveBeenCalledTimes(1);
             const messages = warn.mock.calls.map((call) => String(call[0]));
-            expect(messages.some((line) => line.includes("EMAIL_USER"))).toBe(true);
-            expect(messages.some((line) => line.includes("EMAIL_PASS"))).toBe(true);
-            expect(messages.some((line) => line.includes("NEXT_PUBLIC_GOOGLE_CLIENT_ID"))).toBe(true);
+            expect(messages.some((line) => line.includes("INTERNAL_SECRET"))).toBe(true);
+            expect(messages.some((line) => line.includes("EMAIL_USER"))).toBe(false);
+            expect(messages.some((line) => line.includes("NEXT_PUBLIC_GOOGLE_CLIENT_ID"))).toBe(false);
         } finally {
             warn.mockRestore();
             resetAliasWarnings();

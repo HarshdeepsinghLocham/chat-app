@@ -228,20 +228,6 @@ describe("work-suggestion mutations", () => {
             expect(payload.event).toBe("suggestion.converted");
         });
 
-        it("refuses when ACCEPT_CREATES_EXECUTION rail fails closed", async () => {
-            assertAcceptCreatesCoordinationOnly.mockImplementation(() => {
-                throw new ConflictError("ACCEPT_CREATES_EXECUTION is enabled");
-            });
-
-            await expect(
-                acceptWorkSuggestion({ suggestionId, actorUserId })
-            ).rejects.toBeInstanceOf(ConflictError);
-
-            expect(createTask).not.toHaveBeenCalled();
-            expect(suggestionFindOneAndUpdate).not.toHaveBeenCalled();
-            expect(enqueueOutboxEvent).not.toHaveBeenCalled();
-        });
-
         it("keeps suggestion proposed when task creation fails", async () => {
             suggestionFindById.mockReturnValue({
                 exec: jest.fn().mockResolvedValue(buildSuggestion()),

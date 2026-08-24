@@ -30,14 +30,11 @@ export function getScheduleMeetingWebhookUrl(): string | undefined {
 
 /**
  * Deploy-wide email allowlist. Org `allowedEmailDomains` still wins when set.
- * Canonical: `TASK_WORKER_ALLOWED_EMAIL_DOMAINS`; `ALLOWED_EMAIL_DOMAINS` is an alias.
+ * Canonical: `TASK_WORKER_ALLOWED_EMAIL_DOMAINS`.
  */
 export function getEnvAllowedEmailDomains(): string[] {
     return parseCsvLowercase(
-        firstNonEmpty(
-            process.env.TASK_WORKER_ALLOWED_EMAIL_DOMAINS,
-            process.env.ALLOWED_EMAIL_DOMAINS,
-        ) ?? "",
+        firstNonEmpty(process.env.TASK_WORKER_ALLOWED_EMAIL_DOMAINS) ?? "",
     );
 }
 

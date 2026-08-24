@@ -10,13 +10,10 @@ import {
     parseDefaultExecutionMode,
     shouldBlockExecutionEnqueue,
 } from "../config";
-import { ConflictError } from "../organization-errors";
 
 const ENV_KEYS = [
     "DEFAULT_EXECUTION_MODE",
     "GRANDFATHER_AUTO_TENANTS",
-    "ACCEPT_CREATES_EXECUTION",
-    "WORK_INBOX_UI",
     "TASK_CLASSIFIER_MODE",
 ] as const;
 
@@ -113,29 +110,16 @@ describe("suggestion ingress", () => {
     });
 });
 
-describe("accept creates execution safety rail", () => {
-    it("defaults ACCEPT_CREATES_EXECUTION off", () => {
-        delete process.env.ACCEPT_CREATES_EXECUTION;
+describe("accept creates execution", () => {
+    it("never enables execution from accept; assert is a no-op", () => {
         expect(isAcceptCreatesExecutionEnabled()).toBe(false);
         expect(() => assertAcceptCreatesCoordinationOnly()).not.toThrow();
     });
-
-    it("fails closed when ACCEPT_CREATES_EXECUTION is enabled", () => {
-        expect(isAcceptCreatesExecutionEnabled("1")).toBe(true);
-        expect(() => assertAcceptCreatesCoordinationOnly("1")).toThrow(ConflictError);
-    });
 });
 
-describe("work inbox UI flag", () => {
-    it("defaults WORK_INBOX_UI on", () => {
-        delete process.env.WORK_INBOX_UI;
+describe("work inbox UI", () => {
+    it("isWorkInboxUiEnabled is always on", () => {
         expect(isWorkInboxUiEnabled()).toBe(true);
-        expect(isWorkInboxUiEnabled("0")).toBe(false);
-    });
-
-    it("enables WORK_INBOX_UI when set", () => {
-        expect(isWorkInboxUiEnabled("1")).toBe(true);
-        expect(isWorkInboxUiEnabled("true")).toBe(true);
     });
 });
 

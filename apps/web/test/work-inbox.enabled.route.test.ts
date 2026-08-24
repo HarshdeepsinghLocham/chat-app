@@ -5,11 +5,10 @@ jest.mock("@/lib/utils/auth/requireAuthUser", () => ({
 }));
 
 jest.mock("@semantask/services/organization-policy.service", () => ({
-    isWorkInboxUiEnabled: jest.fn(),
+    isWorkInboxUiEnabled: () => true,
 }));
 
 import { requireAuthUser } from "@/lib/utils/auth/requireAuthUser";
-import { isWorkInboxUiEnabled } from "@semantask/services/organization-policy.service";
 import { GET } from "../app/api/work-inbox/enabled/route";
 
 const user = {
@@ -33,22 +32,7 @@ describe("GET /api/work-inbox/enabled", () => {
         expect(response.status).toBe(401);
     });
 
-    it("returns enabled=false when flag is off", async () => {
-        (isWorkInboxUiEnabled as jest.Mock).mockReturnValue(false);
-
-        const response = await GET();
-        const body = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(body).toEqual({
-            success: true,
-            data: { enabled: false },
-        });
-    });
-
-    it("returns enabled=true when flag is on", async () => {
-        (isWorkInboxUiEnabled as jest.Mock).mockReturnValue(true);
-
+    it("returns enabled=true", async () => {
         const response = await GET();
         const body = await response.json();
 

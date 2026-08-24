@@ -31,7 +31,7 @@ function withEnv(values: Record<string, string | undefined>, fn: () => void) {
     }
 }
 
-test("email allowlist prefers TASK_WORKER_ALLOWED_EMAIL_DOMAINS over ALLOWED_EMAIL_DOMAINS", () => {
+test("email allowlist reads TASK_WORKER_ALLOWED_EMAIL_DOMAINS only", () => {
     withEnv({
         TASK_WORKER_ALLOWED_EMAIL_DOMAINS: "Acme.COM, mail.example.com",
         ALLOWED_EMAIL_DOMAINS: "other.com",
@@ -40,12 +40,12 @@ test("email allowlist prefers TASK_WORKER_ALLOWED_EMAIL_DOMAINS over ALLOWED_EMA
     });
 });
 
-test("email allowlist falls back to ALLOWED_EMAIL_DOMAINS", () => {
+test("email allowlist ignores ALLOWED_EMAIL_DOMAINS", () => {
     withEnv({
         TASK_WORKER_ALLOWED_EMAIL_DOMAINS: undefined,
         ALLOWED_EMAIL_DOMAINS: "fallback.com",
     }, () => {
-        assert.deepEqual(getEnvAllowedEmailDomains(), ["fallback.com"]);
+        assert.deepEqual(getEnvAllowedEmailDomains(), []);
     });
 });
 

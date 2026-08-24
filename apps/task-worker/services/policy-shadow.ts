@@ -15,9 +15,8 @@ import { applyLifecycleProjection } from "./state-projection.js";
 /**
  * Policy early-return paths in `processTaskExecutionRequested` (blocked / approval)
  * historically updated only the legacy fields, leaving the shadow FSM stale.
- * When `TASK_POLICY_SHADOW_EMIT=1` (and shadow mode is on), these paths emit the
- * matching `POLICY_BLOCKED` / `POLICY_APPROVAL_REQUIRED` events and keep the legacy
- * `lifecycleState` aligned with the FSM projection so dual-state stays consistent.
+ * These paths always emit the matching `POLICY_BLOCKED` / `POLICY_APPROVAL_REQUIRED`
+ * events and keep the legacy `lifecycleState` aligned with the FSM projection.
  */
 export { isPolicyShadowEmitEnabled };
 
@@ -38,7 +37,7 @@ export interface EmitPolicyShadowStateInput {
 /**
  * Applies the given execution events to the task's shadow FSM and persists the
  * resulting `executionState` + `stateHistory` together with an aligned legacy
- * `lifecycleState`. No-op unless `TASK_POLICY_SHADOW_EMIT=1`.
+ * `lifecycleState`. Always on in the authoritative FSM stage.
  */
 export async function emitPolicyShadowState(input: EmitPolicyShadowStateInput): Promise<boolean> {
     if (!isPolicyShadowEmitEnabled() || input.events.length === 0) {

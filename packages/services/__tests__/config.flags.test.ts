@@ -11,6 +11,7 @@ import {
     parseDefaultExecutionMode,
     shouldBlockExecutionEnqueue,
 } from "../config";
+import { resetConfigWarnings } from "../config/parse";
 import { ConflictError } from "../organization-errors";
 
 const ENV_KEYS = [
@@ -41,6 +42,7 @@ afterEach(() => {
             process.env[key] = value;
         }
     }
+    resetConfigWarnings();
 });
 
 describe("getEffectiveExecutionMode", () => {
@@ -106,6 +108,19 @@ describe("execution mode flags", () => {
         expect(isExecutionModeEnforce("1")).toBe(true);
         expect(isExecutionModeEnforce("enforce")).toBe(true);
         expect(isExecutionModeEnforce("0")).toBe(false);
+    });
+
+    it("honors EXECUTION_MODE_ENFORCE=0 and warns once", () => {
+        process.env.EXECUTION_MODE_ENFORCE = "0";
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+        try {
+            expect(isExecutionModeEnforce()).toBe(false);
+            expect(isExecutionModeEnforce()).toBe(false);
+            expect(warn).toHaveBeenCalledTimes(1);
+            expect(String(warn.mock.calls[0]?.[0])).toContain("EXECUTION_MODE_ENFORCE=0 is deprecated");
+        } finally {
+            warn.mockRestore();
+        }
     });
 });
 

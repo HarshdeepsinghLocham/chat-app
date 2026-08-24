@@ -27,3 +27,17 @@ export function parseCsvSet(raw?: string | null): Set<string> {
             .filter((entry) => entry.length > 0)
     );
 }
+
+const warnedKeys = new Set<string>();
+
+export function resetConfigWarnings(): void {
+    warnedKeys.clear();
+}
+
+export function warnOnce(key: string, message: string): void {
+    if (warnedKeys.has(key)) {
+        return;
+    }
+    warnedKeys.add(key);
+    console.warn(message);
+}

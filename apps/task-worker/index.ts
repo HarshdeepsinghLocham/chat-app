@@ -1526,6 +1526,7 @@ async function run() {
 }
 
 warnDeprecatedWorkerAliases();
+isExecutionModeEnforce();
 assertInternalSecretConfigured();
 assertRedisConfiguredForProduction();
 

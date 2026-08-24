@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
                 assignees: body.assignees ?? [],
                 dueAt: body.dueAt ?? null,
                 priority: body.priority ?? "medium",
+                boardStatus: "todo",
                 source: "manual",
                 sourceMessageIds: body.sourceMessageIds ?? [],
                 latestContextMessageId: body.sourceMessageIds?.[0] ?? null,

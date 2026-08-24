@@ -1,5 +1,6 @@
 import type { TypedSocket } from "../types.js";
 import jwt from "jsonwebtoken";
+import { getAccessTokenSecret } from "../../../config/runtime.js";
 import { authorizeSocketIdentity } from "../services/socket-identity-authorization.js";
 
 type AccessRole = "user" | "moderator" | "admin";
@@ -60,7 +61,7 @@ function getHandshakeToken(socket: TypedSocket): string | null {
 }
 
 function verifyAccessToken(token: string): AccessTokenPayload {
-    const secret = process.env.ACCESS_TOKEN_SECRET;
+    const secret = getAccessTokenSecret();
     if (!secret) {
         throw new Error("ACCESS_TOKEN_SECRET is not configured");
     }

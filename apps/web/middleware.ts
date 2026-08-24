@@ -1,5 +1,6 @@
 import { jwtVerify, type JWTPayload } from "jose";
 import { NextRequest, NextResponse } from "next/server";
+import { getAccessTokenSecret, getInternalWorkerSecret } from "@/lib/config/secrets";
 import { buildAppRedirectUrl } from "@/lib/utils/auth/googleOAuthBaseUrl";
 
 type AccessPayload = JWTPayload & {
@@ -24,7 +25,7 @@ function logMiddlewareNote(message: string, metadata?: Record<string, unknown>) 
 
 async function verifyAccessToken(req: NextRequest): Promise<AccessPayload | null> {
     const token = req.cookies.get("accessToken")?.value;
-    const secret = process.env.ACCESS_TOKEN_SECRET;
+    const secret = getAccessTokenSecret();
 
     if (!token || !secret) {
         return null;
@@ -58,9 +59,7 @@ async function hasActiveAdminRole(
     userId: string,
     tokenVersion?: number
 ): Promise<boolean> {
-    const internalSecret =
-        process.env.INTERNAL_SECRET_WORKER?.trim()
-        || process.env.INTERNAL_SECRET?.trim();
+    const internalSecret = getInternalWorkerSecret();
     if (!internalSecret) {
         return false;
     }

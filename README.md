@@ -28,7 +28,7 @@
 
 Product direction: [ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md) (roadmap lives in Notion, not this repo).
 
-**Product contract:** Suggest → (approve when policy requires) → coordinate. Proposals and audit records are persisted before any tool execution. Autonomy is an optional, policy-gated capability — not the product promise. With `EXECUTION_MODE_ENFORCE=1`, false tool side effects under effective `suggest_only` are a **P0** product bug; with the default `EXECUTION_MODE_ENFORCE=0` (shadow), mode is logged but legacy auto-execute may still run until enforce is flipped. See [ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md).
+**Product contract:** Suggest → (approve when policy requires) → coordinate. Proposals and audit records are persisted before any tool execution. Autonomy is an optional, policy-gated capability — not the product promise. Execution mode is always enforced: false tool side effects under effective `suggest_only` are a **P0** product bug. See [ADR-005](docs/decisions/ADR-005-suggest-first-work-coordination.md).
 
 ## Why Semantask
 
@@ -121,17 +121,17 @@ Full system map: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Optional LLM/wo
 
 Copy [`env.sample`](env.sample) to `.env` at the repository root and adjust for your environment.
 
-**Core:** database, Redis, auth secrets, NextAuth, OAuth (optional), ImageKit (if media uploads are enabled), SMTP (optional).
+**Core:** database, Redis, auth secrets (`ACCESS_TOKEN_SECRET` / `REFRESH_TOKEN_SECRET`), OAuth (optional), ImageKit (if media uploads are enabled), SMTP (optional).
 
 **Task-worker runtime:** `TASK_*`, outbox/lease, and Redis settings in `env.sample` (needed for classification and outbox processing even when tools are off).
 
-**Optional LLM / autonomy providers:** set `LLM_PROVIDER` and either OpenAI-style keys or provider-specific variables when policy-enabled tool execution is used. Supports **OpenAI**, **OpenAI-compatible** bases (including **AMD**), and **Hugging Face**. See `env.sample` for `LLM_*` and optional `AMD_*` / `HUGGINGFACE_*` overrides.
+**Optional LLM / autonomy providers:** set `LLM_PROVIDER`, `LLM_API_KEY`, and `LLM_BASE_URL` when policy-enabled tool execution is used. Supports **OpenAI**, **OpenAI-compatible** bases (including **AMD**), and **Hugging Face**. See `env.sample`.
 
 ```env
 # Core (abbreviated — see env.sample for full list)
 MONGODB_URI=mongodb://localhost:27017/semantask
-NEXTAUTH_SECRET=replace_with_a_strong_secret
-NEXTAUTH_URL=http://localhost:3000
+ACCESS_TOKEN_SECRET=replace_with_a_strong_secret
+REFRESH_TOKEN_SECRET=replace_with_a_strong_secret
 INTERNAL_SECRET=replace_with_shared_internal_secret
 ORIGIN=http://localhost:3000
 REDIS_URL=redis://localhost:6379
@@ -139,12 +139,8 @@ NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
 
 # Optional LLM / autonomy settings (see env.sample)
 LLM_PROVIDER=openai
-OPENAI_API_KEY=
-# OPENAI_BASE_URL=          # OpenAI-compatible / vLLM / custom gateway
-# HUGGINGFACE_API_KEY=
-# HUGGINGFACE_BASE_URL=
-# AMD_API_KEY=
-# AMD_BASE_URL=
+LLM_API_KEY=
+# LLM_BASE_URL=             # OpenAI-compatible / vLLM / custom gateway
 ```
 
 ## Local development
@@ -195,7 +191,7 @@ The Compose stack includes **nginx**, **nextapp** (Next.js), **socket**, **task-
 ## Troubleshooting
 
 - **Ports 3000 / 3001 in use** — stop conflicting processes and restart dev servers.
-- **Auth failures** — verify `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, and cookie/domain settings.
+- **Auth failures** — verify `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, and cookie/domain settings.
 - **Socket / live updates** — check `ORIGIN`, `INTERNAL_SECRET`, and `NEXT_PUBLIC_SOCKET_URL`.
 - **Agent or LLM errors** — confirm `LLM_PROVIDER`, API keys, and base URLs; for OSS endpoints, see [`docs/archive/optional-autonomy/oss-inference-compatibility.md`](docs/archive/optional-autonomy/oss-inference-compatibility.md).
 

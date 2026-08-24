@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
+import { beforeEach, describe, expect, it } from "@jest/globals";
 
 jest.mock("@semantask/db", () => ({
     connectToDatabase: jest.fn().mockResolvedValue(undefined),
@@ -22,158 +22,38 @@ jest.mock("../organization.service", () => ({
     assertMembership: jest.fn().mockResolvedValue(undefined),
 }));
 
+import * as config from "../config";
 import {
-    assertAcceptCreatesCoordinationOnly,
     getEffectiveExecutionMode,
     isAcceptCreatesExecutionEnabled,
-    isExecutionModeEnforce,
-    isSuggestionBlockExecEnabled,
-    isSuggestionIngressEnabled,
     isCoordinationBoardEnabled,
+    isExecutionModeEnforce,
+    isSuggestionIngressEnabled,
     isWorkInboxUiEnabled,
     parseDefaultExecutionMode,
     shouldBlockExecutionEnqueue,
     upsertOrganizationPolicy,
 } from "../organization-policy.service";
-import { ConflictError } from "../organization-errors";
 
-const ENV_KEYS = [
-    "DEFAULT_EXECUTION_MODE",
-    "EXECUTION_MODE_ENFORCE",
-    "GRANDFATHER_AUTO_TENANTS",
-    "SUGGESTION_INGRESS",
-    "SUGGESTION_BLOCK_EXEC",
-    "ACCEPT_CREATES_EXECUTION",
-    "WORK_INBOX_UI",
-    "COORDINATION_BOARD",
-] as const;
-
-const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
-
-beforeEach(() => {
-    for (const key of ENV_KEYS) {
-        originalEnv[key] = process.env[key];
-    }
-    findOne.mockReset();
-    findOneAndUpdate.mockReset();
-});
-
-afterEach(() => {
-    for (const key of ENV_KEYS) {
-        const value = originalEnv[key];
-        if (value === undefined) {
-            delete process.env[key];
-        } else {
-            process.env[key] = value;
-        }
-    }
-});
-
-describe("getEffectiveExecutionMode", () => {
-    it("defaults missing field to suggest_only", () => {
-        expect(getEffectiveExecutionMode({ organizationId: null, executionMode: null }))
-            .toBe("suggest_only");
-    });
-
-    it("honors DEFAULT_EXECUTION_MODE for personal", () => {
-        process.env.DEFAULT_EXECUTION_MODE = "require_approval";
-        expect(getEffectiveExecutionMode({ executionMode: null })).toBe("require_approval");
-    });
-
-    it("uses org field when set", () => {
-        expect(getEffectiveExecutionMode({
-            organizationId: "507f1f77bcf86cd799439011",
-            executionMode: "auto_execute",
-        })).toBe("auto_execute");
-    });
-
-    it("grandfather list wins over missing field", () => {
-        process.env.GRANDFATHER_AUTO_TENANTS = "507f1f77bcf86cd799439011";
-        expect(getEffectiveExecutionMode({
-            organizationId: "507f1f77bcf86cd799439011",
-            executionMode: null,
-        })).toBe("auto_execute");
-    });
-});
-
-describe("execution mode flags", () => {
-    it("parseDefaultExecutionMode falls back on invalid", () => {
-        expect(parseDefaultExecutionMode("nope")).toBe("suggest_only");
-        expect(parseDefaultExecutionMode("auto_execute")).toBe("auto_execute");
-    });
-
-    it("isExecutionModeEnforce defaults on", () => {
-        delete process.env.EXECUTION_MODE_ENFORCE;
-        expect(isExecutionModeEnforce()).toBe(true);
-        expect(isExecutionModeEnforce("1")).toBe(true);
-        expect(isExecutionModeEnforce("enforce")).toBe(true);
-        expect(isExecutionModeEnforce("0")).toBe(false);
-    });
-});
-
-describe("suggestion ingress flags", () => {
-    it("isSuggestionIngressEnabled defaults on", () => {
-        delete process.env.SUGGESTION_INGRESS;
-        expect(isSuggestionIngressEnabled()).toBe(true);
-        expect(isSuggestionIngressEnabled("1")).toBe(true);
-        expect(isSuggestionIngressEnabled("0")).toBe(false);
-    });
-
-    it("isSuggestionBlockExecEnabled defaults on", () => {
-        delete process.env.SUGGESTION_BLOCK_EXEC;
-        expect(isSuggestionBlockExecEnabled()).toBe(true);
-        expect(isSuggestionBlockExecEnabled("0")).toBe(false);
-    });
-
-    it("shouldBlockExecutionEnqueue requires suggest_only and block flag", () => {
-        process.env.SUGGESTION_BLOCK_EXEC = "1";
-        expect(shouldBlockExecutionEnqueue("suggest_only")).toBe(true);
-        expect(shouldBlockExecutionEnqueue("auto_execute")).toBe(false);
-        process.env.SUGGESTION_BLOCK_EXEC = "0";
-        expect(shouldBlockExecutionEnqueue("suggest_only")).toBe(false);
-    });
-});
-
-describe("accept creates execution safety rail", () => {
-    it("defaults ACCEPT_CREATES_EXECUTION off", () => {
-        delete process.env.ACCEPT_CREATES_EXECUTION;
-        expect(isAcceptCreatesExecutionEnabled()).toBe(false);
-        expect(() => assertAcceptCreatesCoordinationOnly()).not.toThrow();
-    });
-
-    it("fails closed when ACCEPT_CREATES_EXECUTION is enabled", () => {
-        expect(isAcceptCreatesExecutionEnabled("1")).toBe(true);
-        expect(() => assertAcceptCreatesCoordinationOnly("1")).toThrow(ConflictError);
-    });
-});
-
-describe("work inbox UI flag", () => {
-    it("defaults WORK_INBOX_UI on", () => {
-        delete process.env.WORK_INBOX_UI;
-        expect(isWorkInboxUiEnabled()).toBe(true);
-        expect(isWorkInboxUiEnabled("0")).toBe(false);
-    });
-
-    it("enables WORK_INBOX_UI when set", () => {
-        expect(isWorkInboxUiEnabled("1")).toBe(true);
-        expect(isWorkInboxUiEnabled("true")).toBe(true);
-    });
-});
-
-describe("coordination board flag", () => {
-    it("defaults COORDINATION_BOARD off", () => {
-        delete process.env.COORDINATION_BOARD;
-        expect(isCoordinationBoardEnabled()).toBe(false);
-        expect(isCoordinationBoardEnabled("0")).toBe(false);
-    });
-
-    it("enables COORDINATION_BOARD when set", () => {
-        expect(isCoordinationBoardEnabled("1")).toBe(true);
-        expect(isCoordinationBoardEnabled("true")).toBe(true);
+describe("organization-policy.service config re-exports", () => {
+    it("re-exports the shared config parsers by identity", () => {
+        expect(getEffectiveExecutionMode).toBe(config.getEffectiveExecutionMode);
+        expect(isExecutionModeEnforce).toBe(config.isExecutionModeEnforce);
+        expect(parseDefaultExecutionMode).toBe(config.parseDefaultExecutionMode);
+        expect(isSuggestionIngressEnabled).toBe(config.isSuggestionIngressEnabled);
+        expect(shouldBlockExecutionEnqueue).toBe(config.shouldBlockExecutionEnqueue);
+        expect(isAcceptCreatesExecutionEnabled).toBe(config.isAcceptCreatesExecutionEnabled);
+        expect(isWorkInboxUiEnabled).toBe(config.isWorkInboxUiEnabled);
+        expect(isCoordinationBoardEnabled).toBe(config.isCoordinationBoardEnabled);
     });
 });
 
 describe("upsertOrganizationPolicy executionMode CAS", () => {
+    beforeEach(() => {
+        findOne.mockReset();
+        findOneAndUpdate.mockReset();
+    });
+
     it("retries on concurrent version conflict and audits the committed transition", async () => {
         const orgId = "507f1f77bcf86cd799439011";
         const actorId = "507f1f77bcf86cd799439012";

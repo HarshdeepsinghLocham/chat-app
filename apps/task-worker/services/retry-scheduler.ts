@@ -6,20 +6,20 @@ import type { TaskExecutionActionType } from "@semantask/types";
 import * as taskRepo from "@semantask/services/repositories/task.repo";
 import { isMongoTransactionUnsupported } from "@semantask/services/mongo-transaction";
 import { emitRetryDueShadowState } from "./retry-shadow.js";
+import {
+    getWorkerRuntimeConfig,
+    RETRY_SCAN_INTERVAL_MS_FALLBACK,
+} from "../config/worker.js";
 
 const connectToDatabase =
     (dbModule as unknown as { connectToDatabase?: () => Promise<unknown> }).connectToDatabase
     || ((dbModule as unknown as { default?: { connectToDatabase?: () => Promise<unknown> } }).default?.connectToDatabase)
     || (async () => undefined);
 
-export const RETRY_SCAN_INTERVAL_MS = Number(process.env.TASK_RETRY_SCAN_INTERVAL_MS || 5000);
+export const RETRY_SCAN_INTERVAL_MS = RETRY_SCAN_INTERVAL_MS_FALLBACK;
 
 export function getRetryBatchSize(): number {
-    const raw = Number(process.env.TASK_RETRY_BATCH_SIZE || 10);
-    if (!Number.isFinite(raw) || raw < 1) {
-        return 10;
-    }
-    return Math.floor(raw);
+    return getWorkerRuntimeConfig().retryBatchSize;
 }
 
 function buildRetryPayload(task: ITask): Record<string, unknown> {
@@ -224,7 +224,7 @@ export function startRetryScheduler(workerId: string): () => void {
         }
 
         if (!stopped) {
-            setTimeout(tick, RETRY_SCAN_INTERVAL_MS);
+            setTimeout(tick, getWorkerRuntimeConfig().retryScanIntervalMs);
         }
     };
 

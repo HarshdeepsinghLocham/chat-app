@@ -110,7 +110,7 @@ export const executionEnqueueAttemptedWhileSuggestOnlyCounter = new Counter({
 
 export const acceptExecutionEnqueueAttemptedWhileDisabledCounter = new Counter({
     name: "accept_execution_enqueue_attempted_while_disabled_total",
-    help: "Attempts to enqueue task.execution.requested from suggestion.accept while ACCEPT_CREATES_EXECUTION is disabled",
+    help: "Attempts to enqueue task.execution.requested from suggestion.accept (always refused)",
     registers: [metricsRegistry],
 });
 

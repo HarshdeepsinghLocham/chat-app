@@ -4,8 +4,8 @@ This profile is tuned for hackathon demos on AMD-backed OpenAI-compatible endpoi
 
 ```bash
 export LLM_PROVIDER=amd-openai-compatible
-export AMD_API_KEY=your-token
-export AMD_BASE_URL=https://your-amd-gateway.example/v1
+export LLM_API_KEY=your-token
+export LLM_BASE_URL=https://your-amd-gateway.example/v1
 export LLM_MODEL=meta-llama/Llama-3.1-8B-Instruct
 export TASK_AGENT_LLM_TIMEOUT_MS=45000
 export TASK_AGENT_TOOL_TIMEOUT_MS=30000

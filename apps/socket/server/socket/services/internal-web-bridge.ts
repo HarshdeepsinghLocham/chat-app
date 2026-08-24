@@ -1,4 +1,5 @@
 import { createInternalRequestHeaders } from "@semantask/types/utils/internal-bridge-auth";
+import { getAllowedOrigins, getWebServerUrl } from "../../../config/runtime.js";
 import { resolveInternalBaseUrl } from "../utils/url.js";
 
 function normalizeUrl(value: string): string {
@@ -6,11 +7,8 @@ function normalizeUrl(value: string): string {
 }
 
 export function getInternalWebServerUrls(): string[] {
-    const configuredWeb = process.env.WEB_SERVER_URL?.trim();
-    const configuredOrigin = process.env.ORIGIN
-        ?.split(",")
-        .map((entry) => entry.trim())
-        .filter(Boolean);
+    const configuredWeb = getWebServerUrl();
+    const configuredOrigin = getAllowedOrigins();
 
     const candidates = [
         configuredWeb,

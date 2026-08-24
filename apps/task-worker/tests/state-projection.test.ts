@@ -23,24 +23,6 @@ const succeeded: ExecutionState = {
     result: { confidence: 1, summary: "done", evidence: null },
 };
 
-function withMode(mode: string | undefined, fn: () => void): void {
-    const previous = process.env.TASK_STATE_PROJECTION_MODE;
-    if (mode === undefined) {
-        delete process.env.TASK_STATE_PROJECTION_MODE;
-    } else {
-        process.env.TASK_STATE_PROJECTION_MODE = mode;
-    }
-    try {
-        fn();
-    } finally {
-        if (previous === undefined) {
-            delete process.env.TASK_STATE_PROJECTION_MODE;
-        } else {
-            process.env.TASK_STATE_PROJECTION_MODE = previous;
-        }
-    }
-}
-
 function makeTask(overrides?: Partial<ProjectableTask>): ProjectableTask {
     return {
         _id: { toString: () => "task-1" },
@@ -51,72 +33,31 @@ function makeTask(overrides?: Partial<ProjectableTask>): ProjectableTask {
     };
 }
 
-test("getTaskStateProjectionMode defaults to off", () => {
-    withMode(undefined, () => {
-        assert.equal(getTaskStateProjectionMode(), "off");
-    });
-    withMode("SHADOW", () => {
-        assert.equal(getTaskStateProjectionMode(), "shadow");
-    });
-    withMode("enforce", () => {
-        assert.equal(getTaskStateProjectionMode(), "enforce");
-    });
+test("getTaskStateProjectionMode is always enforce", () => {
+    assert.equal(getTaskStateProjectionMode(), "enforce");
 });
 
-test("applyLifecycleProjection off mode is a no-op", () => {
-    withMode("off", () => {
-        const task = makeTask();
-        applyLifecycleProjection(task, "test");
-        assert.equal(task.lifecycleState, "ready");
-        assert.equal(task.status, "pending");
-    });
+test("applyLifecycleProjection writes projected lifecycle and status", () => {
+    const task = makeTask();
+    applyLifecycleProjection(task, "test");
+    assert.equal(task.lifecycleState, "executing");
+    assert.equal(task.status, "executing");
 });
 
-test("applyLifecycleProjection shadow mode does not overwrite fields", () => {
-    withMode("shadow", () => {
-        const task = makeTask();
-        applyLifecycleProjection(task, "test");
-        assert.equal(task.lifecycleState, "ready");
-        assert.equal(task.status, "pending");
+test("applyLifecycleProjection projects succeeded to completed", () => {
+    const task = makeTask({
+        lifecycleState: "executing",
+        status: "executing",
+        executionState: succeeded,
     });
-});
-
-test("applyLifecycleProjection enforce mode writes projected lifecycle and status", () => {
-    withMode("enforce", () => {
-        const task = makeTask();
-        applyLifecycleProjection(task, "test");
-        assert.equal(task.lifecycleState, "executing");
-        assert.equal(task.status, "executing");
-    });
-});
-
-test("applyLifecycleProjection enforce projects succeeded to completed", () => {
-    withMode("enforce", () => {
-        const task = makeTask({
-            lifecycleState: "executing",
-            status: "executing",
-            executionState: succeeded,
-        });
-        applyLifecycleProjection(task, "test");
-        assert.equal(task.lifecycleState, "completed");
-        assert.equal(task.status, "completed");
-    });
-});
-
-test("applyLifecycleProjection treatOffAs enforce preserves policy-shadow alignment", () => {
-    withMode("off", () => {
-        const task = makeTask();
-        applyLifecycleProjection(task, "policy_shadow", { treatOffAs: "enforce" });
-        assert.equal(task.lifecycleState, "executing");
-        assert.equal(task.status, "executing");
-    });
+    applyLifecycleProjection(task, "test");
+    assert.equal(task.lifecycleState, "completed");
+    assert.equal(task.status, "completed");
 });
 
 test("applyLifecycleProjection skips invalid executionState", () => {
-    withMode("enforce", () => {
-        const task = makeTask({ executionState: { kind: "not_a_state" } });
-        applyLifecycleProjection(task, "test");
-        assert.equal(task.lifecycleState, "ready");
-        assert.equal(task.status, "pending");
-    });
+    const task = makeTask({ executionState: { kind: "not_a_state" } });
+    applyLifecycleProjection(task, "test");
+    assert.equal(task.lifecycleState, "ready");
+    assert.equal(task.status, "pending");
 });

@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { getUpstashRestConfig } from "@/lib/config/redis";
 
 export type CachedUserState = {
     id: string;
@@ -14,8 +15,9 @@ export type CachedUserState = {
 const DEFAULT_USER_STATE_CACHE_TTL_SECONDS = 45;
 const USER_STATE_CACHE_KEY_PREFIX = "auth:user-state";
 
-const upstashUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
-const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+const upstash = getUpstashRestConfig();
+const upstashUrl = upstash?.url;
+const upstashToken = upstash?.token;
 
 let redisClient: Redis | null = null;
 if (upstashUrl && upstashToken) {

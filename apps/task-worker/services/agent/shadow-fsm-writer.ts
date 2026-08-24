@@ -11,6 +11,8 @@ import {
 } from "../execution-state-shadow.js";
 import type { AgentContext } from "./context.js";
 import type { TaskDocumentLike } from "./types.js";
+import { isFsmShadowEnabled } from "../../config/migration.js";
+import { getLeaseMs } from "../../config/worker.js";
 
 /**
  * Owns the shadow execution-state FSM writes for a run. Reduces execution
@@ -21,7 +23,7 @@ export class ShadowFsmWriter {
     constructor(private readonly ctx: AgentContext) {}
 
     isShadowExecutionStateEnabled(): boolean {
-        return process.env.TASK_EXECUTION_FSM_SHADOW_MODE !== "0";
+        return isFsmShadowEnabled();
     }
 
     getShadowLeaseExpiresAt(task: TaskDocumentLike): string {
@@ -29,8 +31,7 @@ export class ShadowFsmWriter {
             return task.leaseExpiresAt.toISOString();
         }
 
-        const parsed = Number(process.env.TASK_LEASE_MS || 30000);
-        const leaseMs = Number.isFinite(parsed) && parsed > 0 ? Math.max(1000, parsed) : 30000;
+        const leaseMs = getLeaseMs();
         return new Date(Date.now() + leaseMs).toISOString();
     }
 

@@ -85,6 +85,11 @@
             "types": "./dist/services/organization-policy.service.d.ts",
             "default": "./dist/services/organization-policy.service.js"
         },
+        "./config": {
+            "import": "./dist/services/config/index.js",
+            "types": "./dist/services/config/index.d.ts",
+            "default": "./dist/services/config/index.js"
+        },
         "./usage-event.service": {
             "import": "./dist/services/usage-event.service.js",
             "types": "./dist/services/usage-event.service.d.ts",

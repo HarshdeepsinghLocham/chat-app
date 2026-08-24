@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
+import { beforeEach, describe, expect, it } from "@jest/globals";
 
 jest.mock("@semantask/db", () => ({
     connectToDatabase: jest.fn().mockResolvedValue(undefined),
@@ -43,37 +43,14 @@ import {
     SUGGESTION_ACCEPT_EXECUTION_SOURCE,
 } from "../task-execution-enqueue.service";
 
-const ENV_KEYS = [
-    "SUGGESTION_INGRESS",
-    "SUGGESTION_BLOCK_EXEC",
-    "ACCEPT_CREATES_EXECUTION",
-] as const;
-const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
-
 beforeEach(() => {
-    for (const key of ENV_KEYS) {
-        originalEnv[key] = process.env[key];
-    }
     enqueueOutboxEvent.mockReset();
     executionEnqueueAttemptedWhileSuggestOnlyCounter.inc.mockReset();
     acceptExecutionEnqueueAttemptedWhileDisabledCounter.inc.mockReset();
 });
 
-afterEach(() => {
-    for (const key of ENV_KEYS) {
-        const value = originalEnv[key];
-        if (value === undefined) {
-            delete process.env[key];
-        } else {
-            process.env[key] = value;
-        }
-    }
-});
-
 describe("enqueueTaskExecutionRequested", () => {
-    it("blocks enqueue under suggest_only when ingress and SUGGESTION_BLOCK_EXEC are on", async () => {
-        process.env.SUGGESTION_INGRESS = "1";
-        process.env.SUGGESTION_BLOCK_EXEC = "1";
+    it("blocks enqueue under suggest_only", async () => {
         const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
 
         const result = await enqueueTaskExecutionRequested({
@@ -94,25 +71,7 @@ describe("enqueueTaskExecutionRequested", () => {
         errorSpy.mockRestore();
     });
 
-    it("enqueues suggest_only when ingress is disabled even if SUGGESTION_BLOCK_EXEC is on", async () => {
-        process.env.SUGGESTION_INGRESS = "0";
-        process.env.SUGGESTION_BLOCK_EXEC = "1";
-        enqueueOutboxEvent.mockResolvedValue({ _id: "evt-1" });
-
-        const result = await enqueueTaskExecutionRequested({
-            dedupeKey: "task.execution.requested:t1:m1:none",
-            payload: { taskId: "t1", conversationId: "c1" },
-            executionMode: "suggest_only",
-        });
-
-        expect(result).toEqual({ enqueued: true, blocked: false });
-        expect(enqueueOutboxEvent).toHaveBeenCalled();
-        expect(executionEnqueueAttemptedWhileSuggestOnlyCounter.inc).not.toHaveBeenCalled();
-    });
-
     it("enqueues when mode is auto_execute", async () => {
-        process.env.SUGGESTION_INGRESS = "1";
-        process.env.SUGGESTION_BLOCK_EXEC = "1";
         enqueueOutboxEvent.mockResolvedValue({ _id: "evt-1" });
 
         const result = await enqueueTaskExecutionRequested({
@@ -131,24 +90,7 @@ describe("enqueueTaskExecutionRequested", () => {
         expect(executionEnqueueAttemptedWhileSuggestOnlyCounter.inc).not.toHaveBeenCalled();
     });
 
-    it("allows enqueue under suggest_only when SUGGESTION_BLOCK_EXEC=0", async () => {
-        process.env.SUGGESTION_INGRESS = "1";
-        process.env.SUGGESTION_BLOCK_EXEC = "0";
-        enqueueOutboxEvent.mockResolvedValue({ _id: "evt-1" });
-
-        const result = await enqueueTaskExecutionRequested({
-            dedupeKey: "task.execution.requested:t1:m1:none",
-            payload: { taskId: "t1" },
-            executionMode: "suggest_only",
-        });
-
-        expect(result.enqueued).toBe(true);
-        expect(enqueueOutboxEvent).toHaveBeenCalled();
-    });
-
-    it("allows explicit manager request under suggest_only + SUGGESTION_BLOCK_EXEC", async () => {
-        process.env.SUGGESTION_INGRESS = "1";
-        process.env.SUGGESTION_BLOCK_EXEC = "1";
+    it("allows explicit manager request under suggest_only", async () => {
         enqueueOutboxEvent.mockResolvedValue({ _id: "evt-1" });
 
         const result = await enqueueTaskExecutionRequested({
@@ -168,9 +110,7 @@ describe("enqueueTaskExecutionRequested", () => {
         expect(executionEnqueueAttemptedWhileSuggestOnlyCounter.inc).not.toHaveBeenCalled();
     });
 
-    it("blocks suggestion.accept enqueue while ACCEPT_CREATES_EXECUTION is disabled and records metric", async () => {
-        delete process.env.ACCEPT_CREATES_EXECUTION;
-        process.env.SUGGESTION_INGRESS = "0";
+    it("always blocks suggestion.accept enqueue and records metric", async () => {
         const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
 
         const result = await enqueueTaskExecutionRequested({
@@ -196,14 +136,10 @@ describe("enqueueTaskExecutionRequested", () => {
 });
 
 describe("shouldFailClosedOnLeakedExecution", () => {
-    it("requires ingress enabled and suggest_only block", () => {
-        process.env.SUGGESTION_INGRESS = "0";
-        process.env.SUGGESTION_BLOCK_EXEC = "1";
-        expect(shouldFailClosedOnLeakedExecution("suggest_only")).toBe(false);
-
-        process.env.SUGGESTION_INGRESS = "1";
+    it("is true only for suggest_only", () => {
         expect(shouldFailClosedOnLeakedExecution("suggest_only")).toBe(true);
         expect(shouldFailClosedOnLeakedExecution("require_approval")).toBe(false);
+        expect(shouldFailClosedOnLeakedExecution("auto_execute")).toBe(false);
     });
 });
 

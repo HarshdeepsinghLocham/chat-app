@@ -1,4 +1,5 @@
 import { getUploadAuthParams } from "@imagekit/next/server";
+import { getImageKitPrivateKey, getImageKitPublicKey } from "@/lib/config/imagekit";
 import { requireAuthUser } from "@/lib/utils/auth/requireAuthUser";
 
 export async function GET() {
@@ -7,8 +8,8 @@ export async function GET() {
         return guard.response;
     }
 
-    const privateKey = process.env.IMAGEKIT_PRIVATE_KEY;
-    const publicKey = process.env.IMAGEKIT_PUBLIC_KEY || process.env.NEXT_PUBLIC_PUBLIC_KEY;
+    const privateKey = getImageKitPrivateKey();
+    const publicKey = getImageKitPublicKey();
 
     if (!privateKey || !publicKey) {
         return Response.json(

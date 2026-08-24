@@ -1,5 +1,6 @@
 import type { LLMGenerateOptions, LLMHealthCheckResult, LLMProviderConfig, LLMProviderMetricSnapshot, LLMRequest, LLMResponse } from "./types.js";
 import { getLLMProviderMetricsSnapshot, persistLLMUsage, recordLLMProviderMetric } from "./metrics.js";
+import { getLlmLogRequests } from "../../config/llm.js";
 
 export abstract class BaseLLMProvider {
     protected readonly config: LLMProviderConfig;
@@ -25,7 +26,7 @@ export abstract class BaseLLMProvider {
     }
 
     protected shouldLogRequests(): boolean {
-        return this.config.logRequests ?? process.env.LLM_LOG_REQUESTS !== "false";
+        return this.config.logRequests ?? getLlmLogRequests();
     }
 
     protected recordMetric(event: Parameters<typeof recordLLMProviderMetric>[0]) {

@@ -3,10 +3,12 @@ import {
     deriveLegacyLifecycleState,
     deriveLegacyTaskStatus,
 } from "@semantask/types";
+import { getTaskStateProjectionMode } from "../config/migration.js";
 import { isExecutionState } from "./execution-state-shadow.js";
 import { logExecution } from "./execution-logger.js";
 
-export type TaskStateProjectionMode = "off" | "shadow" | "enforce";
+export type { TaskStateProjectionMode } from "../config/migration.js";
+export { getTaskStateProjectionMode };
 
 export type ProjectableTask = {
     _id: { toString(): string };
@@ -14,14 +16,6 @@ export type ProjectableTask = {
     status?: string;
     executionState?: unknown;
 };
-
-export function getTaskStateProjectionMode(): TaskStateProjectionMode {
-    const raw = (process.env.TASK_STATE_PROJECTION_MODE || "off").trim().toLowerCase();
-    if (raw === "shadow" || raw === "enforce") {
-        return raw;
-    }
-    return "off";
-}
 
 export type ApplyLifecycleProjectionOptions = {
     /**

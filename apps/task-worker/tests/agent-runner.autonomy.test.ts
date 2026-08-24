@@ -183,7 +183,7 @@ function restoreEnvVar(key: string, value: string | undefined) {
 }
 
 test("autonomy: schedules meeting then sends follow-up email via LLM-selected tools", async () => {
-    process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "test-key";
+    process.env.LLM_API_KEY = process.env.LLM_API_KEY ?? "test-key";
 
     const toolCalls: Array<{ toolName: string; input: Record<string, unknown> }> = [];
     const registry = new ToolRegistry();
@@ -235,9 +235,9 @@ test("autonomy: schedules meeting then sends follow-up email via LLM-selected to
         }),
     });
 
-    const previousKey = process.env.OPENAI_API_KEY;
+    const previousKey = process.env.LLM_API_KEY;
     const previousMaxIterations = process.env.TASK_AGENT_MAX_ITERATIONS;
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.LLM_API_KEY = "test-key";
     process.env.TASK_AGENT_MAX_ITERATIONS = "4";
 
     await withMockedFetch(
@@ -255,12 +255,12 @@ test("autonomy: schedules meeting then sends follow-up email via LLM-selected to
         }
     );
 
-    restoreEnvVar("OPENAI_API_KEY", previousKey);
+    restoreEnvVar("LLM_API_KEY", previousKey);
     restoreEnvVar("TASK_AGENT_MAX_ITERATIONS", previousMaxIterations);
 });
 
 test("autonomy: creates GitHub issue then notifies team without predefined plan", async () => {
-    process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "test-key";
+    process.env.LLM_API_KEY = process.env.LLM_API_KEY ?? "test-key";
 
     const toolCalls: Array<{ toolName: string; input: Record<string, unknown> }> = [];
     const registry = new ToolRegistry();
@@ -312,8 +312,8 @@ test("autonomy: creates GitHub issue then notifies team without predefined plan"
         }),
     });
 
-    const previousKey = process.env.OPENAI_API_KEY;
-    process.env.OPENAI_API_KEY = "test-key";
+    const previousKey = process.env.LLM_API_KEY;
+    process.env.LLM_API_KEY = "test-key";
 
     await withMockedFetch(
         [
@@ -331,11 +331,11 @@ test("autonomy: creates GitHub issue then notifies team without predefined plan"
         }
     );
 
-    restoreEnvVar("OPENAI_API_KEY", previousKey);
+    restoreEnvVar("LLM_API_KEY", previousKey);
 });
 
 test("autonomy: chained tasks adapt after a failed step", async () => {
-    process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "test-key";
+    process.env.LLM_API_KEY = process.env.LLM_API_KEY ?? "test-key";
 
     const toolCalls: Array<{ toolName: string; input: Record<string, unknown> }> = [];
     const registry = new ToolRegistry();
@@ -404,9 +404,9 @@ test("autonomy: chained tasks adapt after a failed step", async () => {
         }),
     });
 
-    const previousKey = process.env.OPENAI_API_KEY;
+    const previousKey = process.env.LLM_API_KEY;
     const previousMaxIterations = process.env.TASK_AGENT_MAX_ITERATIONS;
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.LLM_API_KEY = "test-key";
     process.env.TASK_AGENT_MAX_ITERATIONS = "6";
 
     await withMockedFetch(
@@ -427,12 +427,12 @@ test("autonomy: chained tasks adapt after a failed step", async () => {
         }
     );
 
-    restoreEnvVar("OPENAI_API_KEY", previousKey);
+    restoreEnvVar("LLM_API_KEY", previousKey);
     restoreEnvVar("TASK_AGENT_MAX_ITERATIONS", previousMaxIterations);
 });
 
 test("autonomy: pauses for clarification and resumes with the user's reply", async () => {
-    process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "test-key";
+    process.env.LLM_API_KEY = process.env.LLM_API_KEY ?? "test-key";
 
     const toolCalls: Array<{ toolName: string; input: Record<string, unknown> }> = [];
     const registry = new ToolRegistry();
@@ -475,8 +475,8 @@ test("autonomy: pauses for clarification and resumes with the user's reply", asy
         }),
     });
 
-    const previousKey = process.env.OPENAI_API_KEY;
-    process.env.OPENAI_API_KEY = "test-key";
+    const previousKey = process.env.LLM_API_KEY;
+    process.env.LLM_API_KEY = "test-key";
 
     await withMockedFetch(
         [
@@ -504,5 +504,5 @@ test("autonomy: pauses for clarification and resumes with the user's reply", asy
         }
     );
 
-    restoreEnvVar("OPENAI_API_KEY", previousKey);
+    restoreEnvVar("LLM_API_KEY", previousKey);
 });

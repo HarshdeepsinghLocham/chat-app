@@ -13,7 +13,13 @@ import {
     type PromptGuardMode,
     validateToolArgsAgainstContext,
 } from "./prompt-guard.js";
+import { getEnvAllowedEmailDomains } from "../config/tools.js";
 
+/**
+ * Org `OrganizationPolicy` fields overlay env when set:
+ * `confidenceThresholds`, `allowedEmailDomains`, `promptGuardMode`.
+ * Execution mode uses `getEffectiveExecutionMode` (grandfather wins).
+ */
 export type OrganizationPolicyOverlay = {
     version: number;
     confidenceThresholds?: Record<string, number> | null;
@@ -37,7 +43,7 @@ type RequestedPayload = {
     taskId?: string;
     organizationId?: string | null;
     orgPolicy?: OrganizationPolicyOverlay | null;
-    /** Override env EXECUTION_MODE_ENFORCE for tests. */
+    /** Override enforce for tests. Production always enforces. */
     executionModeEnforce?: boolean;
 };
 
@@ -73,14 +79,6 @@ function emailDomain(email: string): string {
     const at = email.lastIndexOf("@");
     if (at < 0 || at === email.length - 1) return "";
     return email.slice(at + 1).toLowerCase();
-}
-
-function getEnvAllowedEmailDomains(): string[] {
-    const raw = process.env.TASK_WORKER_ALLOWED_EMAIL_DOMAINS || process.env.ALLOWED_EMAIL_DOMAINS || "";
-    return raw
-        .split(",")
-        .map((entry) => entry.trim().toLowerCase())
-        .filter((entry) => entry.length > 0);
 }
 
 function resolveAllowedEmailDomains(orgPolicy?: OrganizationPolicyOverlay | null): string[] {

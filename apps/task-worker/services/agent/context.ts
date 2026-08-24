@@ -14,6 +14,7 @@ import { acquireTaskLease, heartbeatTaskLease, releaseTaskLease } from "../task-
 import { maybeLogTaskStateDivergence } from "../state-divergence-check.js";
 import { assertTransition } from "../task-state-machine.js";
 import { createInternalRequestHeaders } from "@semantask/types/utils/internal-bridge-auth";
+import { getSocketServerUrl, getWorkerRuntimeConfig } from "../../config/worker.js";
 import type {
     AcquireTaskLeaseFn,
     AssertTransitionFn,
@@ -131,10 +132,10 @@ export class AgentContext {
         this.taskModel = options?.taskModel ?? resolveTaskModel(taskModule);
         this.toolRegistry = options?.toolRegistry ?? this.createDefaultToolRegistry();
         this.taskSuccessRegistry = options?.taskSuccessRegistry ?? createDefaultTaskSuccessRegistry();
-        this.internalBaseUrl = options?.internalBaseUrl ?? process.env.SOCKET_SERVER_URL ?? process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:3001";
+        this.internalBaseUrl = options?.internalBaseUrl ?? getSocketServerUrl();
         this.getLatestExecutionTaskAction = options?.getLatestExecutionTaskAction ?? getLatestExecutionTaskActionFromRepo;
-        this.persistentLoopEnabled = options?.persistentLoopEnabled ?? (process.env.TASK_AGENT_PERSISTENT_LOOP_ENABLED === "true");
-        this.workerId = options?.workerId ?? process.env.TASK_WORKER_ID ?? `${process.pid}-agent-runner`;
+        this.persistentLoopEnabled = options?.persistentLoopEnabled ?? getWorkerRuntimeConfig().persistentLoopEnabled;
+        this.workerId = options?.workerId ?? getWorkerRuntimeConfig().workerId ?? `${process.pid}-agent-runner`;
         this.retrieveMemoryFn = options?.retrieveMemoryFn ?? retrieveMemory;
         this.getTaskPlanFn = options?.getTaskPlanFn ?? getTaskPlan;
         this.createOrRefreshTaskPlanFn = options?.createOrRefreshTaskPlanFn ?? createOrRefreshTaskPlan;

@@ -3,13 +3,12 @@ import TaskReflectionModel from "@semantask/db/models/TaskReflection";
 import { writeLongTermMemory, writeShortTermMemory } from "./memory-service.js";
 import { createDefaultLLMProvider } from "./llm/index.js";
 import { parseJsonResponse } from "./llm/response-parser.js";
+import { getReflectionModel } from "../config/llm.js";
 
 const connectToDatabase =
     (dbModule as unknown as { connectToDatabase?: () => Promise<unknown> }).connectToDatabase
     || ((dbModule as unknown as { default?: { connectToDatabase?: () => Promise<unknown> } }).default?.connectToDatabase)
     || (async () => undefined);
-
-const DEFAULT_REFLECTION_MODEL = process.env.TASK_REFLECTION_MODEL || "gpt-4o-mini";
 
 function fallbackReflection(input: {
     taskId: string;
@@ -38,7 +37,7 @@ async function llmReflection(input: {
     try {
         const provider = createDefaultLLMProvider();
         const response = await provider.generate({
-            model: DEFAULT_REFLECTION_MODEL,
+            model: getReflectionModel(),
             input: [
                 {
                     role: "system",
@@ -97,7 +96,7 @@ export async function generateAndStoreReflection(input: {
         whatFailed: generated.whatFailed,
         improvements: generated.improvements,
         confidence: generated.confidence,
-        generatedByModel: DEFAULT_REFLECTION_MODEL,
+        generatedByModel: getReflectionModel(),
     });
 
     await writeShortTermMemory({

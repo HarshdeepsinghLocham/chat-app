@@ -8,9 +8,10 @@ import { getExecutionConfidenceThreshold } from "../services/execution-confidenc
 
 const ENV_KEYS = [
     "TASK_EXECUTION_CONFIDENCE_THRESHOLDS",
-    "EXECUTION_MODE_ENFORCE",
     "DEFAULT_EXECUTION_MODE",
     "GRANDFATHER_AUTO_TENANTS",
+    "TASK_WORKER_ALLOWED_EMAIL_DOMAINS",
+    "ALLOWED_EMAIL_DOMAINS",
 ] as const;
 
 const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
@@ -179,6 +180,80 @@ test("grandfather org resolves to auto_execute under enforce", () => {
 
     assert.equal(decision.outcome, "auto_execute");
     assert.equal(decision.executionMode, "auto_execute");
+});
+
+test("grandfather wins over org executionMode field", () => {
+    process.env.GRANDFATHER_AUTO_TENANTS = "507f1f77bcf86cd799439011";
+    const decision = evaluateExecutionPolicy({
+        actionType: "none",
+        confidence: 0.95,
+        semanticType: "task",
+        organizationId: "507f1f77bcf86cd799439011",
+        orgPolicy: {
+            version: 1,
+            executionMode: "suggest_only",
+        },
+        executionModeEnforce: true,
+    });
+
+    assert.equal(decision.outcome, "auto_execute");
+    assert.equal(decision.executionMode, "auto_execute");
+});
+
+test("org confidenceThresholds.task beats TASK_EXECUTION_CONFIDENCE_THRESHOLDS", () => {
+    process.env.TASK_EXECUTION_CONFIDENCE_THRESHOLDS = JSON.stringify({ task: 0.9 });
+    const decision = evaluateExecutionPolicy({
+        actionType: "none",
+        confidence: 0.8,
+        semanticType: "task",
+        organizationId: "507f1f77bcf86cd799439011",
+        orgPolicy: {
+            version: 2,
+            executionMode: "auto_execute",
+            confidenceThresholds: { task: 0.75 },
+        },
+        executionModeEnforce: true,
+    });
+
+    assert.equal(decision.outcome, "auto_execute");
+    assert.equal(decision.threshold, 0.75);
+    assert.ok(decision.reasons.some((reason) => reason.includes("0.80 ≥ 0.75")));
+});
+
+test("org allowedEmailDomains beats env email allowlist", () => {
+    process.env.TASK_WORKER_ALLOWED_EMAIL_DOMAINS = "env-only.com";
+    const allowed = evaluateExecutionPolicy({
+        actionType: "send_email",
+        confidence: 0.95,
+        semanticType: "task",
+        parameters: { to: ["user@org-only.com"] },
+        organizationId: "507f1f77bcf86cd799439011",
+        orgPolicy: {
+            version: 3,
+            executionMode: "auto_execute",
+            allowedEmailDomains: ["org-only.com"],
+            promptGuardMode: "off",
+        },
+        executionModeEnforce: true,
+    });
+    assert.equal(allowed.outcome, "auto_execute");
+
+    const denied = evaluateExecutionPolicy({
+        actionType: "send_email",
+        confidence: 0.95,
+        semanticType: "task",
+        parameters: { to: ["user@env-only.com"] },
+        organizationId: "507f1f77bcf86cd799439011",
+        orgPolicy: {
+            version: 3,
+            executionMode: "auto_execute",
+            allowedEmailDomains: ["org-only.com"],
+            promptGuardMode: "off",
+        },
+        executionModeEnforce: true,
+    });
+    assert.equal(denied.outcome, "approval_required");
+    assert.ok(denied.reasons.some((reason) => reason.includes("org policy v3")));
 });
 
 test("applyExecutionModeGate is pure for suggest_only enforce", () => {

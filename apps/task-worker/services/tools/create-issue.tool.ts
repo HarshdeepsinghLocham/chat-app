@@ -1,5 +1,6 @@
 import type { Tool, ToolResult } from "./tool-registry.js";
 import { z } from "zod";
+import { getGitHubIssueConfig } from "../../config/tools.js";
 
 export class CreateIssueTool implements Tool {
     name = "create_github_issue";
@@ -11,8 +12,7 @@ export class CreateIssueTool implements Tool {
     }).passthrough() as unknown as z.ZodType<Record<string, unknown>>;
 
     async execute(input: Record<string, unknown>, context: { taskId: string; conversationId: string; signal?: AbortSignal; metadata?: { idempotencyKey?: string } }): Promise<ToolResult> {
-        const token = process.env.GITHUB_TOKEN;
-        const repo = process.env.GITHUB_REPO;
+        const { token, repo } = getGitHubIssueConfig();
 
         if (!token || !repo || !repo.includes("/")) {
             throw new Error("GitHub adapter is not configured. Set GITHUB_TOKEN and GITHUB_REPO=owner/repo.");

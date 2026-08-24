@@ -1,3 +1,5 @@
+import { getPublicSocketUrl } from "@/lib/config/public";
+
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 const DEFAULT_LOCAL_SOCKET_URL = "http://localhost:3001";
 
@@ -13,7 +15,7 @@ function toLocalSocketUrl(protocol: string | undefined, hostname: string | undef
  * - Keeps explicit cross-origin URLs for split deployments (e.g. Vercel + Render).
  */
 export function getClientSocketUrl(): string | undefined {
-    const raw = process.env.NEXT_PUBLIC_SOCKET_URL?.trim();
+    const raw = getPublicSocketUrl();
     if (!raw) {
         if (typeof window === "undefined") {
             return DEFAULT_LOCAL_SOCKET_URL;
@@ -65,13 +67,4 @@ export function getClientSocketUrl(): string | undefined {
     }
 }
 
-/**
- * Server-side URL for internal HTTP calls to the socket service.
- */
-export function getInternalSocketServerUrl(): string {
-    return (
-        process.env.SOCKET_SERVER_URL?.trim() ||
-        process.env.NEXT_PUBLIC_SOCKET_URL?.trim() ||
-        "http://localhost:3001"
-    );
-}
+export { getInternalSocketServerUrl } from "@/lib/config/socket";

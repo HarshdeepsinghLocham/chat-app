@@ -10,6 +10,7 @@ import {
 import { logExecution } from "./execution-logger.js";
 import { maybeLogTaskStateDivergence } from "./state-divergence-check.js";
 import { releaseTaskLease } from "./task-lease.js";
+import { isFsmShadowEnabled } from "../config/migration.js";
 
 export type TaskCancelRequestedPayload = {
     taskId: string;
@@ -45,7 +46,7 @@ export function isTaskActivelyLeased(task: Pick<ITask, "leaseOwner" | "leaseExpi
 }
 
 function isShadowCancellationEnabled(): boolean {
-    return process.env.TASK_EXECUTION_FSM_SHADOW_MODE !== "0";
+    return isFsmShadowEnabled();
 }
 
 function buildCancelResult(reason: string): TaskResult {

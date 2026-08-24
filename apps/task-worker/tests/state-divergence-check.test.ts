@@ -47,51 +47,29 @@ test("detectTaskStateDivergence skips when executionState is missing or invalid"
     assert.equal(detectTaskStateDivergence(undefined, succeeded), null);
 });
 
-test("maybeLogTaskStateDivergence is a no-op unless TASK_STATE_DIVERGENCE_CHECK=1", () => {
-    const previous = process.env.TASK_STATE_DIVERGENCE_CHECK;
-    delete process.env.TASK_STATE_DIVERGENCE_CHECK;
-
-    try {
-        assert.equal(isTaskStateDivergenceCheckEnabled(), false);
-        assert.equal(
-            maybeLogTaskStateDivergence({
-                taskId: "task-1",
-                lifecycleState: "ready",
-                executionState: succeeded,
-            }),
-            false
-        );
-    } finally {
-        if (previous === undefined) {
-            delete process.env.TASK_STATE_DIVERGENCE_CHECK;
-        } else {
-            process.env.TASK_STATE_DIVERGENCE_CHECK = previous;
-        }
-    }
+test("maybeLogTaskStateDivergence returns false when lifecycle matches projection", () => {
+    assert.equal(isTaskStateDivergenceCheckEnabled(), true);
+    assert.equal(
+        maybeLogTaskStateDivergence({
+            taskId: "task-1",
+            lifecycleState: "completed",
+            executionState: succeeded,
+        }),
+        false
+    );
 });
 
-test("maybeLogTaskStateDivergence returns true on divergence when check enabled", () => {
-    const previous = process.env.TASK_STATE_DIVERGENCE_CHECK;
-    process.env.TASK_STATE_DIVERGENCE_CHECK = "1";
-
-    try {
-        assert.equal(isTaskStateDivergenceCheckEnabled(), true);
-        assert.equal(
-            maybeLogTaskStateDivergence({
-                taskId: "task-diverged",
-                lifecycleState: "ready",
-                executionState: succeeded,
-                workerId: "worker-1",
-                runId: "run-1",
-                source: "test",
-            }),
-            true
-        );
-    } finally {
-        if (previous === undefined) {
-            delete process.env.TASK_STATE_DIVERGENCE_CHECK;
-        } else {
-            process.env.TASK_STATE_DIVERGENCE_CHECK = previous;
-        }
-    }
+test("maybeLogTaskStateDivergence returns true on divergence", () => {
+    assert.equal(isTaskStateDivergenceCheckEnabled(), true);
+    assert.equal(
+        maybeLogTaskStateDivergence({
+            taskId: "task-diverged",
+            lifecycleState: "ready",
+            executionState: succeeded,
+            workerId: "worker-1",
+            runId: "run-1",
+            source: "test",
+        }),
+        true
+    );
 });

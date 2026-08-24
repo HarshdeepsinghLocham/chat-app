@@ -4,22 +4,14 @@ import { isEnvFlagEnabled } from "./parse";
 
 export type ClassifierMode = "regex" | "shadow" | "llm";
 
-/** SUGGESTION_INGRESS=0|1 (default 1). Dual-write WorkSuggestion on classify. */
-export function isSuggestionIngressEnabled(raw?: string | null): boolean {
-    return isEnvFlagEnabled(raw ?? process.env.SUGGESTION_INGRESS, true);
-}
-
-/**
- * SUGGESTION_BLOCK_EXEC=0|1 (default 1).
- * When enabled with effective suggest_only, hard-block execution enqueue.
- */
-export function isSuggestionBlockExecEnabled(raw?: string | null): boolean {
-    return isEnvFlagEnabled(raw ?? process.env.SUGGESTION_BLOCK_EXEC, true);
+/** WorkSuggestion ingress is always on. Env `SUGGESTION_INGRESS` is not read. */
+export function isSuggestionIngressEnabled(): boolean {
+    return true;
 }
 
 /** True when execution enqueue must be refused for the given effective mode. */
 export function shouldBlockExecutionEnqueue(executionMode: ExecutionMode): boolean {
-    return isSuggestionBlockExecEnabled() && executionMode === "suggest_only";
+    return executionMode === "suggest_only";
 }
 
 /**

@@ -189,9 +189,10 @@ exports) would be safer but the choice keeps the surface area small.
     between DB models and DTOs.
   - `validators/*` — Zod schemas re-used across apps.
   - `config/*` — deploy-wide product-flag parsers (`WORK_INBOX_UI`,
-    suggestion ingress, execution-mode defaults). Call-time `process.env`
+    execution-mode defaults). Call-time `process.env`
     reads; `organization-policy.service.ts` re-exports the same helpers.
-    Overlay order: code defaults → env → `OrganizationPolicy` field →
+    WorkSuggestion ingress is always on; enqueue is blocked only under
+    `suggest_only`. Overlay order: code defaults → env → `OrganizationPolicy` field →
     `GRANDFATHER_AUTO_TENANTS` for execution mode. Personal workspaces
     (`organizationId` null) stay env/default-driven (ADR-004 / ADR-005).
     New tenant behavior belongs on `OrganizationPolicy`, not a new env var.

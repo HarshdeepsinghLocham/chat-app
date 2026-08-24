@@ -5,7 +5,6 @@ import {
     getEffectiveExecutionMode,
     isAcceptCreatesExecutionEnabled,
     isExecutionModeEnforce,
-    isSuggestionBlockExecEnabled,
     isSuggestionIngressEnabled,
     isWorkInboxUiEnabled,
     parseDefaultExecutionMode,
@@ -16,8 +15,6 @@ import { ConflictError } from "../organization-errors";
 const ENV_KEYS = [
     "DEFAULT_EXECUTION_MODE",
     "GRANDFATHER_AUTO_TENANTS",
-    "SUGGESTION_INGRESS",
-    "SUGGESTION_BLOCK_EXEC",
     "ACCEPT_CREATES_EXECUTION",
     "WORK_INBOX_UI",
     "TASK_CLASSIFIER_MODE",
@@ -104,26 +101,15 @@ describe("execution mode flags", () => {
     });
 });
 
-describe("suggestion ingress flags", () => {
-    it("isSuggestionIngressEnabled defaults on", () => {
-        delete process.env.SUGGESTION_INGRESS;
+describe("suggestion ingress", () => {
+    it("isSuggestionIngressEnabled is always on", () => {
         expect(isSuggestionIngressEnabled()).toBe(true);
-        expect(isSuggestionIngressEnabled("1")).toBe(true);
-        expect(isSuggestionIngressEnabled("0")).toBe(false);
     });
 
-    it("isSuggestionBlockExecEnabled defaults on", () => {
-        delete process.env.SUGGESTION_BLOCK_EXEC;
-        expect(isSuggestionBlockExecEnabled()).toBe(true);
-        expect(isSuggestionBlockExecEnabled("0")).toBe(false);
-    });
-
-    it("shouldBlockExecutionEnqueue requires suggest_only and block flag", () => {
-        process.env.SUGGESTION_BLOCK_EXEC = "1";
+    it("shouldBlockExecutionEnqueue is true only for suggest_only", () => {
         expect(shouldBlockExecutionEnqueue("suggest_only")).toBe(true);
         expect(shouldBlockExecutionEnqueue("auto_execute")).toBe(false);
-        process.env.SUGGESTION_BLOCK_EXEC = "0";
-        expect(shouldBlockExecutionEnqueue("suggest_only")).toBe(false);
+        expect(shouldBlockExecutionEnqueue("require_approval")).toBe(false);
     });
 });
 

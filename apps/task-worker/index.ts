@@ -635,9 +635,9 @@ async function processTaskExecutionRequested(payload: NormalizedTaskExecutionReq
         "execution.mode.enforce": executionModeEnforce,
     });
 
-    // Defense-in-depth: with suggestion ingress, refuse tools if a leaked
-    // task.execution.requested arrives under suggest_only + SUGGESTION_BLOCK_EXEC.
-    // Explicit manager request / human-approved re-entry are not leaks (S2.4).
+    // Defense-in-depth: refuse tools if a leaked task.execution.requested
+    // arrives under suggest_only. Explicit manager request / human-approved
+    // re-entry are not leaks (S2.4).
     const skipSuggestOnlyFailClosed = shouldSkipSuggestOnlyIngressFailClosed(payload);
 
     if (shouldFailClosedOnLeakedExecution(effectiveExecutionMode) && !skipSuggestOnlyFailClosed) {

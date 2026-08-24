@@ -25,7 +25,6 @@ export {
 export {
     assertAcceptCreatesCoordinationOnly,
     isAcceptCreatesExecutionEnabled,
-    isSuggestionBlockExecEnabled,
     isSuggestionIngressEnabled,
     isWorkInboxUiEnabled,
     shouldBlockExecutionEnqueue,

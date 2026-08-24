@@ -68,13 +68,11 @@ jest.mock("../work-suggestion.service", () => ({
 
 const resolveOrganizationPolicy = jest.fn();
 const getEffectiveExecutionMode = jest.fn();
-const isSuggestionIngressEnabled = jest.fn();
 const shouldBlockExecutionEnqueue = jest.fn();
 
 jest.mock("../organization-policy.service", () => ({
     resolveOrganizationPolicy: (...args: unknown[]) => resolveOrganizationPolicy(...args),
     getEffectiveExecutionMode: (...args: unknown[]) => getEffectiveExecutionMode(...args),
-    isSuggestionIngressEnabled: (...args: unknown[]) => isSuggestionIngressEnabled(...args),
     shouldBlockExecutionEnqueue: (...args: unknown[]) => shouldBlockExecutionEnqueue(...args),
 }));
 
@@ -235,7 +233,6 @@ beforeEach(() => {
     createWorkSuggestion.mockReset();
     resolveOrganizationPolicy.mockReset();
     getEffectiveExecutionMode.mockReset();
-    isSuggestionIngressEnabled.mockReset();
     shouldBlockExecutionEnqueue.mockReset();
     enqueueTaskExecutionRequested.mockReset();
     classifyMessage.mockReset();
@@ -250,7 +247,6 @@ beforeEach(() => {
     mockTaskUpsert();
     resolveOrganizationPolicy.mockResolvedValue({ executionMode: "suggest_only" });
     getEffectiveExecutionMode.mockReturnValue("suggest_only");
-    isSuggestionIngressEnabled.mockReturnValue(false);
     shouldBlockExecutionEnqueue.mockReturnValue(false);
     createWorkSuggestion.mockResolvedValue({
         suggestion: { _id: new Types.ObjectId().toString() },
@@ -261,8 +257,7 @@ beforeEach(() => {
 });
 
 describe("processMessageTaskIntelligence suggest-only ingress", () => {
-    it("ingress on + suggest_only: MessageIntent + WorkSuggestion, zero execution enqueue, no Task", async () => {
-        isSuggestionIngressEnabled.mockReturnValue(true);
+    it("suggest_only: MessageIntent + WorkSuggestion, zero execution enqueue, no Task", async () => {
         shouldBlockExecutionEnqueue.mockReturnValue(true);
 
         const result = await processMessageTaskIntelligence(actionableInput);
@@ -295,7 +290,6 @@ describe("processMessageTaskIntelligence suggest-only ingress", () => {
     });
 
     it("duplicate delivery / retry is idempotent for suggestions and keeps zero execution", async () => {
-        isSuggestionIngressEnabled.mockReturnValue(true);
         shouldBlockExecutionEnqueue.mockReturnValue(true);
         createWorkSuggestion
             .mockResolvedValueOnce({
@@ -320,26 +314,7 @@ describe("processMessageTaskIntelligence suggest-only ingress", () => {
         expect(upsertTaskByDedupeKey).not.toHaveBeenCalled();
     });
 
-    it("ingress disabled preserves legacy Task + raw outbox enqueue", async () => {
-        isSuggestionIngressEnabled.mockReturnValue(false);
-        shouldBlockExecutionEnqueue.mockReturnValue(true); // would block if guarded path used
-
-        const result = await processMessageTaskIntelligence(actionableInput);
-
-        expect(createWorkSuggestion).not.toHaveBeenCalled();
-        expect(upsertMessageIntent).toHaveBeenCalled();
-        expect(upsertTaskByDedupeKey).toHaveBeenCalled();
-        expect(enqueueOutboxEvent).toHaveBeenCalledWith(
-            expect.objectContaining({
-                topic: "task.execution.requested",
-            })
-        );
-        expect(enqueueTaskExecutionRequested).not.toHaveBeenCalled();
-        expect(result?.taskCreatedPayload).toBeDefined();
-    });
-
-    it("ingress on + auto_execute: suggestion + guarded enqueue allowed", async () => {
-        isSuggestionIngressEnabled.mockReturnValue(true);
+    it("auto_execute: suggestion + guarded enqueue allowed", async () => {
         getEffectiveExecutionMode.mockReturnValue("auto_execute");
         shouldBlockExecutionEnqueue.mockReturnValue(false);
 
@@ -360,8 +335,7 @@ describe("processMessageTaskIntelligence suggest-only ingress", () => {
         expect(result?.taskCreatedPayload).toBeDefined();
     });
 
-    it("ingress on + require_approval: suggestion + guarded enqueue allowed", async () => {
-        isSuggestionIngressEnabled.mockReturnValue(true);
+    it("require_approval: suggestion + guarded enqueue allowed", async () => {
         getEffectiveExecutionMode.mockReturnValue("require_approval");
         shouldBlockExecutionEnqueue.mockReturnValue(false);
 
@@ -385,7 +359,6 @@ describe("processMessageTaskIntelligence suggest-only ingress", () => {
                 linkedTaskIds: [],
             }),
         });
-        isSuggestionIngressEnabled.mockReturnValue(true);
 
         const result = await processMessageTaskIntelligence(actionableInput);
 

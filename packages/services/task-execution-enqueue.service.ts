@@ -6,13 +6,12 @@ import {
 import { enqueueOutboxEvent, type EnqueueOutboxEventInput } from "./outbox.service";
 import {
     isAcceptCreatesExecutionEnabled,
-    isSuggestionIngressEnabled,
     shouldBlockExecutionEnqueue,
 } from "./organization-policy.service";
 
-/** Consumer fail-closed when ingress is on and suggest_only block applies. */
+/** Consumer fail-closed when a leaked execution event arrives under suggest_only. */
 export function shouldFailClosedOnLeakedExecution(executionMode: ExecutionMode): boolean {
-    return isSuggestionIngressEnabled() && shouldBlockExecutionEnqueue(executionMode);
+    return shouldBlockExecutionEnqueue(executionMode);
 }
 
 /** Miswired accept → execution path marker (observability only when flag is off). */
@@ -25,7 +24,7 @@ export type EnqueueTaskExecutionRequestedInput = {
     session?: EnqueueOutboxEventInput["session"];
     /**
      * Explicit manager "Allow AI tools" / request-execution path.
-     * Not a leaked ingress enqueue — allowed under suggest_only + SUGGESTION_BLOCK_EXEC.
+     * Not a leaked ingress enqueue — allowed under suggest_only.
      */
     explicitManagerRequest?: boolean;
     /**
@@ -43,9 +42,7 @@ export type EnqueueTaskExecutionRequestedResult = {
 
 /**
  * Enqueue boundary for task.execution.requested.
- * Refuse writes when suggestion ingress is on and suggest_only + SUGGESTION_BLOCK_EXEC,
- * unless this is an explicit manager request (S2.4).
- * When ingress is disabled, enqueue proceeds (legacy path).
+ * Refuse writes under suggest_only unless this is an explicit manager request (S2.4).
  */
 export async function enqueueTaskExecutionRequested(
     input: EnqueueTaskExecutionRequestedInput
@@ -77,7 +74,6 @@ export async function enqueueTaskExecutionRequested(
 
     if (
         !explicitManagerRequest
-        && isSuggestionIngressEnabled()
         && shouldBlockExecutionEnqueue(input.executionMode)
     ) {
         executionEnqueueAttemptedWhileSuggestOnlyCounter.inc();

@@ -1,5 +1,5 @@
 import type { ExecutionMode } from "@semantask/types";
-import { parseCsvSet, warnOnce } from "./parse";
+import { parseCsvSet } from "./parse";
 
 const EXECUTION_MODES: readonly ExecutionMode[] = [
     "suggest_only",
@@ -18,19 +18,8 @@ export function parseDefaultExecutionMode(raw?: string | null): ExecutionMode {
     return isExecutionModeValue(value) ? value : "suggest_only";
 }
 
-/**
- * Deploy rail: execution mode is always enforced.
- * `EXECUTION_MODE_ENFORCE=0` is ignored (warns once). Parser stays until a later delete PR.
- */
-export function isExecutionModeEnforce(raw?: string | null): boolean {
-    const value = (raw ?? process.env.EXECUTION_MODE_ENFORCE ?? "1").trim().toLowerCase();
-    const requestedOff = value === "0" || value === "false" || value === "off";
-    if (requestedOff) {
-        warnOnce(
-            "EXECUTION_MODE_ENFORCE=0",
-            "[config] EXECUTION_MODE_ENFORCE=0 is ignored; execution mode is always enforced.",
-        );
-    }
+/** Execution mode is always enforced. Env `EXECUTION_MODE_ENFORCE` is not read. */
+export function isExecutionModeEnforce(): boolean {
     return true;
 }
 
@@ -47,7 +36,7 @@ export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {
  *   4. `GRANDFATHER_AUTO_TENANTS` — listed org IDs force `auto_execute`
  *
  * Personal workspaces (`organizationId` null) use 1–2 only.
- * `EXECUTION_MODE_ENFORCE` is a deploy rail, not a layer in this resolver.
+ * Execution mode is always enforced (not an overlay layer).
  */
 export function getEffectiveExecutionMode(args: {
     organizationId?: string | null;

@@ -43,7 +43,7 @@ type RequestedPayload = {
     taskId?: string;
     organizationId?: string | null;
     orgPolicy?: OrganizationPolicyOverlay | null;
-    /** Override env EXECUTION_MODE_ENFORCE for tests. */
+    /** Override enforce for tests. Production always enforces. */
     executionModeEnforce?: boolean;
 };
 

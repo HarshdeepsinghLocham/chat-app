@@ -50,6 +50,11 @@
             "types": "./dist/services/work-board.service.d.ts",
             "default": "./dist/services/work-board.service.js"
         },
+        "./work-summary.service": {
+            "import": "./dist/services/work-summary.service.js",
+            "types": "./dist/services/work-summary.service.d.ts",
+            "default": "./dist/services/work-summary.service.js"
+        },
         "./task-execution-enqueue.service": {
             "import": "./dist/services/task-execution-enqueue.service.js",
             "types": "./dist/services/task-execution-enqueue.service.d.ts",

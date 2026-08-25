@@ -15,11 +15,23 @@ function isActive(pathname: string, href: string) {
     return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function InboxSubnav({ boardEnabled = false }: { boardEnabled?: boolean }) {
+export function InboxSubnav({
+    boardEnabled = false,
+    dashboardEnabled = false,
+}: {
+    boardEnabled?: boolean;
+    dashboardEnabled?: boolean;
+}) {
     const pathname = usePathname() ?? "";
-    const links = boardEnabled
-        ? [...BASE_LINKS, { href: "/inbox/board", label: "Board", testId: "inbox-nav-board" }]
-        : [...BASE_LINKS];
+    const optionalLinks = [
+        ...(boardEnabled
+            ? [{ href: "/inbox/board", label: "Board", testId: "inbox-nav-board" }]
+            : []),
+        ...(dashboardEnabled
+            ? [{ href: "/inbox/dashboard", label: "Dashboard", testId: "inbox-nav-dashboard" }]
+            : []),
+    ];
+    const links = [...BASE_LINKS, ...optionalLinks];
 
     return (
         <nav

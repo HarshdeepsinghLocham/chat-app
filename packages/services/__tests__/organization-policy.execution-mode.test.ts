@@ -27,6 +27,7 @@ import {
     getEffectiveExecutionMode,
     isAcceptCreatesExecutionEnabled,
     isCoordinationBoardEnabled,
+    isOrgDashboardEnabled,
     isExecutionModeEnforce,
     isSuggestionIngressEnabled,
     isWorkInboxUiEnabled,
@@ -45,6 +46,7 @@ describe("organization-policy.service config re-exports", () => {
         expect(isAcceptCreatesExecutionEnabled).toBe(config.isAcceptCreatesExecutionEnabled);
         expect(isWorkInboxUiEnabled).toBe(config.isWorkInboxUiEnabled);
         expect(isCoordinationBoardEnabled).toBe(config.isCoordinationBoardEnabled);
+        expect(isOrgDashboardEnabled).toBe(config.isOrgDashboardEnabled);
     });
 });
 

@@ -21,6 +21,10 @@ export type TaskApprovalsListParams = {
     conversationId?: string;
 };
 
+export type WorkSummaryParams = {
+    organizationId: string | null;
+};
+
 export const queryKeys = {
     workSuggestions: {
         all: ["workSuggestions"] as const,
@@ -63,5 +67,10 @@ export const queryKeys = {
         list: () => ["organizations", "list"] as const,
         members: (organizationId: string) =>
             ["organizations", "members", organizationId] as const,
+    },
+    workSummary: {
+        all: ["workSummary"] as const,
+        detail: (organizationId: string | null) =>
+            ["workSummary", "detail", organizationId] as const,
     },
 };

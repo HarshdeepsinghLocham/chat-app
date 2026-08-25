@@ -33,6 +33,11 @@ export function isCoordinationBoardEnabled(raw?: string | null): boolean {
     return isEnvFlagEnabled(raw ?? process.env.COORDINATION_BOARD, false);
 }
 
+/** ORG_DASHBOARD=0|1 (default 0). Expose `/inbox/dashboard` + work-summary API. */
+export function isOrgDashboardEnabled(raw?: string | null): boolean {
+    return isEnvFlagEnabled(raw ?? process.env.ORG_DASHBOARD, false);
+}
+
 /** TASK_CLASSIFIER_MODE: regex (default) | shadow | llm. */
 export function getClassifierMode(raw?: string | null): ClassifierMode {
     const value = (raw ?? process.env.TASK_CLASSIFIER_MODE ?? "regex").trim().toLowerCase();

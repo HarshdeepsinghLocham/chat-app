@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { BOARD_STATUSES, type BoardStatus, type TaskRecord } from "@semantask/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,13 @@ import {
     useWorkBoardList,
     WORK_BOARD_PAGE_LIMIT,
 } from "@/lib/queries/use-work-board";
+import { conversationMessageHref, taskHref } from "@/lib/work-links";
+import { reviewSuggestionHref } from "@/lib/work-suggestions/map";
+import {
+    boardTaskElementId,
+    DEEP_LINK_HIGHLIGHT_CLASS,
+} from "@/lib/deep-link-highlight";
+import { useDeepLinkScroll } from "@/hooks/useDeepLinkScroll";
 
 const COLUMN_LABELS: Record<BoardStatus, string> = {
     todo: "Todo",
@@ -42,6 +50,8 @@ function groupByBoardStatus(items: TaskRecord[]): Record<BoardStatus, TaskRecord
 
 export function WorkBoardView() {
     const organizationId = useActiveOrganizationId();
+    const searchParams = useSearchParams();
+    const highlightedTaskId = searchParams.get("task");
     const [conversationId, setConversationId] = useState("");
     const [page, setPage] = useState(1);
 
@@ -64,6 +74,13 @@ export function WorkBoardView() {
     const error = listQuery.error
         ? mutationErrorMessage(listQuery.error, "Failed to load board")
         : null;
+    const highlightedOnPage = Boolean(
+        highlightedTaskId && items.some((item) => item._id === highlightedTaskId)
+    );
+    useDeepLinkScroll(
+        highlightedTaskId ? boardTaskElementId(highlightedTaskId) : null,
+        highlightedOnPage
+    );
 
     async function handleMove(task: TaskRecord, boardStatus: BoardStatus) {
         if (task.boardStatus === boardStatus) return;
@@ -180,9 +197,23 @@ export function WorkBoardView() {
                                 {COLUMN_LABELS[column]} ({columns[column].length})
                             </h2>
                             {columns[column].map((task) => (
-                                <Card key={task._id} data-testid="work-board-card">
+                                <Card
+                                    key={task._id}
+                                    id={boardTaskElementId(task._id)}
+                                    data-testid="work-board-card"
+                                    data-highlighted={task._id === highlightedTaskId ? "true" : "false"}
+                                    className={task._id === highlightedTaskId ? DEEP_LINK_HIGHLIGHT_CLASS : undefined}
+                                >
                                     <CardHeader className="pb-2">
-                                        <CardTitle className="text-base">{task.title}</CardTitle>
+                                        <CardTitle className="text-base">
+                                            <Link
+                                                href={taskHref(task._id)}
+                                                className="hover:underline"
+                                                data-testid="work-board-card-title"
+                                            >
+                                                {task.title}
+                                            </Link>
+                                        </CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-3 text-sm">
                                         <dl className="grid gap-2">
@@ -209,6 +240,24 @@ export function WorkBoardView() {
                                                 </dd>
                                             </div>
                                         </dl>
+                                        <div className="flex flex-wrap gap-3 text-xs">
+                                            <Link
+                                                href={conversationMessageHref(task.conversationId)}
+                                                className="underline underline-offset-2 hover:opacity-80"
+                                                data-testid="work-board-conversation-link"
+                                            >
+                                                Conversation
+                                            </Link>
+                                            {task.suggestionId ? (
+                                                <Link
+                                                    href={reviewSuggestionHref(task.suggestionId) ?? "#"}
+                                                    className="underline underline-offset-2 hover:opacity-80"
+                                                    data-testid="work-board-suggestion-link"
+                                                >
+                                                    Suggestion
+                                                </Link>
+                                            ) : null}
+                                        </div>
                                         <div className="flex flex-wrap gap-2">
                                             {BOARD_STATUSES.filter((status) => status !== task.boardStatus).map(
                                                 (status) => (

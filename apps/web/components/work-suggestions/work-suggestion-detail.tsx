@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { conversationMessageHref, taskHref } from "@/lib/work-links";
 
 export type WorkSuggestionDetailViewProps = {
     loading: boolean;
@@ -148,7 +149,7 @@ export function WorkSuggestionDetailView({
                     </p>
                 </div>
                 <Button asChild variant="outline">
-                    <Link href="/">Back to chat</Link>
+                    <Link href={conversationMessageHref(suggestion.conversationId)}>Back to chat</Link>
                 </Button>
             </div>
 
@@ -175,7 +176,15 @@ export function WorkSuggestionDetailView({
                         </div>
                         <div>
                             <dt className="text-xs uppercase tracking-wide text-muted-foreground">Source message</dt>
-                            <dd className="font-mono text-xs break-all">{suggestion.messageId}</dd>
+                            <dd className="font-mono text-xs break-all">
+                                <Link
+                                    href={conversationMessageHref(suggestion.conversationId, suggestion.messageId)}
+                                    className="underline underline-offset-2 hover:opacity-80"
+                                    data-testid="source-message-link"
+                                >
+                                    {suggestion.messageId}
+                                </Link>
+                            </dd>
                         </div>
                         <div>
                             <dt className="text-xs uppercase tracking-wide text-muted-foreground">Priority candidate</dt>
@@ -205,7 +214,13 @@ export function WorkSuggestionDetailView({
                                     Converted task
                                 </dt>
                                 <dd className="font-mono text-xs break-all" data-testid="converted-task-id">
-                                    {suggestion.convertedTaskId}
+                                    <Link
+                                        href={taskHref(suggestion.convertedTaskId)}
+                                        className="underline underline-offset-2 hover:opacity-80"
+                                        data-testid="converted-task-link"
+                                    >
+                                        {suggestion.convertedTaskId}
+                                    </Link>
                                 </dd>
                             </div>
                         ) : null}

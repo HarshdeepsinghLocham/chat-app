@@ -201,6 +201,57 @@ export async function getConversations(): Promise<ClientConversation[]> {
     return request<ClientConversation[]>("/api/conversations");
 }
 
+function toClientConversation(raw: Record<string, unknown>, fallbackId: string): ClientConversation {
+    const isGroup = Boolean(raw.isGroup);
+    return {
+        ...(raw as unknown as ClientConversation),
+        _id: String(raw._id ?? fallbackId),
+        isGroup,
+        type: isGroup || raw.type === "group" ? "group" : "direct",
+        participants: Array.isArray(raw.participants)
+            ? (raw.participants as ClientConversation["participants"])
+            : [],
+    };
+}
+
+export async function getConversation(id: string): Promise<ClientConversation> {
+    const response = await authenticatedFetch(`/api/conversations/${encodeURIComponent(id)}`);
+    const rawText = await response.text();
+    const payload = parseAuthPayload(rawText) as (ApiErrorPayload & Record<string, unknown>) | null;
+
+    if (!response.ok) {
+        throw new ApiHttpError(
+            response.status,
+            payload?.error || rawText || `Request failed with status ${response.status}`
+        );
+    }
+
+    if (!payload || typeof payload !== "object") {
+        throw new ApiHttpError(500, "Invalid conversation response");
+    }
+
+    return toClientConversation(payload, id);
+}
+
+export async function getTask(id: string): Promise<TaskRecord> {
+    const response = await authenticatedFetch(`/api/tasks/${encodeURIComponent(id)}`);
+    const rawText = await response.text();
+    const payload = parseAuthPayload(rawText) as (ApiErrorPayload & TaskRecord) | null;
+
+    if (!response.ok) {
+        throw new ApiHttpError(
+            response.status,
+            payload?.error || rawText || `Request failed with status ${response.status}`
+        );
+    }
+
+    if (!payload || typeof payload !== "object" || !payload._id) {
+        throw new ApiHttpError(500, "Invalid task response");
+    }
+
+    return payload as TaskRecord;
+}
+
 export async function createConversation(payload: {
     participants: string[];
     isGroup: boolean;

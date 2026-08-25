@@ -22,6 +22,8 @@ import { UIMessage } from "@semantask/types";
 import ChatBubbleAvatar from "../home/chat-bubble-avatar";
 import { IntentBadge } from "./intent-badge";
 import { reviewSuggestionHref } from "@/lib/work-suggestions/map";
+import { DEEP_LINK_HIGHLIGHT_CLASS } from "@/lib/deep-link-highlight";
+import { cn } from "@/lib/utils/utils";
 
 interface ChatBubbleProps {
     message: UIMessage;
@@ -33,6 +35,7 @@ interface ChatBubbleProps {
     showUsername?: boolean;
     /** Existing WorkSuggestion id for this message, if any. */
     suggestionId?: string | null;
+    highlighted?: boolean;
 }
 
 // --------- Small helpers ---------
@@ -73,6 +76,7 @@ const ChatBubble = ({
     showAvatar = true,
     showUsername = true,
     suggestionId = null,
+    highlighted = false,
 }: ChatBubbleProps) => {
     const selectedConversation = useChatStore((s) => s.selectedConversation);
     const setEditingMessage = useChatStore((s) => s.setEditingMessage);
@@ -256,7 +260,12 @@ const ChatBubble = ({
     return (
         <div
             id={String(message._id)}
-            className={`flex w-full ${isMine ? "justify-end" : "justify-start"} px-1 sm:px-2 md:px-3`}
+            data-highlighted={highlighted ? "true" : "false"}
+            className={cn(
+                "flex w-full px-1 sm:px-2 md:px-3",
+                isMine ? "justify-end" : "justify-start",
+                highlighted && DEEP_LINK_HIGHLIGHT_CLASS
+            )}
         >
             {/* Avatar only for others in group chats, and only if showAvatar */}
             {!isMine && selectedConversation?.isGroup && isUser(message.sender) && showAvatar && (

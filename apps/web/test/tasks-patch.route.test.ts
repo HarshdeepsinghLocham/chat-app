@@ -63,7 +63,7 @@ jest.mock("@/server/normalizers/task.normalizer", () => ({
 
 import { requireAuthUser } from "@/lib/utils/auth/requireAuthUser";
 import { requireTaskAccess } from "@/lib/utils/auth/requireConversationAccess";
-import { PATCH } from "../app/api/tasks/[id]/route";
+import { GET, PATCH } from "../app/api/tasks/[id]/route";
 
 const user = {
     id: "507f1f77bcf86cd799439011",
@@ -179,5 +179,63 @@ describe("PATCH /api/tasks/:id boardStatus", () => {
         expect(response.status).toBe(200);
         expect(requireTaskAccess).toHaveBeenCalled();
         expect(assertCanMutateCoordinationTask).not.toHaveBeenCalled();
+    });
+});
+
+describe("GET /api/tasks/:id", () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        (requireAuthUser as jest.Mock).mockResolvedValue({ user, response: null });
+        (requireTaskAccess as jest.Mock).mockResolvedValue({ response: null });
+        findById.mockReturnValue({ lean: jest.fn().mockResolvedValue(buildTask()) });
+    });
+
+    it("returns 401 when unauthenticated", async () => {
+        (requireAuthUser as jest.Mock).mockResolvedValue({
+            user: null,
+            response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        });
+
+        const response = await GET(
+            new Request(`http://localhost/api/tasks/${taskId}`) as never,
+            { params: Promise.resolve({ id: taskId }) }
+        );
+
+        expect(response.status).toBe(401);
+        expect(requireTaskAccess).not.toHaveBeenCalled();
+        expect(findById).not.toHaveBeenCalled();
+    });
+
+    it("returns 403 when requireTaskAccess forbids the caller", async () => {
+        (requireTaskAccess as jest.Mock).mockResolvedValue({
+            response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+        });
+
+        const response = await GET(
+            new Request(`http://localhost/api/tasks/${taskId}`) as never,
+            { params: Promise.resolve({ id: taskId }) }
+        );
+
+        expect(response.status).toBe(403);
+        expect(requireTaskAccess).toHaveBeenCalledWith(taskId, user);
+        expect(findById).not.toHaveBeenCalled();
+    });
+
+    it("returns the normalized task for a participant", async () => {
+        const response = await GET(
+            new Request(`http://localhost/api/tasks/${taskId}`) as never,
+            { params: Promise.resolve({ id: taskId }) }
+        );
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(requireTaskAccess).toHaveBeenCalledWith(taskId, user);
+        expect(body).toEqual(
+            expect.objectContaining({
+                _id: taskId,
+                conversationId: conversationId.toString(),
+                boardStatus: "todo",
+            })
+        );
     });
 });

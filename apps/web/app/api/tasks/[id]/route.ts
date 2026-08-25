@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withRequestCorrelation } from "@/lib/observability/with-correlation";
 import { z } from "zod";
+import { Types } from "mongoose";
 import { connectToDatabase } from "@/lib/Db/db";
 import { requireAuthUser } from "@/lib/utils/auth/requireAuthUser";
 import { requireTaskAccess } from "@/lib/utils/auth/requireConversationAccess";
@@ -13,6 +14,7 @@ import {
     AuthorizationError,
 } from "@semantask/services/authorization.service";
 import { resolveBoardStatus } from "@semantask/types";
+import type { ITask } from "@semantask/db/models/Task";
 
 const updateTaskBodySchema = z.object({
     title: z.string().min(3).max(200).optional(),
@@ -27,6 +29,35 @@ const updateTaskBodySchema = z.object({
 
 function forbiddenResponse() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    return withRequestCorrelation(req, async () => {
+        try {
+            const { id } = await params;
+            const guard = await requireAuthUser();
+            if (guard.response) return guard.response;
+
+            if (!Types.ObjectId.isValid(id)) {
+                return NextResponse.json({ error: "Invalid task id" }, { status: 400 });
+            }
+
+            await connectToDatabase();
+
+            const access = await requireTaskAccess(id, guard.user);
+            if (access.response) return access.response;
+
+            const task = await TaskModel.findById(id).lean();
+            if (!task) {
+                return NextResponse.json({ error: "Task not found" }, { status: 404 });
+            }
+
+            return NextResponse.json(normalizeTask(task as ITask), { status: 200 });
+        } catch (error) {
+            console.error("GET /api/tasks/:id error", error);
+            return NextResponse.json({ error: "Failed to load task" }, { status: 500 });
+        }
+    });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -16,6 +16,8 @@ const decideTaskApproval = jest.fn();
 const requestTaskExecutionApi = jest.fn();
 const refreshConversation = jest.fn(async () => undefined);
 
+const mockInboxSearch = { value: "" };
+
 class ApiHttpError extends Error {
     status: number;
     constructor(status: number, message: string) {
@@ -34,6 +36,10 @@ jest.mock("@/lib/utils/api", () => ({
     getOrganizationMembers: (...args: unknown[]) => getOrganizationMembers(...args),
     decideTaskApproval: (...args: unknown[]) => decideTaskApproval(...args),
     requestTaskExecutionApi: (...args: unknown[]) => requestTaskExecutionApi(...args),
+}));
+
+jest.mock("next/navigation", () => ({
+    useSearchParams: () => new URLSearchParams(mockInboxSearch.value),
 }));
 
 jest.mock("@/store/work-suggestion-store", () => {
@@ -92,6 +98,7 @@ describe("WorkInboxView", () => {
         decideTaskApproval.mockReset();
         requestTaskExecutionApi.mockReset();
         refreshConversation.mockClear();
+        mockInboxSearch.value = "";
         window.localStorage.clear();
         getOrganizationMembers.mockResolvedValue([]);
     });
@@ -128,6 +135,10 @@ describe("WorkInboxView", () => {
         expect(await screen.findByTestId("work-inbox-list")).toBeInTheDocument();
         const link = screen.getByTestId("work-inbox-row-link");
         expect(link).toHaveAttribute("href", "/work-suggestions/sug-1");
+        expect(screen.getByTestId("work-inbox-conversation-link")).toHaveAttribute(
+            "href",
+            "/c/507f1f77bcf86cd799439014"
+        );
         expect(screen.getByTestId("suggestion-accept")).toBeInTheDocument();
         expect(screen.getByTestId("suggestion-dismiss")).toBeInTheDocument();
         expect(screen.getByTestId("suggestion-assign")).toBeDisabled();
@@ -200,6 +211,20 @@ describe("WorkInboxView", () => {
         });
         expect(acceptWorkSuggestionApi).not.toHaveBeenCalled();
         expect(decideTaskApproval).not.toHaveBeenCalled();
+    });
+
+    it("highlights the row matching ?suggestion=", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        mockInboxSearch.value = "suggestion=sug-1";
+        listWorkSuggestions.mockResolvedValue({
+            items: [buildSuggestion()],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        });
+
+        renderWithQuery(<WorkInboxView />);
+        const row = await screen.findByTestId("work-inbox-row");
+        expect(row).toHaveAttribute("data-highlighted", "true");
+        expect(row).toHaveAttribute("id", "inbox-suggestion-sug-1");
     });
 
     it("requires dismiss reason and removes row after dismiss", async () => {

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { WorkSuggestionRecord, WorkSuggestionStatus } from "@semantask/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,12 @@ import {
     useRequestTaskExecution,
     useWorkSuggestionsList,
 } from "@/lib/queries/use-work-suggestions";
+import { conversationMessageHref } from "@/lib/work-links";
+import {
+    DEEP_LINK_HIGHLIGHT_CLASS,
+    inboxSuggestionElementId,
+} from "@/lib/deep-link-highlight";
+import { useDeepLinkScroll } from "@/hooks/useDeepLinkScroll";
 
 const STATUS_OPTIONS: Array<{ value: "" | WorkSuggestionStatus; label: string }> = [
     { value: "proposed", label: "proposed" },
@@ -61,6 +68,8 @@ function ownersForSuggestion(
 
 export function WorkInboxView() {
     const organizationId = useActiveOrganizationId();
+    const searchParams = useSearchParams();
+    const highlightedSuggestionId = searchParams.get("suggestion");
     const [conversationId, setConversationId] = useState("");
     const [status, setStatus] = useState<"" | WorkSuggestionStatus>("proposed");
     const [page, setPage] = useState(1);
@@ -104,6 +113,13 @@ export function WorkInboxView() {
     const error = listQuery.error
         ? mutationErrorMessage(listQuery.error, "Failed to load inbox")
         : null;
+    const highlightedOnPage = Boolean(
+        highlightedSuggestionId && items.some((item) => item._id === highlightedSuggestionId)
+    );
+    useDeepLinkScroll(
+        highlightedSuggestionId ? inboxSuggestionElementId(highlightedSuggestionId) : null,
+        highlightedOnPage
+    );
 
     const setRowError = (id: string, message: string | null) => {
         setActionErrorById((current) => ({ ...current, [id]: message }));
@@ -337,7 +353,13 @@ export function WorkInboxView() {
             {hasScope && listQuery.isSuccess && items.length > 0 ? (
                 <div className="space-y-3" data-testid="work-inbox-list">
                     {items.map((item) => (
-                        <Card key={item._id} data-testid="work-inbox-row">
+                        <Card
+                            key={item._id}
+                            id={inboxSuggestionElementId(item._id)}
+                            data-testid="work-inbox-row"
+                            data-highlighted={item._id === highlightedSuggestionId ? "true" : "false"}
+                            className={item._id === highlightedSuggestionId ? DEEP_LINK_HIGHLIGHT_CLASS : undefined}
+                        >
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-base">
                                     <Link
@@ -378,7 +400,15 @@ export function WorkInboxView() {
                                         <dt className="text-xs uppercase tracking-wide text-muted-foreground">
                                             Conversation
                                         </dt>
-                                        <dd className="font-mono text-xs break-all">{item.conversationId}</dd>
+                                        <dd className="font-mono text-xs break-all">
+                                            <Link
+                                                href={conversationMessageHref(item.conversationId)}
+                                                className="underline underline-offset-2 hover:opacity-80"
+                                                data-testid="work-inbox-conversation-link"
+                                            >
+                                                {item.conversationId}
+                                            </Link>
+                                        </dd>
                                     </div>
                                 </dl>
 

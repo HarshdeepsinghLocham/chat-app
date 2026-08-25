@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { isCoordinationBoardEnabled } from "@semantask/services/organization-policy.service";
 import { WorkBoardView } from "@/components/work-board/work-board";
@@ -10,5 +11,9 @@ export default function WorkBoardPage() {
         notFound();
     }
 
-    return <WorkBoardView />;
+    return (
+        <Suspense fallback={null}>
+            <WorkBoardView />
+        </Suspense>
+    );
 }

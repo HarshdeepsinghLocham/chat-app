@@ -10,6 +10,8 @@ import type { TaskRecord } from "@semantask/types";
 const listWorkBoard = jest.fn();
 const patchTaskApi = jest.fn();
 
+const mockBoardSearch = { value: "" };
+
 class ApiHttpError extends Error {
     status: number;
     constructor(status: number, message: string) {
@@ -23,6 +25,10 @@ jest.mock("@/lib/utils/api", () => ({
     ApiHttpError,
     listWorkBoard: (...args: unknown[]) => listWorkBoard(...args),
     patchTaskApi: (...args: unknown[]) => patchTaskApi(...args),
+}));
+
+jest.mock("next/navigation", () => ({
+    useSearchParams: () => new URLSearchParams(mockBoardSearch.value),
 }));
 
 import { WorkBoardView } from "@/components/work-board/work-board";
@@ -79,6 +85,7 @@ describe("WorkBoardView", () => {
     beforeEach(() => {
         listWorkBoard.mockReset();
         patchTaskApi.mockReset();
+        mockBoardSearch.value = "";
         window.localStorage.clear();
     });
 
@@ -110,6 +117,10 @@ describe("WorkBoardView", () => {
         });
 
         expect(await screen.findByTestId("work-board-columns")).toBeInTheDocument();
+        const title = screen.getByTestId("work-board-card-title");
+        expect(title).toHaveAttribute("href", "/tasks/task-1");
+        expect(title.tagName).toBe("A");
+        expect(patchTaskApi).not.toHaveBeenCalled();
         fireEvent.click(screen.getByTestId("work-board-move-doing"));
 
         await waitFor(() => {
@@ -119,5 +130,26 @@ describe("WorkBoardView", () => {
         const [, patch] = patchTaskApi.mock.calls[0] as [string, { boardStatus?: string; status?: string }];
         expect(patch).toEqual({ boardStatus: "doing" });
         expect(patch.status).toBeUndefined();
+    });
+
+    it("highlights the card matching ?task=", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        mockBoardSearch.value = "task=task-1";
+        listWorkBoard.mockResolvedValue({
+            items: [buildTask()],
+            pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
+        });
+
+        renderWithQuery(<WorkBoardView />);
+        const card = await screen.findByTestId("work-board-card");
+        expect(card).toHaveAttribute("data-highlighted", "true");
+        expect(screen.getByTestId("work-board-suggestion-link")).toHaveAttribute(
+            "href",
+            "/work-suggestions/sug-1"
+        );
+        expect(screen.getByTestId("work-board-conversation-link")).toHaveAttribute(
+            "href",
+            "/c/507f1f77bcf86cd799439014"
+        );
     });
 });

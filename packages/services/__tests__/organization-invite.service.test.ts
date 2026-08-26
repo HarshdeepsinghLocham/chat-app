@@ -153,4 +153,14 @@ describe("organization-invite.service", () => {
             })
         ).rejects.toBeInstanceOf(ValidationError);
     });
+
+    it("rejects pathological invitee strings without regex backtracking", async () => {
+        await expect(
+            createOrganizationInvitation({
+                organizationId: new Types.ObjectId().toString(),
+                actorUserId: new Types.ObjectId().toString(),
+                email: `!@!.${"!.".repeat(200)}`,
+            })
+        ).rejects.toBeInstanceOf(ValidationError);
+    });
 });

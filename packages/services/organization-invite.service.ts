@@ -19,6 +19,8 @@ import { assertMemberQuotaAvailable } from "./organization-quota.service";
 
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const INVITE_ROLES: OrganizationMemberRole[] = ["admin", "member"];
+/** RFC 5321 / common practice upper bound; avoids ReDoS on huge inputs. */
+const MAX_EMAIL_LENGTH = 254;
 
 export type OrganizationInvitationRecord = {
     id: string;
@@ -42,8 +44,34 @@ function normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
 }
 
+/**
+ * Linear-time shape check (no backtracking regex). Same rules as the prior
+ * pattern: single @, no whitespace, domain contains a dot with non-empty
+ * parts on both sides of the last dot.
+ */
 function isValidEmail(email: string): boolean {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (email.length === 0 || email.length > MAX_EMAIL_LENGTH) {
+        return false;
+    }
+
+    if (/\s/.test(email)) {
+        return false;
+    }
+
+    const atIndex = email.indexOf("@");
+    if (atIndex <= 0 || email.lastIndexOf("@") !== atIndex) {
+        return false;
+    }
+
+    const domain = email.slice(atIndex + 1);
+    const lastDot = domain.lastIndexOf(".");
+    if (lastDot <= 0 || lastDot === domain.length - 1) {
+        return false;
+    }
+
+    const domainHead = domain.slice(0, lastDot);
+    const domainTail = domain.slice(lastDot + 1);
+    return domainHead.length > 0 && domainTail.length > 0;
 }
 
 type InvitationLean = {

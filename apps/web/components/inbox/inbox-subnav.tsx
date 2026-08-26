@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const LINKS = [
+const BASE_LINKS = [
     { href: "/inbox", label: "Suggestions", testId: "inbox-nav-suggestions" },
     { href: "/inbox/approvals", label: "Approvals", testId: "inbox-nav-approvals" },
 ] as const;
@@ -15,8 +15,11 @@ function isActive(pathname: string, href: string) {
     return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function InboxSubnav() {
+export function InboxSubnav({ boardEnabled = false }: { boardEnabled?: boolean }) {
     const pathname = usePathname() ?? "";
+    const links = boardEnabled
+        ? [...BASE_LINKS, { href: "/inbox/board", label: "Board", testId: "inbox-nav-board" }]
+        : [...BASE_LINKS];
 
     return (
         <nav
@@ -24,7 +27,7 @@ export function InboxSubnav() {
             aria-label="Work inbox sections"
             data-testid="inbox-subnav"
         >
-            {LINKS.map((link) => {
+            {links.map((link) => {
                 const active = isActive(pathname, link.href);
                 return (
                     <Link

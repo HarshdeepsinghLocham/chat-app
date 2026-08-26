@@ -1,4 +1,5 @@
 import type {
+    BoardStatus,
     ClientConversation,
     ClientUser,
     TaskPriority,
@@ -420,6 +421,74 @@ export async function listWorkSuggestions(params: {
         `/api/work-suggestions${query ? `?${query}` : ""}`
     );
     return data.data;
+}
+
+export type WorkBoardListResult = {
+    items: TaskRecord[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+};
+
+export async function listWorkBoard(params: {
+    conversationId?: string;
+    organizationId?: string;
+    boardStatus?: BoardStatus;
+    page?: number;
+    limit?: number;
+}): Promise<WorkBoardListResult> {
+    const searchParams = new URLSearchParams();
+    if (params.conversationId) searchParams.set("conversationId", params.conversationId);
+    if (params.organizationId) searchParams.set("organizationId", params.organizationId);
+    if (params.boardStatus) searchParams.set("boardStatus", params.boardStatus);
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+
+    const query = searchParams.toString();
+    const data = await request<{ success: boolean; data: WorkBoardListResult }>(
+        `/api/work-board${query ? `?${query}` : ""}`
+    );
+    return data.data;
+}
+
+export async function getCoordinationBoardEnabled(): Promise<boolean> {
+    const response = await authenticatedFetch("/api/work-board/enabled");
+    const rawText = await response.text();
+    const payload = parseAuthPayload(rawText) as ApiErrorPayload & {
+        success?: boolean;
+        data?: { enabled?: boolean };
+    } | null;
+
+    if (!response.ok) {
+        throw new ApiHttpError(
+            response.status,
+            payload?.error || rawText || `Request failed with status ${response.status}`
+        );
+    }
+
+    return Boolean(payload?.data?.enabled);
+}
+
+export async function patchTaskApi(
+    taskId: string,
+    patch: {
+        title?: string;
+        description?: string;
+        status?: TaskRecord["status"];
+        boardStatus?: BoardStatus;
+        priority?: TaskPriority;
+        assignees?: string[];
+        dueAt?: string | null;
+        tags?: string[];
+    }
+): Promise<TaskRecord> {
+    return request<TaskRecord>(`/api/tasks/${encodeURIComponent(taskId)}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+    });
 }
 
 export async function getWorkInboxEnabled(): Promise<boolean> {

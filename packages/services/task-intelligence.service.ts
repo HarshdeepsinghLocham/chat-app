@@ -29,6 +29,7 @@ import {
     shouldBlockExecutionEnqueue,
 } from "./organization-policy.service.js";
 import { enqueueTaskExecutionRequested } from "./task-execution-enqueue.service.js";
+import { normalizeTask } from "./normalizers/task.normalizer";
 import {
     suggestionLatencyMs,
     suggestionsCreatedCounter,
@@ -312,6 +313,7 @@ export async function processMessageTaskIntelligence(
         assignees: [],
         dueAt: null,
         priority: "medium",
+        boardStatus: "todo",
         source: "ai",
         sourceMessageIds: [input.messageId],
         latestContextMessageId: input.messageId,
@@ -476,61 +478,7 @@ export async function processMessageTaskIntelligence(
             semanticPayload,
             taskLinkedPayload,
             taskCreatedPayload: {
-                task: {
-                    _id: task._id.toString(),
-                    conversationId: task.conversationId.toString(),
-                    parentTaskId: task.parentTaskId ? task.parentTaskId.toString() : null,
-                    title: task.title,
-                    description: task.description,
-                    status: task.status,
-                    priority: task.priority,
-                    assignees: task.assignees.map((assignee) => assignee.toString()),
-                    dueAt: task.dueAt ? new Date(task.dueAt).toISOString() : null,
-                    createdBy: task.createdBy.toString(),
-                    source: task.source,
-                    sourceMessageIds: task.sourceMessageIds.map((sourceMessageId) => sourceMessageId.toString()),
-                    latestContextMessageId: task.latestContextMessageId
-                        ? task.latestContextMessageId.toString()
-                        : null,
-                    confidence: task.confidence,
-                    tags: task.tags,
-                    dedupeKey: task.dedupeKey,
-                    subTasks: (task.subTasks ?? []).map((subTaskId) => subTaskId.toString()),
-                    dependencyIds: (task.dependencyIds ?? []).map((dependencyId) => dependencyId.toString()),
-                    retryCount: typeof task.retryCount === "number" ? task.retryCount : 0,
-                    maxRetries: typeof task.maxRetries === "number" ? task.maxRetries : 2,
-                    progress: typeof task.progress === "number" ? task.progress : 0,
-                    checkpoints: (task.checkpoints ?? []).map((checkpoint) => ({
-                        step: checkpoint.step,
-                        status: checkpoint.status,
-                        timestamp: new Date(checkpoint.timestamp).toISOString(),
-                    })),
-                    executionHistory: {
-                        attempts: typeof task.executionHistory?.attempts === "number" ? task.executionHistory.attempts : 0,
-                        failures: typeof task.executionHistory?.failures === "number" ? task.executionHistory.failures : 0,
-                        results: (task.executionHistory?.results ?? []).map((entry) => ({
-                            attempt: entry.attempt,
-                            success: entry.success,
-                            summary: entry.summary,
-                            ...(typeof entry.error === "string" && entry.error.length > 0 ? { error: entry.error } : {}),
-                            timestamp: new Date(entry.timestamp).toISOString(),
-                        })),
-                    },
-                    result: {
-                        success: Boolean(task.result?.success),
-                        confidence: typeof task.result?.confidence === "number" ? task.result.confidence : 0,
-                        evidence: task.result?.evidence ?? null,
-                        ...(typeof task.result?.error === "string" && task.result.error.length > 0
-                            ? { error: task.result.error }
-                            : {}),
-                    },
-                    version: task.version,
-                    closedAt: task.closedAt ? new Date(task.closedAt).toISOString() : null,
-                    archivedAt: task.archivedAt ? new Date(task.archivedAt).toISOString() : null,
-                    updatedBy: task.updatedBy ? task.updatedBy.toString() : null,
-                    createdAt: new Date(task.createdAt).toISOString(),
-                    updatedAt: new Date(task.updatedAt).toISOString(),
-                },
+                task: normalizeTask(task),
                 sourceMessageId: input.messageId,
                 createdByType: "agent",
             },

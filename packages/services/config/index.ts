@@ -10,6 +10,7 @@ export {
     assertAcceptCreatesCoordinationOnly,
     getClassifierMode,
     isAcceptCreatesExecutionEnabled,
+    isCoordinationBoardEnabled,
     isSuggestionIngressEnabled,
     isWorkInboxUiEnabled,
     shouldBlockExecutionEnqueue,

@@ -193,6 +193,7 @@ describe("work-suggestion mutations", () => {
                     suggestionId,
                     dedupeKey: `suggestion.accept::${suggestionId}`,
                     source: "ai",
+                    boardStatus: "todo",
                     lifecycleState: "ready",
                 })
             );

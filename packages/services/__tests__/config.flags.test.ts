@@ -4,6 +4,7 @@ import {
     getClassifierMode,
     getEffectiveExecutionMode,
     isAcceptCreatesExecutionEnabled,
+    isCoordinationBoardEnabled,
     isExecutionModeEnforce,
     isSuggestionIngressEnabled,
     isWorkInboxUiEnabled,
@@ -15,6 +16,7 @@ const ENV_KEYS = [
     "DEFAULT_EXECUTION_MODE",
     "GRANDFATHER_AUTO_TENANTS",
     "TASK_CLASSIFIER_MODE",
+    "COORDINATION_BOARD",
 ] as const;
 
 const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
@@ -120,6 +122,19 @@ describe("accept creates execution", () => {
 describe("work inbox UI", () => {
     it("isWorkInboxUiEnabled is always on", () => {
         expect(isWorkInboxUiEnabled()).toBe(true);
+    });
+});
+
+describe("coordination board flag", () => {
+    it("defaults COORDINATION_BOARD off", () => {
+        delete process.env.COORDINATION_BOARD;
+        expect(isCoordinationBoardEnabled()).toBe(false);
+        expect(isCoordinationBoardEnabled("0")).toBe(false);
+    });
+
+    it("enables COORDINATION_BOARD when set", () => {
+        expect(isCoordinationBoardEnabled("1")).toBe(true);
+        expect(isCoordinationBoardEnabled("true")).toBe(true);
     });
 });
 

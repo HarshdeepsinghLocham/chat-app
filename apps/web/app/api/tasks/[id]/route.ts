@@ -8,16 +8,26 @@ import { updateTask } from "@/lib/repositories/task.repo";
 import TaskModel from "@/models/Task";
 import { normalizeTask } from "@/server/normalizers/task.normalizer";
 import { enqueueOutboxEvent } from "@/lib/services/outbox.service";
+import {
+    assertCanMutateCoordinationTask,
+    AuthorizationError,
+} from "@semantask/services/authorization.service";
+import { resolveBoardStatus } from "@semantask/types";
 
 const updateTaskBodySchema = z.object({
     title: z.string().min(3).max(200).optional(),
     description: z.string().max(8000).optional(),
     status: z.enum(["pending", "executing", "completed", "failed", "partial"]).optional(),
+    boardStatus: z.enum(["todo", "doing", "done"]).optional(),
     priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
     assignees: z.array(z.string().min(1)).max(32).optional(),
     dueAt: z.coerce.date().nullable().optional(),
     tags: z.array(z.string().min(1).max(48)).optional(),
 });
+
+function forbiddenResponse() {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     return withRequestCorrelation(req, async () => {
@@ -28,13 +38,47 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
             await connectToDatabase();
 
-            const access = await requireTaskAccess(id, guard.user);
-            if (access.response) return access.response;
-
             const body = updateTaskBodySchema.parse(await req.json());
+            const hasBoardStatus = body.boardStatus !== undefined;
+            const hasOtherFields = Object.entries(body).some(
+                ([key, value]) => key !== "boardStatus" && value !== undefined
+            );
+
+            if (!hasBoardStatus && !hasOtherFields) {
+                return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+            }
+
             const before = await TaskModel.findById(id).lean();
             if (!before) {
                 return NextResponse.json({ error: "Task not found" }, { status: 404 });
+            }
+
+            if (hasOtherFields) {
+                const access = await requireTaskAccess(id, guard.user);
+                if (access.response) return access.response;
+            }
+
+            if (hasBoardStatus) {
+                try {
+                    await assertCanMutateCoordinationTask(
+                        guard.user.id,
+                        {
+                            conversationId: before.conversationId.toString(),
+                            organizationId: before.organizationId
+                                ? before.organizationId.toString()
+                                : null,
+                        },
+                        {
+                            userRole: guard.user.role,
+                            allowAdminBypass: true,
+                        }
+                    );
+                } catch (error) {
+                    if (error instanceof AuthorizationError) {
+                        return forbiddenResponse();
+                    }
+                    throw error;
+                }
             }
 
             const updated = await updateTask({
@@ -67,11 +111,34 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 },
             });
 
+            const previousBoardStatus = resolveBoardStatus({
+                boardStatus: before.boardStatus,
+                status: before.status,
+            });
+            if (hasBoardStatus && body.boardStatus !== previousBoardStatus) {
+                await enqueueOutboxEvent({
+                    topic: "task.board.updated",
+                    dedupeKey: `task.board.updated:${normalized._id}:${normalized.boardStatus}:${normalized.version}`,
+                    payload: {
+                        taskId: normalized._id,
+                        conversationId: normalized.conversationId,
+                        organizationId: before.organizationId
+                            ? before.organizationId.toString()
+                            : null,
+                        boardStatus: normalized.boardStatus,
+                        previousBoardStatus,
+                        actorUserId: guard.user.id,
+                    },
+                });
+            }
+
             return NextResponse.json(normalized, { status: 200 });
         } catch (error) {
+            if (error instanceof z.ZodError) {
+                return NextResponse.json({ error: "Invalid task update payload" }, { status: 400 });
+            }
             console.error("PATCH /api/tasks/:id error", error);
             return NextResponse.json({ error: "Invalid task update payload" }, { status: 400 });
         }
-
     });
 }

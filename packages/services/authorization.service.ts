@@ -403,3 +403,34 @@ export async function assertCanDecideTaskExecutionApproval(
         throw new AuthorizationError("FORBIDDEN", "Forbidden");
     }
 }
+
+export type CoordinationTaskTarget = {
+    conversationId: string;
+    organizationId?: string | null;
+};
+
+/**
+ * Phase 3 board writes (column move): same manager matrix as WorkSuggestion
+ * mutations — conversation-accessible actor OR org owner/admin.
+ */
+export async function canMutateCoordinationTask(
+    userId: string,
+    target: CoordinationTaskTarget,
+    options?: ConversationAccessOptions
+): Promise<boolean> {
+    return canMutateWorkSuggestion(userId, {
+        conversationId: target.conversationId,
+        organizationId: target.organizationId ?? null,
+    }, options);
+}
+
+export async function assertCanMutateCoordinationTask(
+    userId: string,
+    target: CoordinationTaskTarget,
+    options?: ConversationAccessOptions
+): Promise<void> {
+    const allowed = await canMutateCoordinationTask(userId, target, options);
+    if (!allowed) {
+        throw new AuthorizationError("FORBIDDEN", "Forbidden");
+    }
+}

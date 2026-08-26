@@ -15,6 +15,9 @@ export type TaskLifecycleState =
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 
+export const BOARD_STATUSES = ["todo", "doing", "done"] as const;
+export type BoardStatus = (typeof BOARD_STATUSES)[number];
+
 export type TaskSource = "ai" | "manual" | "imported";
 
 export interface ITask {
@@ -28,6 +31,8 @@ export interface ITask {
     title: string;
     description: string;
     status: TaskStatus;
+    /** Coordination column. Missing on historical docs — resolved at read time. */
+    boardStatus?: BoardStatus;
     lifecycleState: TaskLifecycleState;
     priority: TaskPriority;
     assignees: mongoose.Types.ObjectId[];
@@ -136,6 +141,12 @@ const TaskSchema = new Schema<ITask>(
                 "failed",
             ],
             default: "ready",
+            index: true,
+        },
+        boardStatus: {
+            type: String,
+            enum: ["todo", "doing", "done"],
+            default: "todo",
             index: true,
         },
         priority: {
@@ -264,6 +275,7 @@ TaskSchema.pre("save", function (next) {
 });
 
 TaskSchema.index({ conversationId: 1, status: 1, updatedAt: -1 });
+TaskSchema.index({ organizationId: 1, boardStatus: 1, dueAt: 1 });
 TaskSchema.index({ organizationId: 1, lifecycleState: 1, updatedAt: -1 });
 TaskSchema.index({ conversationId: 1, dueAt: 1, status: 1 });
 TaskSchema.index({ assignees: 1, status: 1, dueAt: 1 });

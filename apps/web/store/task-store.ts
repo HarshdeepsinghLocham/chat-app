@@ -57,6 +57,7 @@ function buildPlaceholderTask(payload: TaskUpdatedPayload): TaskRecord {
         title: typeof patch.title === "string" ? patch.title : "Task",
         description: typeof patch.description === "string" ? patch.description : "",
         status: (patch.status as TaskRecord["status"]) ?? "pending",
+        boardStatus: (patch.boardStatus as TaskRecord["boardStatus"]) ?? "todo",
         priority: (patch.priority as TaskRecord["priority"]) ?? "medium",
         assignees: Array.isArray(patch.assignees) ? patch.assignees : [],
         dueAt: typeof patch.dueAt === "string" || patch.dueAt === null ? patch.dueAt : null,

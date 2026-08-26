@@ -1,4 +1,5 @@
 import type { ExecutionMode } from "@semantask/types";
+import { isEnvFlagEnabled } from "./parse";
 
 export type ClassifierMode = "regex" | "shadow" | "llm";
 
@@ -25,6 +26,11 @@ export function assertAcceptCreatesCoordinationOnly(): void {
 /** Work Inbox `/inbox` is always on. Env `WORK_INBOX_UI` is not read. */
 export function isWorkInboxUiEnabled(): boolean {
     return true;
+}
+
+/** COORDINATION_BOARD=0|1 (default 0). Expose `/inbox/board`. */
+export function isCoordinationBoardEnabled(raw?: string | null): boolean {
+    return isEnvFlagEnabled(raw ?? process.env.COORDINATION_BOARD, false);
 }
 
 /** TASK_CLASSIFIER_MODE: regex (default) | shadow | llm. */

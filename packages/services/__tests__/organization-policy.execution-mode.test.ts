@@ -26,6 +26,7 @@ import * as config from "../config";
 import {
     getEffectiveExecutionMode,
     isAcceptCreatesExecutionEnabled,
+    isCoordinationBoardEnabled,
     isExecutionModeEnforce,
     isSuggestionIngressEnabled,
     isWorkInboxUiEnabled,
@@ -43,6 +44,7 @@ describe("organization-policy.service config re-exports", () => {
         expect(shouldBlockExecutionEnqueue).toBe(config.shouldBlockExecutionEnqueue);
         expect(isAcceptCreatesExecutionEnabled).toBe(config.isAcceptCreatesExecutionEnabled);
         expect(isWorkInboxUiEnabled).toBe(config.isWorkInboxUiEnabled);
+        expect(isCoordinationBoardEnabled).toBe(config.isCoordinationBoardEnabled);
     });
 });
 

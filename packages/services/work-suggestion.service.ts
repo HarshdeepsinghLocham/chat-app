@@ -195,6 +195,7 @@ async function createOrReuseAcceptTask(input: {
             assignees: input.assignees,
             dueAt: input.dueAt,
             priority: input.priority,
+            boardStatus: "todo",
             source: "ai",
             sourceMessageIds: [input.suggestion.messageId.toString()],
             latestContextMessageId: input.suggestion.messageId.toString(),

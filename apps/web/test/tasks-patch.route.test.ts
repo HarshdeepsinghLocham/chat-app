@@ -61,6 +61,17 @@ jest.mock("@/server/normalizers/task.normalizer", () => ({
     }),
 }));
 
+jest.mock("@semantask/services/task-product.service", () => ({
+    enrichTaskForProduct: async (doc: { _id: { toString(): string }; conversationId: { toString(): string }; boardStatus?: string }) => ({
+        _id: doc._id.toString(),
+        conversationId: doc.conversationId.toString(),
+        boardStatus: doc.boardStatus ?? "todo",
+        coordinationStatus: "OPEN",
+        ownerRef: null,
+        executionActions: [],
+    }),
+}));
+
 import { requireAuthUser } from "@/lib/utils/auth/requireAuthUser";
 import { requireTaskAccess } from "@/lib/utils/auth/requireConversationAccess";
 import { GET, PATCH } from "../app/api/tasks/[id]/route";
@@ -187,7 +198,10 @@ describe("GET /api/tasks/:id", () => {
         jest.clearAllMocks();
         (requireAuthUser as jest.Mock).mockResolvedValue({ user, response: null });
         (requireTaskAccess as jest.Mock).mockResolvedValue({ response: null });
-        findById.mockReturnValue({ lean: jest.fn().mockResolvedValue(buildTask()) });
+        findById.mockReturnValue({
+            lean: jest.fn().mockResolvedValue(buildTask()),
+            exec: jest.fn().mockResolvedValue(buildTask()),
+        });
     });
 
     it("returns 401 when unauthenticated", async () => {

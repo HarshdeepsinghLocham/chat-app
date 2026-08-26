@@ -8,7 +8,9 @@ export type NotifyKind =
     | "approval_required"
     | "mention"
     | "task_blocked"
-    | "task_overdue";
+    | "task_overdue"
+    | "execution_succeeded"
+    | "execution_failed";
 
 export type NotifyUserInput = {
     userId: string;

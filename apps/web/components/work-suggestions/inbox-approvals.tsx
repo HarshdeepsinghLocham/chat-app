@@ -14,11 +14,72 @@ import {
     useTaskApprovalsList,
 } from "@/lib/queries/use-task-approvals";
 import { conversationMessageHref, taskHref } from "@/lib/work-links";
+import { UserChip } from "@/components/people/user-chip";
 
 function formatTimestamp(iso: string) {
     const value = new Date(iso);
     if (Number.isNaN(value.getTime())) return "-";
     return value.toLocaleString();
+}
+
+function asStringList(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        return value.filter((entry): entry is string => typeof entry === "string");
+    }
+    if (typeof value === "string" && value.trim()) return [value];
+    return [];
+}
+
+function ExecutionPreview({ item }: { item: TaskApprovalRecord }) {
+    const params = item.parameters ?? {};
+    const tool = item.toolName || item.actionType;
+    if (tool === "send_email") {
+        return (
+            <dl className="grid gap-2 rounded-md border border-border p-3" data-testid="approval-email-preview">
+                <div>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">Recipient</dt>
+                    <dd>{asStringList(params.to).join(", ") || "Missing recipient"}</dd>
+                </div>
+                <div>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">Subject</dt>
+                    <dd>{typeof params.subject === "string" ? params.subject : "—"}</dd>
+                </div>
+                <div>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">Message</dt>
+                    <dd className="whitespace-pre-wrap">{typeof params.body === "string" ? params.body : "—"}</dd>
+                </div>
+            </dl>
+        );
+    }
+    if (tool === "create_github_issue") {
+        return (
+            <dl className="grid gap-2 rounded-md border border-border p-3" data-testid="approval-github-preview">
+                <div>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">Title</dt>
+                    <dd>{typeof params.title === "string" ? params.title : "—"}</dd>
+                </div>
+                <div>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">Body</dt>
+                    <dd className="whitespace-pre-wrap">{typeof params.body === "string" ? params.body : "—"}</dd>
+                </div>
+            </dl>
+        );
+    }
+    if (tool === "schedule_meeting") {
+        return (
+            <dl className="grid gap-2 rounded-md border border-border p-3" data-testid="approval-meeting-preview">
+                <div>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">Summary</dt>
+                    <dd>{typeof params.summary === "string" ? params.summary : "—"}</dd>
+                </div>
+                <div>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">Notes</dt>
+                    <dd className="whitespace-pre-wrap">{typeof params.notes === "string" ? params.notes : "—"}</dd>
+                </div>
+            </dl>
+        );
+    }
+    return null;
 }
 
 function getPolicySummary(item: TaskApprovalRecord) {
@@ -259,6 +320,14 @@ export function InboxApprovalsView() {
                                         <p className="text-xs text-muted-foreground">
                                             Requested {formatTimestamp(item.createdAt)}
                                         </p>
+                                        {item.actorId ? (
+                                            <div className="pt-1" data-testid="approval-actor">
+                                                <UserChip
+                                                    user={{ id: item.actorId, username: "Requester" }}
+                                                    size={18}
+                                                />
+                                            </div>
+                                        ) : null}
                                     </div>
                                     <div className="flex gap-2">
                                         <Button
@@ -267,7 +336,7 @@ export function InboxApprovalsView() {
                                             onClick={() => void decide(item, "approve")}
                                             disabled={actingId === item._id}
                                         >
-                                            Allow AI tools
+                                            Approve
                                         </Button>
                                         <Button
                                             size="sm"
@@ -283,6 +352,7 @@ export function InboxApprovalsView() {
                             </CardHeader>
                             <CardContent className="space-y-3 text-sm">
                                 <p className="text-muted-foreground">{item.summary || "No summary"}</p>
+                                <ExecutionPreview item={item} />
                                 <p className="text-xs text-amber-700 dark:text-amber-500">
                                     {getPolicySummary(item)}
                                 </p>
@@ -303,7 +373,10 @@ export function InboxApprovalsView() {
                                         placeholder="Add context for this decision"
                                     />
                                 </div>
-                                <div className="space-y-2">
+                                <details className="space-y-2">
+                                    <summary className="cursor-pointer text-sm text-muted-foreground">
+                                        Edit parameters
+                                    </summary>
                                     <Label htmlFor={`params-${item._id}`}>
                                         Parameters override (JSON object)
                                     </Label>
@@ -321,7 +394,7 @@ export function InboxApprovalsView() {
                                             }));
                                         }}
                                     />
-                                </div>
+                                </details>
                             </CardContent>
                         </Card>
                     ))}

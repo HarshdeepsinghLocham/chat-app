@@ -55,6 +55,8 @@ export function WorkBoardView() {
     const highlightedTaskId = searchParams.get("task");
     const [conversationId, setConversationId] = useState("");
     const [page, setPage] = useState(1);
+    const [dueFilter, setDueFilter] = useState<"all" | "overdue" | "none">("all");
+    const [priorityFilter, setPriorityFilter] = useState("");
 
     const scopedConversationId = conversationId.trim() || undefined;
     const hasScope = Boolean(organizationId || scopedConversationId);
@@ -67,7 +69,15 @@ export function WorkBoardView() {
     });
     const moveMutation = useMoveWorkBoardCard(listQuery.listParams);
 
-    const items = listQuery.data?.items ?? [];
+    const items = (listQuery.data?.items ?? []).filter((item) => {
+        if (priorityFilter && item.priority !== priorityFilter) return false;
+        if (dueFilter === "none" && item.dueAt) return false;
+        if (dueFilter === "overdue") {
+            if (!item.dueAt) return false;
+            if (new Date(item.dueAt).getTime() >= Date.now()) return false;
+        }
+        return true;
+    });
     const pagination = listQuery.data?.pagination;
     const totalPages = pagination?.totalPages ?? 1;
     const columns = useMemo(() => groupByBoardStatus(items), [items]);
@@ -120,18 +130,50 @@ export function WorkBoardView() {
                             </span>
                         )}
                     </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="board-conversation">Conversation</Label>
-                        <Input
-                            id="board-conversation"
-                            data-testid="work-board-conversation"
-                            value={conversationId}
-                            onChange={(event) => {
-                                setPage(1);
-                                setConversationId(event.target.value);
-                            }}
-                            placeholder={organizationId ? "Optional filter" : "Required for personal"}
-                        />
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="space-y-2">
+                            <Label htmlFor="board-conversation">Conversation</Label>
+                            <Input
+                                id="board-conversation"
+                                data-testid="work-board-conversation"
+                                value={conversationId}
+                                onChange={(event) => {
+                                    setPage(1);
+                                    setConversationId(event.target.value);
+                                }}
+                                placeholder={organizationId ? "Optional filter" : "Required for personal"}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="board-due">Due</Label>
+                            <select
+                                id="board-due"
+                                data-testid="work-board-due-filter"
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                value={dueFilter}
+                                onChange={(event) => setDueFilter(event.target.value as typeof dueFilter)}
+                            >
+                                <option value="all">All</option>
+                                <option value="overdue">Overdue</option>
+                                <option value="none">No due date</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="board-priority">Priority</Label>
+                            <select
+                                id="board-priority"
+                                data-testid="work-board-priority-filter"
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                value={priorityFilter}
+                                onChange={(event) => setPriorityFilter(event.target.value)}
+                            >
+                                <option value="">All</option>
+                                <option value="low">low</option>
+                                <option value="medium">medium</option>
+                                <option value="high">high</option>
+                                <option value="urgent">urgent</option>
+                            </select>
+                        </div>
                     </div>
                 </CardContent>
             </Card>

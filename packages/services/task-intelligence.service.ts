@@ -24,6 +24,11 @@ import {
 import { upsertMessageIntent, type ParticipantHint } from "./message-intent.service.js";
 import { createWorkSuggestion } from "./work-suggestion.service.js";
 import {
+    distillWorkSuggestion,
+    normalizeWorkTitleKey,
+    resolveSuggestionExecutionPolicy,
+} from "./work-suggestion-extract.js";
+import {
     getEffectiveExecutionMode,
     resolveOrganizationPolicy,
     shouldBlockExecutionEnqueue,
@@ -35,7 +40,7 @@ import {
     suggestionsCreatedCounter,
 } from "@semantask/observability/metrics";
 
-export const AI_VERSION = "intelligent-v7-entity-heuristics";
+export const AI_VERSION = "intelligent-v8-work-semantics";
 
 export interface ProcessMessageTaskIntelligenceInput {
     messageId: string;
@@ -56,31 +61,50 @@ function normalizeContent(content: string) {
     return content.trim().replace(/\s+/g, " ");
 }
 
-function toTaskTitle(content: string) {
-    const normalized = normalizeContent(content);
-    if (!normalized) return "Follow up";
-
-    const withoutPrefix = normalized.replace(/^(@\w+[:,]?\s*)+/, "");
-    const trimmed = withoutPrefix.slice(0, 200);
-    return trimmed.length >= 3 ? trimmed : normalized.slice(0, 200);
-}
-
-function buildTaskDescription(content: string) {
-    const normalized = normalizeContent(content);
-    if (!normalized) {
-        return "No additional context was provided.";
-    }
-
-    return `Requested outcome: ${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
-}
-
-function preprocessMessage(content: string) {
-    const normalized = normalizeContent(content);
+function preprocessMessage(
+    content: string,
+    actionVerb = "",
+    dueAtCandidate: Date | string | null = null,
+    objectText?: string
+) {
+    const distilled = distillWorkSuggestion({
+        content,
+        actionVerb,
+        objectText,
+        dueAtCandidate,
+    });
     return {
-        normalized,
-        title: toTaskTitle(normalized),
-        description: buildTaskDescription(normalized),
+        normalized: normalizeContent(content),
+        title: distilled.title,
+        description: distilled.summary,
+        requestedOutcome: distilled.requestedOutcome,
+        suggestedTool: distilled.suggestedTool,
+        confidenceSignals: distilled.confidenceSignals,
+        titleKey: distilled.titleKey,
     };
+}
+
+async function findPossibleDuplicateTask(input: {
+    conversationId: string;
+    title: string;
+}): Promise<string | null> {
+    const titleKey = normalizeWorkTitleKey(input.title);
+    if (!titleKey) return null;
+
+    const openTasks = await TaskModel.find({
+        conversationId: input.conversationId,
+        cancelRequestedAt: null,
+        lifecycleState: { $nin: ["completed", "failed"] },
+        boardStatus: { $ne: "done" },
+    })
+        .select("_id title")
+        .limit(50)
+        .lean();
+
+    const match = (openTasks ?? []).find(
+        (task) => normalizeWorkTitleKey(String(task.title ?? "")) === titleKey
+    );
+    return match?._id ? match._id.toString() : null;
 }
 
 async function loadConversationContext(conversationId: string): Promise<{
@@ -124,10 +148,13 @@ async function resolveEffectiveModeForConversation(organizationId: string | null
     const orgPolicy = organizationId
         ? await resolveOrganizationPolicy(organizationId)
         : null;
-    return getEffectiveExecutionMode({
-        organizationId,
-        executionMode: orgPolicy?.executionMode ?? null,
-    });
+    return {
+        orgPolicy,
+        executionMode: getEffectiveExecutionMode({
+            organizationId,
+            executionMode: orgPolicy?.executionMode ?? null,
+        }),
+    };
 }
 
 export async function processMessageTaskIntelligence(
@@ -153,10 +180,10 @@ export async function processMessageTaskIntelligence(
     }
 
     const processedAt = new Date();
-    const preprocessed = preprocessMessage(input.content);
+    const normalizedContent = normalizeContent(input.content);
     const conversationContext = await loadConversationContext(input.conversationId);
 
-    if (!preprocessed.normalized) {
+    if (!normalizedContent) {
         await updateMessageSemanticState(input.messageId, {
             semanticType: "chat",
             semanticConfidence: 0,
@@ -230,7 +257,7 @@ export async function processMessageTaskIntelligence(
     }
 
     const organizationId = conversationContext.organizationId;
-    const executionMode = await resolveEffectiveModeForConversation(organizationId);
+    const { orgPolicy, executionMode } = await resolveEffectiveModeForConversation(organizationId);
     const blockExecution = shouldBlockExecutionEnqueue(executionMode);
 
     const intent = await upsertMessageIntent({
@@ -244,6 +271,23 @@ export async function processMessageTaskIntelligence(
         participants: conversationContext.participants,
     });
 
+    const preprocessed = preprocessMessage(
+        input.content,
+        intent.entities.actionVerb,
+        intent.entities.dueAtCandidate,
+        intent.entities.objectText
+    );
+    const possibleDuplicateTaskId = await findPossibleDuplicateTask({
+        conversationId: input.conversationId,
+        title: preprocessed.title,
+    });
+    const executionPolicy = resolveSuggestionExecutionPolicy({
+        tool: preprocessed.suggestedTool,
+        toolDenyList: orgPolicy?.toolDenyList,
+        requireApprovalFor: orgPolicy?.requireApprovalFor,
+        executionMode,
+    });
+
     const { created } = await createWorkSuggestion({
         messageId: input.messageId,
         conversationId: input.conversationId,
@@ -251,6 +295,11 @@ export async function processMessageTaskIntelligence(
         intentId: intent._id,
         title: preprocessed.title,
         summary: preprocessed.description,
+        requestedOutcome: preprocessed.requestedOutcome,
+        suggestedTool: preprocessed.suggestedTool,
+        executionPolicy,
+        confidenceSignals: preprocessed.confidenceSignals,
+        possibleDuplicateTaskId,
         confidence: classification.confidence,
         extractorVersion: AI_VERSION,
         candidates: {

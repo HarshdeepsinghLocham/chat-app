@@ -166,5 +166,42 @@ export async function persistExecutionUpdatePayload(
         })();
     }
 
+    if (stateKind === "succeeded" || step === "completed") {
+        void notifyExecutionOutcome(payload, "execution_succeeded");
+    }
+    if (stateKind === "failed" || step === "failed" || step === "exception") {
+        void notifyExecutionOutcome(payload, "execution_failed");
+    }
+
     return event;
+}
+
+async function notifyExecutionOutcome(
+    payload: TaskExecutionUpdatedPayload,
+    kind: "execution_succeeded" | "execution_failed"
+): Promise<void> {
+    try {
+        const task = await TaskModel.findById(payload.taskId)
+            .select({ title: 1, assignees: 1, conversationId: 1 })
+            .lean<{
+                title: string;
+                assignees?: Array<{ toString(): string }>;
+                conversationId: { toString(): string };
+            } | null>();
+        if (!task) return;
+        const { notifyUsers } = await import("./notify.service");
+        const succeeded = kind === "execution_succeeded";
+        await notifyUsers((task.assignees ?? []).map((id) => id.toString()), {
+            kind,
+            subject: succeeded ? `Finished: ${task.title}` : `Failed: ${task.title}`,
+            text: succeeded
+                ? `"${task.title}" finished successfully.`
+                : `"${task.title}" failed: ${payload.error ?? payload.summary ?? "see task details"}.`,
+            dedupeKey: `${kind}:${payload.taskId}:${payload.runId ?? "run"}`,
+            conversationId: task.conversationId.toString(),
+            entityId: payload.taskId,
+        });
+    } catch (error) {
+        console.error("execution outcome notify failed", error);
+    }
 }

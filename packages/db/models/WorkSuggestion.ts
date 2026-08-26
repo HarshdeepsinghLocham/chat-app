@@ -27,6 +27,11 @@ export interface IWorkSuggestion {
         dueAtCandidate?: Date | null;
         priorityCandidate: "low" | "medium" | "high" | "urgent" | "";
     };
+    requestedOutcome?: string | null;
+    suggestedTool?: "create_github_issue" | "schedule_meeting" | "send_email" | null;
+    executionPolicy?: "approval_required" | "auto_execute_allowed" | "prohibited" | null;
+    confidenceSignals?: Array<"explicit_action" | "recipient_or_object" | "deadline">;
+    possibleDuplicateTaskId?: mongoose.Types.ObjectId | null;
     dismissReason?: string | null;
     convertedTaskId?: mongoose.Types.ObjectId | null;
     extractorVersion: string;
@@ -79,6 +84,32 @@ const WorkSuggestionSchema = new Schema<IWorkSuggestion>(
             trim: true,
             maxlength: 4000,
             default: "",
+        },
+        requestedOutcome: {
+            type: String,
+            trim: true,
+            maxlength: 4000,
+            default: null,
+        },
+        suggestedTool: {
+            type: String,
+            enum: ["create_github_issue", "schedule_meeting", "send_email"],
+            default: null,
+        },
+        executionPolicy: {
+            type: String,
+            enum: ["approval_required", "auto_execute_allowed", "prohibited"],
+            default: null,
+        },
+        confidenceSignals: {
+            type: [{ type: String, enum: ["explicit_action", "recipient_or_object", "deadline"] }],
+            default: undefined,
+        },
+        possibleDuplicateTaskId: {
+            type: Schema.Types.ObjectId,
+            ref: "Task",
+            default: null,
+            index: true,
         },
         confidence: {
             type: Number,

@@ -132,7 +132,7 @@ describe("WorkDashboardView", () => {
         expect(screen.getByTestId("work-dashboard-overdue")).toHaveTextContent("Coordinate launch");
         expect(screen.getByRole("link", { name: "Coordinate launch" })).toHaveAttribute(
             "href",
-            "/tasks/task-1"
+            "/work/task-1"
         );
         expect(screen.getByRole("link", { name: "Board" })).toHaveAttribute(
             "href",

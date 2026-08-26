@@ -859,6 +859,47 @@ export async function revokeOrganizationInvitation(
     });
 }
 
+export async function resendOrganizationInvitation(
+    organizationId: string,
+    invitationId: string
+): Promise<OrganizationInvitationClient> {
+    const data = await request<{ success: boolean; data: OrganizationInvitationClient }>(
+        `/api/organizations/${organizationId}/invitations`,
+        {
+            method: "PATCH",
+            body: JSON.stringify({ invitationId }),
+        }
+    );
+    return data.data;
+}
+
+export async function removeOrganizationMember(
+    organizationId: string,
+    userId: string
+): Promise<void> {
+    await request<{ success: boolean }>(`/api/organizations/${organizationId}/members`, {
+        method: "DELETE",
+        body: JSON.stringify({ userId }),
+    });
+}
+
+export async function updateOrganizationMemberRole(
+    organizationId: string,
+    input: { userId: string; role: string }
+): Promise<void> {
+    await request<{ success: boolean }>(`/api/organizations/${organizationId}/members`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+    });
+}
+
+export async function leaveOrganization(organizationId: string): Promise<void> {
+    await request<{ success: boolean }>(`/api/organizations/${organizationId}/members`, {
+        method: "PATCH",
+        body: JSON.stringify({ leave: true }),
+    });
+}
+
 export async function getOrganizationInvitationApi(
     token: string
 ): Promise<OrganizationInvitationClient> {
@@ -878,6 +919,108 @@ export async function acceptOrganizationInvitationApi(token: string): Promise<{
     }>(`/api/invitations/${encodeURIComponent(token)}`, {
         method: "POST",
     });
+    return data.data;
+}
+
+export type WorkSearchHit = {
+    kind: "task" | "conversation" | "person" | "suggestion" | "execution";
+    id: string;
+    title: string;
+    href: string;
+    subtitle?: string | null;
+};
+
+export async function searchOrganizationWork(
+    organizationId: string,
+    query: string
+): Promise<WorkSearchHit[]> {
+    const data = await request<{ success: boolean; data: WorkSearchHit[] }>(
+        `/api/organizations/${organizationId}/search?q=${encodeURIComponent(query)}`
+    );
+    return data.data;
+}
+
+export async function getOrganizationUsage(organizationId: string): Promise<{
+    tokensThisMonth: number;
+    periodStart: string;
+}> {
+    const data = await request<{
+        success: boolean;
+        data: { tokensThisMonth: number; periodStart: string };
+    }>(`/api/organizations/${organizationId}/usage`);
+    return data.data;
+}
+
+export async function listOrganizationToolGrants(organizationId: string): Promise<{
+    grants: Array<{
+        id: string;
+        userId: string;
+        toolName: string;
+        grantedBy: string;
+        revokedAt: string | null;
+        createdAt: string;
+    }>;
+}> {
+    const data = await request<{
+        success: boolean;
+        data: {
+            grants: Array<{
+                id: string;
+                userId: string;
+                toolName: string;
+                grantedBy: string;
+                revokedAt: string | null;
+                createdAt: string;
+            }>;
+        };
+    }>(`/api/organizations/${organizationId}/tool-grants`);
+    return data.data;
+}
+
+export async function getAdminExecutionAudit(params?: {
+    page?: number;
+    limit?: number;
+    taskId?: string;
+    tool?: string;
+}): Promise<{
+    events: Array<{
+        id: string;
+        taskId: string;
+        taskTitle?: string | null;
+        actorId: string | null;
+        actorRef?: { id: string; username: string } | null;
+        runId: string | null;
+        toolName: string;
+        action: string;
+        paramsHash: string;
+        createdAt: string;
+    }>;
+    pagination: { page: number; limit: number; total: number; totalPages: number };
+}> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set("page", String(params.page));
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.taskId) searchParams.set("taskId", params.taskId);
+    if (params?.tool) searchParams.set("tool", params.tool);
+    const query = searchParams.toString();
+    const data = await request<{
+        success: boolean;
+        data: {
+            events: Array<{
+                id: string;
+                taskId: string;
+                taskTitle?: string | null;
+                actorId: string | null;
+                actorRef?: { id: string; username: string } | null;
+                runId: string | null;
+                toolName: string;
+                action: string;
+                paramsHash: string;
+                createdAt: string;
+            }>;
+            pagination: { page: number; limit: number; total: number; totalPages: number };
+        };
+    }>(`/api/admin/execution-audit${query ? `?${query}` : ""}`);
     return data.data;
 }
 

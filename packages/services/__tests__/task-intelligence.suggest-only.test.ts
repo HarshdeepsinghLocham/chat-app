@@ -14,10 +14,12 @@ jest.mock("@semantask/db/models/Message", () => ({
 }));
 
 const taskFindOne = jest.fn();
+const taskFind = jest.fn();
 jest.mock("@semantask/db/models/Task", () => ({
     __esModule: true,
     default: {
         findOne: (...args: unknown[]) => taskFindOne(...args),
+        find: (...args: unknown[]) => taskFind(...args),
     },
 }));
 
@@ -178,6 +180,13 @@ function mockTaskUpsert() {
             lean: jest.fn().mockResolvedValue(null),
         }),
     });
+    taskFind.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            limit: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([]),
+            }),
+        }),
+    });
     const now = new Date();
     upsertTaskByDedupeKey.mockResolvedValue({
         _id: new Types.ObjectId(taskId),
@@ -220,6 +229,7 @@ function mockTaskUpsert() {
 beforeEach(() => {
     messageFindById.mockReset();
     taskFindOne.mockReset();
+    taskFind.mockReset();
     conversationFindById.mockReset();
     userFind.mockReset();
     updateMessageSemanticState.mockReset();
@@ -267,7 +277,7 @@ describe("processMessageTaskIntelligence suggest-only ingress", () => {
                 messageId,
                 conversationId,
                 semanticType: "task",
-                extractorVersion: "intelligent-v7-entity-heuristics",
+                extractorVersion: "intelligent-v8-work-semantics",
             })
         );
         expect(createWorkSuggestion).toHaveBeenCalledWith(
@@ -277,7 +287,10 @@ describe("processMessageTaskIntelligence suggest-only ingress", () => {
                 organizationId,
                 intentId,
                 confidence: 0.9,
-                extractorVersion: "intelligent-v7-entity-heuristics",
+                extractorVersion: "intelligent-v8-work-semantics",
+                title: "Send welcome email to team",
+                suggestedTool: "send_email",
+                executionPolicy: "approval_required",
             })
         );
         expect(suggestionsCreatedCounter.inc).toHaveBeenCalledTimes(1);

@@ -371,6 +371,50 @@ export async function removeOrganizationMember(input: {
     await OrganizationMembershipModel.deleteOne({ _id: target._id });
 }
 
+export async function updateOrganizationMemberRole(input: {
+    organizationId: string;
+    actorUserId: string;
+    userId: string;
+    role: OrganizationMemberRole;
+}): Promise<IOrganizationMembership> {
+    await assertCanManageMembers(input.organizationId, input.actorUserId);
+    if (!isValidObjectId(input.userId)) {
+        throw new AuthorizationError("FORBIDDEN", "Invalid user");
+    }
+    if (!ORGANIZATION_MEMBER_ROLES.includes(input.role) || input.role === "owner") {
+        throw new ValidationError("Role must be admin or member");
+    }
+
+    await connectToDatabase();
+    const target = await OrganizationMembershipModel.findOne({
+        organizationId: new Types.ObjectId(input.organizationId),
+        userId: new Types.ObjectId(input.userId),
+    });
+    if (!target) {
+        throw new AuthorizationError("NOT_FOUND", "Membership not found");
+    }
+    if (target.role === "owner") {
+        throw new ValidationError("Cannot change the organization owner role");
+    }
+
+    target.role = input.role;
+    await target.save();
+    return target.toObject() as IOrganizationMembership;
+}
+
+export async function leaveOrganization(input: {
+    organizationId: string;
+    actorUserId: string;
+}): Promise<void> {
+    await connectToDatabase();
+    const membership = await assertMembership(input.organizationId, input.actorUserId);
+    if (membership.role === "owner") {
+        throw new ValidationError("Owners cannot leave without transferring ownership");
+    }
+
+    await OrganizationMembershipModel.deleteOne({ _id: membership._id });
+}
+
 export async function assertUsersAreOrgMembers(
     organizationId: string,
     userIds: string[]

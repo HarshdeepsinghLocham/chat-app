@@ -6,6 +6,7 @@ import { isSmtpConfigured, sendTransactionalEmail } from "@/lib/utils/send-email
 import {
     createOrganizationInvitation,
     listOrganizationInvitations,
+    resendOrganizationInvitation,
     revokeOrganizationInvitation,
 } from "@semantask/services/organization-invite.service";
 import { AuthorizationError } from "@semantask/services/authorization.service";
@@ -168,6 +169,63 @@ export async function DELETE(req: Request, context: RouteContext) {
             {
                 success: false,
                 error: error instanceof Error ? error.message : "Failed to revoke invitation",
+            },
+            { status: organizationApiErrorStatus(error) }
+        );
+    }
+}
+
+export async function PATCH(req: Request, context: RouteContext) {
+    const guard = await requireAuthUser();
+    if (guard.response) {
+        return guard.response;
+    }
+
+    const { id } = await context.params;
+    try {
+        await connectToDatabase();
+        const body = (await req.json()) as { invitationId?: string };
+        if (!body.invitationId) {
+            return NextResponse.json(
+                { success: false, error: "invitationId is required" },
+                { status: 400 }
+            );
+        }
+
+        const invitation = await resendOrganizationInvitation({
+            organizationId: id,
+            actorUserId: guard.user.id,
+            invitationId: body.invitationId,
+        });
+
+        const link = inviteUrl(invitation.token);
+        let emailSent = false;
+        if (isSmtpConfigured()) {
+            await sendTransactionalEmail({
+                to: invitation.email,
+                subject: `You're invited to ${invitation.organizationName}`,
+                text: `Join ${invitation.organizationName}: ${link}`,
+                html: `<p>Join <b>${invitation.organizationName}</b>: <a href="${link}">${link}</a></p>`,
+            });
+            emailSent = true;
+        }
+
+        const { token: _token, ...rest } = invitation;
+        return NextResponse.json({
+            success: true,
+            data: { ...rest, emailSent, inviteUrl: emailSent ? undefined : link },
+        });
+    } catch (error) {
+        if (error instanceof AuthorizationError) {
+            return NextResponse.json(
+                { success: false, error: error.message },
+                { status: error.code === "NOT_FOUND" ? 404 : 403 }
+            );
+        }
+        return NextResponse.json(
+            {
+                success: false,
+                error: error instanceof Error ? error.message : "Failed to resend invitation",
             },
             { status: organizationApiErrorStatus(error) }
         );

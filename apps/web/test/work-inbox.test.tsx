@@ -154,7 +154,7 @@ describe("WorkInboxView", () => {
             "href",
             "/c/507f1f77bcf86cd799439014"
         );
-        expect(screen.getByTestId("suggestion-accept")).toBeInTheDocument();
+        expect(await screen.findByTestId("suggestion-accept")).toHaveTextContent("Accept & assign");
         expect(screen.getByTestId("suggestion-dismiss")).toBeInTheDocument();
         expect(screen.getByTestId("suggestion-assign")).toBeDisabled();
     });
@@ -185,7 +185,7 @@ describe("WorkInboxView", () => {
 
         await waitFor(() => {
             expect(acceptWorkSuggestionApi).toHaveBeenCalledWith("sug-1", {
-                assignees: ["507f1f77bcf86cd799439099"],
+                assignees: [],
             });
         });
         expect(decideTaskApproval).not.toHaveBeenCalled();
@@ -327,7 +327,9 @@ describe("WorkInboxView", () => {
         });
 
         const assignees = await screen.findByTestId("suggestion-assignees");
-        expect(assignees).toBeInTheDocument();
+        await waitFor(() => {
+            expect(assignees).toHaveValue("507f1f77bcf86cd799439088");
+        });
         fireEvent.click(screen.getByTestId("suggestion-assign"));
 
         await waitFor(() => {

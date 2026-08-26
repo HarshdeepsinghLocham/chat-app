@@ -14,6 +14,7 @@ import {
     WorkInboxTriage,
     type OrgMemberOption,
 } from "@/components/work-suggestions/work-inbox-triage";
+import { useUser } from "@/context/UserContext";
 import { useActiveOrganization } from "@/lib/hooks/useActiveOrganization";
 import { queryKeys } from "@/lib/queries/keys";
 import { useOrganizationMembers } from "@/lib/queries/use-organizations";
@@ -27,6 +28,8 @@ import {
     useWorkSuggestionsList,
 } from "@/lib/queries/use-work-suggestions";
 import { conversationMessageHref } from "@/lib/work-links";
+import { SuggestionTrustPanel } from "@/components/work-suggestions/suggestion-trust";
+import { suggestionOutcome } from "@/lib/work-suggestions/trust";
 import {
     DEEP_LINK_HIGHLIGHT_CLASS,
     inboxSuggestionElementId,
@@ -68,6 +71,8 @@ function ownersForSuggestion(
 
 export function WorkInboxView() {
     const { organizationId, organization } = useActiveOrganization();
+    const { user } = useUser();
+    const currentUserId = user?._id ?? null;
     const searchParams = useSearchParams();
     const highlightedSuggestionId = searchParams.get("suggestion");
     const [conversationId, setConversationId] = useState("");
@@ -379,22 +384,15 @@ export function WorkInboxView() {
                             </CardHeader>
                             <CardContent className="space-y-2 text-sm">
                                 <p className="text-muted-foreground">
-                                    {summarize(item.summary || "No summary provided.")}
+                                    {summarize(suggestionOutcome(item))}
                                 </p>
+                                <SuggestionTrustPanel suggestion={item} />
                                 <dl className="grid gap-2 sm:grid-cols-3">
                                     <div>
                                         <dt className="text-xs uppercase tracking-wide text-muted-foreground">
                                             Status
                                         </dt>
                                         <dd className="font-medium capitalize">{item.status}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                                            Confidence
-                                        </dt>
-                                        <dd className="font-medium">
-                                            {Math.round(item.confidence * 100)}%
-                                        </dd>
                                     </div>
                                     <div>
                                         <dt className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -424,6 +422,7 @@ export function WorkInboxView() {
                                         organizationId={organizationId}
                                         members={members}
                                         displayedOwners={ownersForSuggestion(item, ownerById)}
+                                        currentUserId={currentUserId}
                                         actionPending={actingId === item._id}
                                         actionError={actionErrorById[item._id] ?? null}
                                         onAccept={(assignees) => handleAccept(item, assignees)}

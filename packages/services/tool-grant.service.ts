@@ -307,6 +307,7 @@ export type ListToolGrantsInput = {
     limit?: number;
     userId?: string;
     toolName?: string;
+    organizationId?: string;
     includeRevoked?: boolean;
 };
 
@@ -336,6 +337,9 @@ export async function listToolGrants(input: ListToolGrantsInput = {}): Promise<{
     }
     if (isValidObjectId(input.userId)) {
         query.userId = new Types.ObjectId(input.userId);
+    }
+    if (isValidObjectId(input.organizationId)) {
+        query.organizationId = new Types.ObjectId(input.organizationId);
     }
     if (input.toolName && isHighRiskToolName(input.toolName)) {
         query.toolName = input.toolName;

@@ -91,13 +91,13 @@ describe("TaskPanel deep links", () => {
         });
     });
 
-    it("highlights the ?task= card and links to /tasks and the suggestion", async () => {
+    it("highlights the ?task= card and links to /work and the suggestion", async () => {
         render(React.createElement(TaskPanel, { conversationId: "conv-1" }));
 
         const card = await screen.findByTestId("task-panel-card");
         expect(card).toHaveAttribute("data-highlighted", "true");
         expect(card).toHaveAttribute("id", "task-panel-card-task-1");
-        expect(screen.getByTestId("task-panel-task-link")).toHaveAttribute("href", "/tasks/task-1");
+        expect(screen.getByTestId("task-panel-task-link")).toHaveAttribute("href", "/work/task-1");
         expect(screen.getByTestId("task-panel-suggestion-link")).toHaveAttribute(
             "href",
             "/work-suggestions/sug-1"

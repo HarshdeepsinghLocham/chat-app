@@ -260,6 +260,8 @@ export function WorkDashboardView({ boardEnabled = false }: { boardEnabled?: boo
 
     const summary = summaryQuery.data;
     const attention = summary.attention;
+    const openCounts = summary.openWork.counts;
+    const awaitingApproval = summary.agingApprovals;
 
     return (
         <div className="space-y-6" data-testid="work-dashboard">
@@ -271,6 +273,28 @@ export function WorkDashboardView({ boardEnabled = false }: { boardEnabled?: boo
                 </p>
             </div>
 
+            <Card data-testid="work-dashboard-open-counts">
+                <CardHeader>
+                    <CardTitle className="text-base">Board</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <dl className="grid gap-3 sm:grid-cols-3 text-sm">
+                        <div>
+                            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Todo</dt>
+                            <dd className="text-lg font-semibold">{openCounts.todo}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Doing</dt>
+                            <dd className="text-lg font-semibold">{openCounts.doing}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Done</dt>
+                            <dd className="text-lg font-semibold">{openCounts.done}</dd>
+                        </div>
+                    </dl>
+                </CardContent>
+            </Card>
+
             {attention ? (
                 <Card data-testid="work-dashboard-attention-counts">
                     <CardHeader>
@@ -280,12 +304,12 @@ export function WorkDashboardView({ boardEnabled = false }: { boardEnabled?: boo
                         <dl className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6 text-sm">
                             {(
                                 [
-                                    ["Members", attention.counts.members],
                                     ["Open", attention.counts.open],
                                     ["Overdue", attention.counts.overdue],
                                     ["Blocked", attention.counts.blocked],
                                     ["Unassigned", attention.counts.unassigned],
-                                    ["Awaiting confirm", attention.counts.awaitingConfirmation],
+                                    ["Awaiting approval", awaitingApproval.pending],
+                                    ["Members", attention.counts.members],
                                 ] as const
                             ).map(([label, value]) => (
                                 <div key={label}>
@@ -310,6 +334,13 @@ export function WorkDashboardView({ boardEnabled = false }: { boardEnabled?: boo
                     >
                         <TaskAttentionRows rows={attention.overdue} boardEnabled={boardEnabled} />
                     </AttentionList>
+                    <ApprovalWidget
+                        title="Awaiting approval"
+                        description="Execution waiting for a manager decision."
+                        bucket={awaitingApproval}
+                        testId="work-dashboard-awaiting-approval"
+                        approvalsHref="/inbox/approvals"
+                    />
                     <AttentionList
                         title="Blocked"
                         empty="Nothing blocked."
@@ -327,29 +358,7 @@ export function WorkDashboardView({ boardEnabled = false }: { boardEnabled?: boo
                         <TaskAttentionRows rows={attention.unassigned} boardEnabled={boardEnabled} />
                     </AttentionList>
                     <AttentionList
-                        title="Awaiting confirmation"
-                        empty="No proposed suggestions waiting."
-                        testId="work-dashboard-awaiting"
-                        hasItems={attention.awaitingConfirmation.length > 0}
-                    >
-                        <SuggestionRows rows={attention.awaitingConfirmation} />
-                        <Button asChild variant="outline" size="sm" className="mt-2">
-                            <Link href="/inbox">Open suggestions inbox</Link>
-                        </Button>
-                    </AttentionList>
-                    <AttentionList
-                        title="Recently created"
-                        empty="No recent open work."
-                        testId="work-dashboard-recent"
-                        hasItems={attention.recentlyCreated.length > 0}
-                    >
-                        <TaskAttentionRows
-                            rows={attention.recentlyCreated}
-                            boardEnabled={boardEnabled}
-                        />
-                    </AttentionList>
-                    <AttentionList
-                        title="Work by owner"
+                        title="My work & team"
                         empty="No assigned open work yet."
                         testId="work-dashboard-by-owner"
                         hasItems={attention.byOwner.length > 0}
@@ -368,12 +377,34 @@ export function WorkDashboardView({ boardEnabled = false }: { boardEnabled?: boo
                             ))}
                         </ul>
                     </AttentionList>
+                    <AttentionList
+                        title="Recently created"
+                        empty="No recent open work."
+                        testId="work-dashboard-recent"
+                        hasItems={attention.recentlyCreated.length > 0}
+                    >
+                        <TaskAttentionRows
+                            rows={attention.recentlyCreated}
+                            boardEnabled={boardEnabled}
+                        />
+                    </AttentionList>
+                    <AttentionList
+                        title="Awaiting confirmation"
+                        empty="No proposed suggestions waiting."
+                        testId="work-dashboard-awaiting"
+                        hasItems={attention.awaitingConfirmation.length > 0}
+                    >
+                        <SuggestionRows rows={attention.awaitingConfirmation} />
+                        <Button asChild variant="outline" size="sm" className="mt-2">
+                            <Link href="/inbox">Open suggestions inbox</Link>
+                        </Button>
+                    </AttentionList>
                 </div>
             ) : null}
 
             <ApprovalWidget
                 title="Aging approvals"
-                description="Execution approvals waiting for a manager decision."
+                description="Execution approvals waiting longer than a day."
                 bucket={summary.agingApprovals}
                 testId="work-dashboard-aging-approvals"
                 approvalsHref="/inbox/approvals"

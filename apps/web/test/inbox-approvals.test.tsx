@@ -9,6 +9,14 @@ import type { TaskApprovalRecord } from "@/lib/utils/api";
 
 const getTaskApprovals = jest.fn();
 const decideTaskApproval = jest.fn();
+const listOrganizations = jest.fn();
+
+jest.mock("@/lib/utils/api", () => ({
+    ApiHttpError,
+    getTaskApprovals: (...args: unknown[]) => getTaskApprovals(...args),
+    decideTaskApproval: (...args: unknown[]) => decideTaskApproval(...args),
+    listOrganizations: (...args: unknown[]) => listOrganizations(...args),
+}));
 
 class ApiHttpError extends Error {
     status: number;
@@ -45,9 +53,9 @@ function buildApproval(overrides: Partial<TaskApprovalRecord> = {}): TaskApprova
         actorType: "agent",
         actorId: "actor-1",
         actionType: "send_email",
-        toolName: "email.send",
+        toolName: "send_email",
         messageId: null,
-        parameters: { to: "a@example.com" },
+        parameters: { to: ["a@example.com"], subject: "Welcome", body: "Hello" },
         executionState: "approval_pending",
         summary: "Send welcome email",
         error: null,
@@ -70,6 +78,8 @@ describe("InboxApprovalsView", () => {
     beforeEach(() => {
         getTaskApprovals.mockReset();
         decideTaskApproval.mockReset();
+        listOrganizations.mockReset();
+        listOrganizations.mockResolvedValue([]);
         window.localStorage.clear();
         window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
     });
@@ -99,7 +109,7 @@ describe("InboxApprovalsView", () => {
         });
     });
 
-    it("lists approvals and calls decideTaskApproval on Allow AI tools", async () => {
+    it("lists approvals and calls decideTaskApproval on Approve", async () => {
         getTaskApprovals.mockResolvedValue({ approvals: [buildApproval()] });
         decideTaskApproval.mockResolvedValue({ approval: buildApproval({ executionState: "approved" }) });
 
@@ -107,7 +117,8 @@ describe("InboxApprovalsView", () => {
 
         expect(await screen.findByTestId("inbox-approvals-list")).toBeInTheDocument();
         expect(screen.getByText("send_email")).toBeInTheDocument();
-        expect(screen.getByTestId("inbox-approvals-approve")).toHaveTextContent("Allow AI tools");
+        expect(screen.getByTestId("approval-email-preview")).toHaveTextContent("a@example.com");
+        expect(screen.getByTestId("inbox-approvals-approve")).toHaveTextContent("Approve");
 
         fireEvent.click(screen.getByTestId("inbox-approvals-approve"));
 
@@ -116,7 +127,7 @@ describe("InboxApprovalsView", () => {
                 expect.objectContaining({
                     taskActionId: "action-1",
                     decision: "approve",
-                    parameters: { to: "a@example.com" },
+                    parameters: { to: ["a@example.com"], subject: "Welcome", body: "Hello" },
                 })
             );
         });

@@ -118,7 +118,7 @@ describe("WorkBoardView", () => {
 
         expect(await screen.findByTestId("work-board-columns")).toBeInTheDocument();
         const title = screen.getByTestId("work-board-card-title");
-        expect(title).toHaveAttribute("href", "/tasks/task-1");
+        expect(title).toHaveAttribute("href", "/work/task-1");
         expect(title.tagName).toBe("A");
         expect(patchTaskApi).not.toHaveBeenCalled();
         fireEvent.click(screen.getByTestId("work-board-move-doing"));

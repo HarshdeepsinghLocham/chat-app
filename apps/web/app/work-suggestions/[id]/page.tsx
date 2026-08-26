@@ -12,10 +12,16 @@ import {
     requestTaskExecutionApi,
 } from "@/lib/utils/api";
 import { WorkSuggestionDetailView } from "@/components/work-suggestions/work-suggestion-detail";
+import { useUser } from "@/context/UserContext";
+import { useActiveOrganization } from "@/lib/hooks/useActiveOrganization";
+import { useOrganizationMembers } from "@/lib/queries/use-organizations";
+import type { OrgMemberOption } from "@/components/work-suggestions/work-inbox-triage";
 
 export default function WorkSuggestionDetailPage() {
     const params = useParams<{ id: string }>();
     const id = typeof params?.id === "string" ? params.id : "";
+    const { user } = useUser();
+    const { organizationId: activeOrgId } = useActiveOrganization();
 
     const [loading, setLoading] = useState(true);
     const [suggestion, setSuggestion] = useState<WorkSuggestionRecord | null>(null);
@@ -23,6 +29,14 @@ export default function WorkSuggestionDetailPage() {
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [actionPending, setActionPending] = useState(false);
     const [actionError, setActionError] = useState<string | null>(null);
+
+    const organizationId = suggestion?.organizationId ?? activeOrgId;
+    const membersQuery = useOrganizationMembers(organizationId);
+    const members: OrgMemberOption[] = (membersQuery.data ?? []).map((member) => ({
+        userId: member.userId,
+        role: member.role,
+        user: member.user ?? { id: member.userId, username: "Unknown user" },
+    }));
 
     useEffect(() => {
         if (!id) {
@@ -86,6 +100,9 @@ export default function WorkSuggestionDetailPage() {
             errorStatus={errorStatus}
             errorMessage={errorMessage}
             suggestion={suggestion}
+            organizationId={organizationId}
+            members={members}
+            currentUserId={user?._id ?? null}
             actionPending={actionPending}
             actionError={actionError}
             onAccept={async (input) => {

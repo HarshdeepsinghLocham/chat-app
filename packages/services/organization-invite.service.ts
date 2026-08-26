@@ -198,6 +198,37 @@ export async function revokeOrganizationInvitation(input: {
     await invite.save();
 }
 
+export async function resendOrganizationInvitation(input: {
+    organizationId: string;
+    actorUserId: string;
+    invitationId: string;
+}): Promise<OrganizationInvitationRecord> {
+    await assertCanManageMembers(input.organizationId, input.actorUserId);
+    await assertOrganizationActive(input.organizationId);
+    if (!isValidObjectId(input.invitationId)) {
+        throw new ValidationError("Invalid invitation id");
+    }
+
+    await connectToDatabase();
+    const invite = await OrganizationInvitationModel.findOne({
+        _id: new Types.ObjectId(input.invitationId),
+        organizationId: new Types.ObjectId(input.organizationId),
+    });
+    if (!invite) {
+        throw new AuthorizationError("NOT_FOUND", "Invitation not found");
+    }
+    if (invite.status !== "pending") {
+        throw new ValidationError("Only pending invitations can be resent");
+    }
+
+    invite.token = randomBytes(24).toString("hex");
+    invite.expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+    await invite.save();
+
+    const organizationName = await getOrganizationName(input.organizationId);
+    return serializeInvitation(invite.toObject() as InvitationLean, organizationName);
+}
+
 export async function getOrganizationInvitationByToken(
     token: string
 ): Promise<OrganizationInvitationRecord | null> {

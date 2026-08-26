@@ -8,6 +8,7 @@ import { requireTaskAccess } from "@/lib/utils/auth/requireConversationAccess";
 import { updateTask } from "@/lib/repositories/task.repo";
 import TaskModel from "@/models/Task";
 import { normalizeTask } from "@/server/normalizers/task.normalizer";
+import { enrichTaskForProduct } from "@semantask/services/task-product.service";
 import { enqueueOutboxEvent } from "@/lib/services/outbox.service";
 import {
     assertCanMutateCoordinationTask,
@@ -47,12 +48,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             const access = await requireTaskAccess(id, guard.user);
             if (access.response) return access.response;
 
-            const task = await TaskModel.findById(id).lean();
+            const task = await TaskModel.findById(id).exec();
             if (!task) {
                 return NextResponse.json({ error: "Task not found" }, { status: 404 });
             }
 
-            return NextResponse.json(normalizeTask(task as ITask), { status: 200 });
+            return NextResponse.json(await enrichTaskForProduct(task), { status: 200 });
         } catch (error) {
             console.error("GET /api/tasks/:id error", error);
             return NextResponse.json({ error: "Failed to load task" }, { status: 500 });

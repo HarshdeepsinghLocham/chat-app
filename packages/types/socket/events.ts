@@ -118,6 +118,14 @@ export interface ServerToClientEvents {
     [SocketEvents.TASK_LINKED_TO_MESSAGE]: (data: TaskLinkedToMessagePayload) => void;
     [SocketEvents.TASK_EXECUTION_UPDATED]: (data: TaskExecutionUpdatedPayload) => void;
     [SocketEvents.MESSAGE_SEMANTIC_UPDATED]: (data: MessageSemanticUpdatedPayload) => void;
+    [SocketEvents.USER_NOTIFICATION]: (data: {
+        kind: string;
+        subject: string;
+        text: string;
+        entityId?: string | null;
+        conversationId?: string | null;
+        dedupeKey?: string;
+    }) => void;
 
     // Typing
     [SocketEvents.TYPING_START]: (data: TypingPayload) => void;

@@ -18,6 +18,7 @@ export type WorkInboxTriageProps = {
     organizationId: string | null;
     members: OrgMemberOption[];
     displayedOwners: string[];
+    currentUserId?: string | null;
     actionPending: boolean;
     actionError: string | null;
     onAccept: (assignees: string[]) => void | Promise<void>;
@@ -25,13 +26,6 @@ export type WorkInboxTriageProps = {
     onDismiss: (reason: string) => void | Promise<void>;
     onAllowAiTools?: () => void | Promise<void>;
 };
-
-function parseAssigneeInput(value: string): string[] {
-    return value
-        .split(/[\s,]+/)
-        .map((part) => part.trim())
-        .filter((part) => part.length > 0);
-}
 
 function uniqueIds(ids: string[]): string[] {
     return Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
@@ -46,6 +40,7 @@ export function WorkInboxTriage({
     organizationId,
     members,
     displayedOwners,
+    currentUserId = null,
     actionPending,
     actionError,
     onAccept,
@@ -57,6 +52,7 @@ export function WorkInboxTriage({
     const isConverted = suggestion.status === "converted";
     const canAssign = isConverted;
     const canAcceptOrDismiss = isProposed;
+    const UNASSIGNED = "";
 
     const memberById = useMemo(() => {
         const map = new Map<string, OrgMemberOption>();
@@ -66,38 +62,42 @@ export function WorkInboxTriage({
         return map;
     }, [members]);
 
+    const selectableIds = useMemo(() => {
+        const ids = new Set<string>();
+        if (currentUserId) ids.add(currentUserId);
+        for (const member of members) ids.add(member.userId);
+        return ids;
+    }, [currentUserId, members]);
+
     const candidateDefaults = useMemo(
         () => uniqueIds(suggestion.candidates.assigneeCandidates ?? []),
         [suggestion.candidates.assigneeCandidates]
     );
 
+    function defaultOwner(from: string[]): string[] {
+        const seed = uniqueIds(from.length > 0 ? from : candidateDefaults);
+        const next = seed.find((id) => selectableIds.has(id));
+        return next ? [next] : [];
+    }
+
     const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>(() =>
-        uniqueIds(displayedOwners.length > 0 ? displayedOwners : candidateDefaults)
-    );
-    const [assigneesInput, setAssigneesInput] = useState(() =>
-        (displayedOwners.length > 0 ? displayedOwners : candidateDefaults).join(", ")
+        defaultOwner(displayedOwners)
     );
     const [dismissReason, setDismissReason] = useState("");
 
     useEffect(() => {
-        const next = uniqueIds(displayedOwners.length > 0 ? displayedOwners : candidateDefaults);
-        setSelectedMemberIds(next);
-        setAssigneesInput(next.join(", "));
-    }, [suggestion._id, displayedOwners, candidateDefaults]);
-
-    const useMemberSelect = Boolean(organizationId) && members.length > 0;
+        setSelectedMemberIds(defaultOwner(displayedOwners));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [suggestion._id, displayedOwners, selectableIds, candidateDefaults]);
 
     function resolveAssignees(): string[] {
-        if (useMemberSelect) {
-            return uniqueIds(selectedMemberIds);
-        }
-        return uniqueIds(parseAssigneeInput(assigneesInput));
+        return uniqueIds(selectedMemberIds).slice(0, 1);
     }
 
-    const currentOwners = displayedOwners.map((id) => {
-        const member = memberById.get(id);
-        return member?.user ?? { id, username: "Unknown user" };
-    });
+    const selectedOwnerId = selectedMemberIds[0] ?? UNASSIGNED;
+    const currentOwners = displayedOwners
+        .filter((id) => selectableIds.has(id) || memberById.has(id))
+        .map((id) => memberById.get(id)?.user ?? { id, username: "Unknown user" });
 
     return (
         <div className="space-y-3 border-t border-border pt-3" data-testid="work-inbox-triage">
@@ -108,37 +108,32 @@ export function WorkInboxTriage({
 
             <div className="space-y-2">
                 <Label htmlFor={`inbox-owner-${suggestion._id}`}>Owner</Label>
-                {useMemberSelect ? (
-                    <select
-                        id={`inbox-owner-${suggestion._id}`}
-                        data-testid="suggestion-assignees"
-                        className="flex min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        multiple
-                        value={selectedMemberIds}
-                        disabled={actionPending || (!canAcceptOrDismiss && !canAssign)}
-                        onChange={(event) => {
-                            const values = Array.from(event.target.selectedOptions).map(
-                                (option) => option.value
-                            );
-                            setSelectedMemberIds(uniqueIds(values));
-                        }}
-                    >
-                        {members.map((member) => (
+                <select
+                    id={`inbox-owner-${suggestion._id}`}
+                    data-testid="suggestion-assignees"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={selectedOwnerId}
+                    disabled={actionPending || (!canAcceptOrDismiss && !canAssign)}
+                    onChange={(event) => {
+                        const value = event.target.value;
+                        setSelectedMemberIds(value ? [value] : []);
+                    }}
+                >
+                    <option value={UNASSIGNED}>Unassigned</option>
+                    {currentUserId ? <option value={currentUserId}>Me</option> : null}
+                    {members
+                        .filter((member) => member.userId !== currentUserId)
+                        .map((member) => (
                             <option key={member.userId} value={member.userId}>
                                 {memberLabel(member)}
                             </option>
                         ))}
-                    </select>
-                ) : (
-                    <Input
-                        id={`inbox-owner-${suggestion._id}`}
-                        data-testid="suggestion-assignees"
-                        value={assigneesInput}
-                        onChange={(event) => setAssigneesInput(event.target.value)}
-                        placeholder="Comma-separated usernames or user ids"
-                        disabled={actionPending || (!canAcceptOrDismiss && !canAssign)}
-                    />
-                )}
+                </select>
+                {!organizationId && !currentUserId ? (
+                    <p className="text-xs text-muted-foreground">
+                        Personal workspace: Me or Unassigned only.
+                    </p>
+                ) : null}
                 {currentOwners.length > 0 ? (
                     <div
                         className="flex flex-wrap gap-2 text-xs text-muted-foreground"
@@ -177,13 +172,13 @@ export function WorkInboxTriage({
                     disabled={actionPending || !canAcceptOrDismiss}
                     onClick={() => void onAccept(resolveAssignees())}
                 >
-                    Accept
+                    Accept & assign
                 </Button>
                 <Button
                     data-testid="suggestion-assign"
                     size="sm"
                     variant="outline"
-                    disabled={actionPending || !canAssign || resolveAssignees().length === 0}
+                    disabled={actionPending || !canAssign}
                     title={canAssign ? "Update converted task owner" : "Accept first"}
                     onClick={() => void onAssign(resolveAssignees())}
                 >

@@ -28,6 +28,8 @@ export interface WorkSuggestionRecord {
     _id: string;
     messageId: string;
     conversationId: string;
+    /** Human-readable conversation title when enriched for product UI. */
+    conversationLabel?: string | null;
     organizationId: string | null;
     intentId: string | null;
     status: WorkSuggestionStatus;

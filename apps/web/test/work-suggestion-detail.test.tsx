@@ -99,7 +99,7 @@ describe("WorkSuggestionDetailView", () => {
         expect(detail).toHaveTextContent("Send welcome email");
         expect(detail).toHaveTextContent("Follow up with the new hire");
         expect(detail).toHaveTextContent("88%");
-        expect(detail).toHaveTextContent("msg-1");
+        expect(screen.getByTestId("source-message-link")).toHaveTextContent("Open source message");
         expect(screen.getByTestId("source-message-link")).toHaveAttribute(
             "href",
             "/c/conv-1?msg=msg-1"
@@ -125,7 +125,7 @@ describe("WorkSuggestionDetailView", () => {
                 })}
             />
         );
-        expect(screen.getByTestId("converted-task-id")).toHaveTextContent("task-1");
+        expect(screen.getByTestId("converted-task-id")).toHaveTextContent("Open converted task");
         expect(screen.getByTestId("converted-task-link")).toHaveAttribute("href", "/tasks/task-1");
         expect(screen.getByTestId("suggestion-assign")).toBeInTheDocument();
         expect(screen.queryByTestId("suggestion-accept")).not.toBeInTheDocument();

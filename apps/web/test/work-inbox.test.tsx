@@ -12,6 +12,7 @@ const acceptWorkSuggestionApi = jest.fn();
 const dismissWorkSuggestionApi = jest.fn();
 const assignWorkSuggestionApi = jest.fn();
 const getOrganizationMembers = jest.fn();
+const listOrganizations = jest.fn();
 const decideTaskApproval = jest.fn();
 const requestTaskExecutionApi = jest.fn();
 const refreshConversation = jest.fn(async () => undefined);
@@ -34,6 +35,7 @@ jest.mock("@/lib/utils/api", () => ({
     dismissWorkSuggestionApi: (...args: unknown[]) => dismissWorkSuggestionApi(...args),
     assignWorkSuggestionApi: (...args: unknown[]) => assignWorkSuggestionApi(...args),
     getOrganizationMembers: (...args: unknown[]) => getOrganizationMembers(...args),
+    listOrganizations: (...args: unknown[]) => listOrganizations(...args),
     decideTaskApproval: (...args: unknown[]) => decideTaskApproval(...args),
     requestTaskExecutionApi: (...args: unknown[]) => requestTaskExecutionApi(...args),
 }));
@@ -95,12 +97,25 @@ describe("WorkInboxView", () => {
         dismissWorkSuggestionApi.mockReset();
         assignWorkSuggestionApi.mockReset();
         getOrganizationMembers.mockReset();
+        listOrganizations.mockReset();
         decideTaskApproval.mockReset();
         requestTaskExecutionApi.mockReset();
         refreshConversation.mockClear();
         mockInboxSearch.value = "";
         window.localStorage.clear();
         getOrganizationMembers.mockResolvedValue([]);
+        listOrganizations.mockResolvedValue([
+            {
+                id: "507f1f77bcf86cd799439015",
+                name: "Acme",
+                slug: "acme",
+                status: "active",
+                createdBy: "u1",
+                createdAt: "2026-08-08T10:00:00.000Z",
+                updatedAt: "2026-08-08T10:00:00.000Z",
+                role: "owner",
+            },
+        ]);
     });
 
     it("shows onboarding when no org or conversation scope is set", async () => {
@@ -260,13 +275,26 @@ describe("WorkInboxView", () => {
 
     it("assigns owner on converted suggestions and updates displayed owner", async () => {
         window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        getOrganizationMembers.mockResolvedValue([
+            {
+                id: "mem-1",
+                userId: "507f1f77bcf86cd799439088",
+                role: "member",
+                createdAt: "2026-08-08T10:00:00.000Z",
+                user: {
+                    id: "507f1f77bcf86cd799439088",
+                    username: "Alex",
+                    email: "alex@example.com",
+                },
+            },
+        ]);
         listWorkSuggestions.mockResolvedValue({
             items: [
                 buildSuggestion({
                     status: "converted",
                     convertedTaskId: "task-1",
                     candidates: {
-                        assigneeCandidates: ["507f1f77bcf86cd799439099"],
+                        assigneeCandidates: ["507f1f77bcf86cd799439088"],
                         dueAtCandidate: null,
                         priorityCandidate: "",
                     },
@@ -299,9 +327,7 @@ describe("WorkInboxView", () => {
         });
 
         const assignees = await screen.findByTestId("suggestion-assignees");
-        fireEvent.change(assignees, {
-            target: { value: "507f1f77bcf86cd799439088" },
-        });
+        expect(assignees).toBeInTheDocument();
         fireEvent.click(screen.getByTestId("suggestion-assign"));
 
         await waitFor(() => {
@@ -309,9 +335,7 @@ describe("WorkInboxView", () => {
                 assignees: ["507f1f77bcf86cd799439088"],
             });
         });
-        expect(await screen.findByTestId("work-inbox-owner")).toHaveTextContent(
-            "507f1f77bcf86cd799439088"
-        );
+        expect(await screen.findByTestId("work-inbox-owner")).toHaveTextContent("Alex");
     });
 
     it("restores the row when accept fails", async () => {

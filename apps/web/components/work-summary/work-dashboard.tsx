@@ -1,27 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import type { WorkSummary, WorkSummaryApprovalRow, WorkSummaryOpenTaskRow } from "@semantask/types";
+import type { ReactNode } from "react";
+import type {
+    WorkSummary,
+    WorkSummaryApprovalRow,
+    WorkSummaryOpenTaskRow,
+    WorkSummarySuggestionRow,
+} from "@semantask/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useActiveOrganizationId } from "@/lib/hooks/useActiveOrganizationId";
+import { UserChip } from "@/components/people/user-chip";
+import { useActiveOrganization } from "@/lib/hooks/useActiveOrganization";
 import {
     mutationErrorMessage,
     useOrganizationWorkSummary,
 } from "@/lib/queries/use-work-summary";
 import { boardTaskHref, taskHref } from "@/lib/work-links";
+import { reviewSuggestionHref } from "@/lib/work-suggestions/map";
 
 function formatTimestamp(iso: string) {
     const value = new Date(iso);
     if (Number.isNaN(value.getTime())) return "-";
     return value.toLocaleString();
-}
-
-function formatAgeMs(ms: number) {
-    const hours = Math.round(ms / (60 * 60 * 1000));
-    if (hours < 48) return `${hours}h`;
-    const days = Math.round(hours / 24);
-    return `${days}d`;
 }
 
 function formatDue(iso: string | null) {
@@ -31,79 +32,100 @@ function formatDue(iso: string | null) {
     return value.toLocaleDateString();
 }
 
-function OpenWorkWidget({
-    summary,
-    boardEnabled,
+function AttentionList({
+    title,
+    empty,
+    testId,
+    hasItems,
+    children,
 }: {
-    summary: WorkSummary["openWork"];
-    boardEnabled: boolean;
+    title: string;
+    empty: string;
+    testId: string;
+    hasItems: boolean;
+    children: ReactNode;
 }) {
     return (
-        <Card data-testid="work-dashboard-open-work">
+        <Card data-testid={testId}>
             <CardHeader>
-                <CardTitle className="text-base">Open coordination work</CardTitle>
+                <CardTitle className="text-base">{title}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4 text-sm">
-                <dl className="grid gap-3 sm:grid-cols-4">
-                    <div>
-                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">Todo</dt>
-                        <dd className="text-lg font-semibold">{summary.counts.todo}</dd>
-                    </div>
-                    <div>
-                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">Doing</dt>
-                        <dd className="text-lg font-semibold">{summary.counts.doing}</dd>
-                    </div>
-                    <div>
-                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">Done</dt>
-                        <dd className="text-lg font-semibold">{summary.counts.done}</dd>
-                    </div>
-                    <div>
-                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">Overdue</dt>
-                        <dd className="text-lg font-semibold">{summary.overdue}</dd>
-                    </div>
-                </dl>
-                {summary.openAgeMs ? (
-                    <p className="text-muted-foreground">
-                        Open age p50 {formatAgeMs(summary.openAgeMs.p50)} · p95{" "}
-                        {formatAgeMs(summary.openAgeMs.p95)}
-                    </p>
-                ) : (
-                    <p className="text-muted-foreground">No open coordination tasks yet.</p>
-                )}
-                {summary.oldest.length > 0 ? (
-                    <ul className="space-y-2" data-testid="work-dashboard-open-work-list">
-                        {summary.oldest.map((task: WorkSummaryOpenTaskRow) => (
-                            <li
-                                key={task._id}
-                                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
-                            >
-                                <div className="min-w-0">
-                                    <Link
-                                        href={taskHref(task._id)}
-                                        className="font-medium hover:underline"
-                                        data-testid="work-dashboard-open-task-link"
-                                    >
-                                        {task.title}
-                                    </Link>
-                                    <p className="text-xs text-muted-foreground">
-                                        {task.boardStatus} · due {formatDue(task.dueAt)}
-                                    </p>
-                                </div>
-                                {boardEnabled ? (
-                                    <Link
-                                        href={boardTaskHref(task._id)}
-                                        className="text-xs underline underline-offset-2"
-                                        data-testid="work-dashboard-board-link"
-                                    >
-                                        Board
-                                    </Link>
-                                ) : null}
-                            </li>
-                        ))}
-                    </ul>
-                ) : null}
+            <CardContent className="space-y-3 text-sm">
+                {hasItems ? children : <p className="text-muted-foreground">{empty}</p>}
             </CardContent>
         </Card>
+    );
+}
+
+function TaskAttentionRows({
+    rows,
+    boardEnabled,
+}: {
+    rows: WorkSummaryOpenTaskRow[];
+    boardEnabled: boolean;
+}) {
+    if (rows.length === 0) return null;
+    return (
+        <ul className="space-y-2">
+            {rows.map((task) => (
+                <li
+                    key={task._id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                >
+                    <div className="min-w-0">
+                        <Link href={taskHref(task._id)} className="font-medium hover:underline">
+                            {task.title}
+                        </Link>
+                        <p className="text-xs text-muted-foreground">
+                            {task.boardStatus} · due {formatDue(task.dueAt)}
+                            {task.conversationLabel ? ` · ${task.conversationLabel}` : ""}
+                        </p>
+                        {(task.assigneeRefs ?? []).length > 0 ? (
+                            <div className="mt-1 flex flex-wrap gap-2">
+                                {(task.assigneeRefs ?? []).map((user) => (
+                                    <UserChip key={user.id} user={user} size={18} />
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+                    {boardEnabled ? (
+                        <Link
+                            href={boardTaskHref(task._id)}
+                            className="text-xs underline underline-offset-2"
+                        >
+                            Board
+                        </Link>
+                    ) : null}
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+function SuggestionRows({ rows }: { rows: WorkSummarySuggestionRow[] }) {
+    if (rows.length === 0) return null;
+    return (
+        <ul className="space-y-2">
+            {rows.map((item) => (
+                <li
+                    key={item._id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                >
+                    <div className="min-w-0">
+                        <Link
+                            href={reviewSuggestionHref(item._id) ?? `/inbox?suggestion=${item._id}`}
+                            className="font-medium hover:underline"
+                        >
+                            {item.title}
+                        </Link>
+                        <p className="text-xs text-muted-foreground">
+                            {item.conversationLabel || "Conversation"} ·{" "}
+                            {formatTimestamp(item.createdAt)}
+                        </p>
+                    </div>
+                </li>
+            ))}
+        </ul>
     );
 }
 
@@ -158,9 +180,8 @@ function ApprovalWidget({
                                     <Link
                                         href={taskHref(item.taskId)}
                                         className="text-xs underline underline-offset-2"
-                                        data-testid="work-dashboard-approval-task-link"
                                     >
-                                        Task
+                                        Open task
                                     </Link>
                                 </div>
                             </li>
@@ -170,9 +191,7 @@ function ApprovalWidget({
                     <p className="text-muted-foreground">Nothing waiting right now.</p>
                 )}
                 <Button asChild variant="outline" size="sm">
-                    <Link href={approvalsHref} data-testid="work-dashboard-approvals-link">
-                        Open approvals inbox
-                    </Link>
+                    <Link href={approvalsHref}>Open approvals</Link>
                 </Button>
             </CardContent>
         </Card>
@@ -180,7 +199,7 @@ function ApprovalWidget({
 }
 
 export function WorkDashboardView({ boardEnabled = false }: { boardEnabled?: boolean }) {
-    const organizationId = useActiveOrganizationId();
+    const { organizationId, organization } = useActiveOrganization();
     const summaryQuery = useOrganizationWorkSummary(organizationId);
 
     const error = summaryQuery.error
@@ -193,8 +212,8 @@ export function WorkDashboardView({ boardEnabled = false }: { boardEnabled?: boo
                 <CardContent className="space-y-3 p-6 text-sm">
                     <p className="font-medium">Choose an organization to load the dashboard</p>
                     <p className="text-muted-foreground">
-                        The coordination dashboard summarizes open work and pending approvals for your
-                        active organization.
+                        See what needs attention across your team — overdue, blocked, unassigned, and
+                        awaiting confirmation.
                     </p>
                     <Button asChild variant="outline">
                         <Link href="/organizations">Open organizations</Link>
@@ -240,21 +259,117 @@ export function WorkDashboardView({ boardEnabled = false }: { boardEnabled?: boo
     }
 
     const summary = summaryQuery.data;
+    const attention = summary.attention;
 
     return (
         <div className="space-y-6" data-testid="work-dashboard">
             <div>
-                <h1 className="text-2xl font-bold">Coordination dashboard</h1>
+                <h1 className="text-2xl font-bold">What needs attention</h1>
                 <p className="text-sm text-muted-foreground">
-                    Read-only org glance at open coordination work and pending approvals. Run status
-                    stays on the conversation panel.
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                    Updated {formatTimestamp(summary.generatedAt)}
+                    {organization?.name ?? "Organization"} · updated{" "}
+                    {formatTimestamp(summary.generatedAt)}
                 </p>
             </div>
 
-            <OpenWorkWidget summary={summary.openWork} boardEnabled={boardEnabled} />
+            {attention ? (
+                <Card data-testid="work-dashboard-attention-counts">
+                    <CardHeader>
+                        <CardTitle className="text-base">At a glance</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <dl className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6 text-sm">
+                            {(
+                                [
+                                    ["Members", attention.counts.members],
+                                    ["Open", attention.counts.open],
+                                    ["Overdue", attention.counts.overdue],
+                                    ["Blocked", attention.counts.blocked],
+                                    ["Unassigned", attention.counts.unassigned],
+                                    ["Awaiting confirm", attention.counts.awaitingConfirmation],
+                                ] as const
+                            ).map(([label, value]) => (
+                                <div key={label}>
+                                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                                        {label}
+                                    </dt>
+                                    <dd className="text-lg font-semibold">{value}</dd>
+                                </div>
+                            ))}
+                        </dl>
+                    </CardContent>
+                </Card>
+            ) : null}
+
+            {attention ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                    <AttentionList
+                        title="Overdue"
+                        empty="No overdue work."
+                        testId="work-dashboard-overdue"
+                        hasItems={attention.overdue.length > 0}
+                    >
+                        <TaskAttentionRows rows={attention.overdue} boardEnabled={boardEnabled} />
+                    </AttentionList>
+                    <AttentionList
+                        title="Blocked"
+                        empty="Nothing blocked."
+                        testId="work-dashboard-blocked"
+                        hasItems={attention.blocked.length > 0}
+                    >
+                        <TaskAttentionRows rows={attention.blocked} boardEnabled={boardEnabled} />
+                    </AttentionList>
+                    <AttentionList
+                        title="Unassigned"
+                        empty="All open work has an owner."
+                        testId="work-dashboard-unassigned"
+                        hasItems={attention.unassigned.length > 0}
+                    >
+                        <TaskAttentionRows rows={attention.unassigned} boardEnabled={boardEnabled} />
+                    </AttentionList>
+                    <AttentionList
+                        title="Awaiting confirmation"
+                        empty="No proposed suggestions waiting."
+                        testId="work-dashboard-awaiting"
+                        hasItems={attention.awaitingConfirmation.length > 0}
+                    >
+                        <SuggestionRows rows={attention.awaitingConfirmation} />
+                        <Button asChild variant="outline" size="sm" className="mt-2">
+                            <Link href="/inbox">Open suggestions inbox</Link>
+                        </Button>
+                    </AttentionList>
+                    <AttentionList
+                        title="Recently created"
+                        empty="No recent open work."
+                        testId="work-dashboard-recent"
+                        hasItems={attention.recentlyCreated.length > 0}
+                    >
+                        <TaskAttentionRows
+                            rows={attention.recentlyCreated}
+                            boardEnabled={boardEnabled}
+                        />
+                    </AttentionList>
+                    <AttentionList
+                        title="Work by owner"
+                        empty="No assigned open work yet."
+                        testId="work-dashboard-by-owner"
+                        hasItems={attention.byOwner.length > 0}
+                    >
+                        <ul className="space-y-2">
+                            {attention.byOwner.map((bucket) => (
+                                <li
+                                    key={bucket.user.id}
+                                    className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                                >
+                                    <UserChip user={bucket.user} size={22} />
+                                    <span className="text-sm font-semibold">
+                                        {bucket.openCount} open
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    </AttentionList>
+                </div>
+            ) : null}
 
             <ApprovalWidget
                 title="Aging approvals"

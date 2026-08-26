@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { type TaskApprovalRecord } from "@/lib/utils/api";
-import { useActiveOrganizationId } from "@/lib/hooks/useActiveOrganizationId";
+import { useActiveOrganization } from "@/lib/hooks/useActiveOrganization";
 import {
     taskApprovalsErrorMessage,
     useDecideTaskApproval,
     useTaskApprovalsList,
 } from "@/lib/queries/use-task-approvals";
+import { conversationMessageHref, taskHref } from "@/lib/work-links";
 
 function formatTimestamp(iso: string) {
     const value = new Date(iso);
@@ -38,7 +39,7 @@ function getPolicySummary(item: TaskApprovalRecord) {
 }
 
 export function InboxApprovalsView() {
-    const organizationId = useActiveOrganizationId();
+    const { organizationId, organization } = useActiveOrganization();
     const [conversationId, setConversationId] = useState("");
     const [actingId, setActingId] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
@@ -142,6 +143,12 @@ export function InboxApprovalsView() {
                         Review tool actions waiting for human approval. This is separate from accepting a
                         work suggestion — approving here can resume tool execution.
                     </p>
+                    {organizationId ? (
+                        <p className="mt-1 text-sm" data-testid="inbox-approvals-org-name">
+                            Organization{" "}
+                            <span className="font-medium">{organization?.name ?? "Organization"}</span>
+                        </p>
+                    ) : null}
                 </div>
                 <Button asChild variant="outline">
                     <Link href="/">Back to chat</Link>
@@ -155,7 +162,7 @@ export function InboxApprovalsView() {
                 <CardContent>
                     <div className="flex flex-col gap-3 md:flex-row md:items-end">
                         <div className="w-full space-y-2">
-                            <Label htmlFor="inbox-approvals-conversation">Conversation id</Label>
+                            <Label htmlFor="inbox-approvals-conversation">Conversation</Label>
                             <Input
                                 id="inbox-approvals-conversation"
                                 data-testid="inbox-approvals-conversation"
@@ -233,10 +240,21 @@ export function InboxApprovalsView() {
                                     <div className="space-y-1">
                                         <CardTitle className="text-base">{item.actionType}</CardTitle>
                                         <p className="text-xs text-muted-foreground">
-                                            Tool {item.toolName || "—"} · Task {item.taskId}
+                                            Tool {item.toolName || "—"} ·{" "}
+                                            <Link
+                                                href={taskHref(item.taskId)}
+                                                className="underline underline-offset-2 hover:opacity-80"
+                                            >
+                                                Open task
+                                            </Link>
                                         </p>
                                         <p className="text-xs text-muted-foreground">
-                                            Conversation {item.conversationId}
+                                            <Link
+                                                href={conversationMessageHref(item.conversationId)}
+                                                className="underline underline-offset-2 hover:opacity-80"
+                                            >
+                                                Open conversation
+                                            </Link>
                                         </p>
                                         <p className="text-xs text-muted-foreground">
                                             Requested {formatTimestamp(item.createdAt)}

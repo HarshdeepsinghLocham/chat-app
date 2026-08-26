@@ -62,6 +62,7 @@ export const SocketEvents = {
     TASK_LINKED_TO_MESSAGE: "task:linked_to_message",
     TASK_EXECUTION_UPDATED: "task:execution_updated",
     MESSAGE_SEMANTIC_UPDATED: "message:semantic_updated",
+    USER_NOTIFICATION: "user:notification",
     TYPING_START: "typing:start",
     TYPING_STOP: "typing:stop",
     USER_ONLINE: "user:online",

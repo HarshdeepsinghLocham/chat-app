@@ -32,10 +32,39 @@ jest.mock("@semantask/db/models/Conversation", () => ({
     },
 }));
 
+const suggestionCount = jest.fn();
+const suggestionFind = jest.fn();
+
+jest.mock("@semantask/db/models/WorkSuggestion", () => ({
+    __esModule: true,
+    default: {
+        countDocuments: (...args: unknown[]) => suggestionCount(...args),
+        find: (...args: unknown[]) => suggestionFind(...args),
+    },
+}));
+
+const membershipCount = jest.fn();
+
+jest.mock("@semantask/db/models/OrganizationMembership", () => ({
+    __esModule: true,
+    default: {
+        countDocuments: (...args: unknown[]) => membershipCount(...args),
+    },
+}));
+
 jest.mock("@semantask/db/models/ToolGrant", () => ({
     HIGH_RISK_TOOLS: ["send_email", "schedule_meeting", "create_github_issue"],
     isHighRiskToolName: (value: string) =>
         ["send_email", "schedule_meeting", "create_github_issue"].includes(value),
+}));
+
+jest.mock("../conversation-label.service", () => ({
+    resolveConversationLabels: jest.fn(async () => new Map()),
+}));
+
+jest.mock("../user-ref.service", () => ({
+    resolveUserRefs: jest.fn(async () => new Map()),
+    userRefOrFallback: (userId: string) => ({ id: userId, username: "Unknown user" }),
 }));
 
 import {
@@ -62,8 +91,11 @@ describe("getOrganizationWorkSummary", () => {
     beforeEach(() => {
         jest.clearAllMocks();
         countDocuments.mockResolvedValue(0);
+        membershipCount.mockResolvedValue(0);
+        suggestionCount.mockResolvedValue(0);
         conversationFind.mockReturnValue(mockFindChain([]));
         taskActionFind.mockReturnValue(mockFindChain([]));
+        suggestionFind.mockReturnValue(mockFindChain([]));
         find.mockReturnValue(mockFindChain([]));
     });
 
@@ -79,6 +111,7 @@ describe("getOrganizationWorkSummary", () => {
         expect(summary.openWork.openAgeMs).toBeNull();
         expect(summary.agingApprovals).toEqual({ pending: 0, aging: 0, oldest: [] });
         expect(summary.highRiskPending).toEqual({ pending: 0, aging: 0, oldest: [] });
+        expect(summary.attention?.counts.awaitingConfirmation).toBe(0);
         expect(taskActionFind).not.toHaveBeenCalled();
     });
 
@@ -95,7 +128,7 @@ describe("getOrganizationWorkSummary", () => {
 
         expect(summary.openWork.counts).toEqual({ todo: 2, doing: 1, done: 3 });
         expect(summary.openWork.overdue).toBe(1);
-        expect(countDocuments).toHaveBeenCalledTimes(4);
+        expect(countDocuments).toHaveBeenCalledTimes(6);
     });
 
     it("computes aging approvals and high-risk pending subsets", async () => {
@@ -148,6 +181,7 @@ describe("getOrganizationWorkSummary", () => {
                         conversationId,
                         createdAt,
                         dueAt: null,
+                        assignees: [],
                     },
                 ])
             );

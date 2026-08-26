@@ -176,13 +176,13 @@ export function WorkSuggestionDetailView({
                         </div>
                         <div>
                             <dt className="text-xs uppercase tracking-wide text-muted-foreground">Source message</dt>
-                            <dd className="font-mono text-xs break-all">
+                            <dd>
                                 <Link
                                     href={conversationMessageHref(suggestion.conversationId, suggestion.messageId)}
-                                    className="underline underline-offset-2 hover:opacity-80"
+                                    className="font-medium underline underline-offset-2 hover:opacity-80"
                                     data-testid="source-message-link"
                                 >
-                                    {suggestion.messageId}
+                                    {suggestion.conversationLabel?.trim() || "Open source message"}
                                 </Link>
                             </dd>
                         </div>
@@ -204,7 +204,7 @@ export function WorkSuggestionDetailView({
                             </dt>
                             <dd className="font-medium">
                                 {assigneeCount > 0
-                                    ? candidates.assigneeCandidates.join(", ")
+                                    ? `${assigneeCount} candidate${assigneeCount === 1 ? "" : "s"}`
                                     : "—"}
                             </dd>
                         </div>
@@ -213,13 +213,13 @@ export function WorkSuggestionDetailView({
                                 <dt className="text-xs uppercase tracking-wide text-muted-foreground">
                                     Converted task
                                 </dt>
-                                <dd className="font-mono text-xs break-all" data-testid="converted-task-id">
+                                <dd data-testid="converted-task-id">
                                     <Link
                                         href={taskHref(suggestion.convertedTaskId)}
-                                        className="underline underline-offset-2 hover:opacity-80"
+                                        className="font-medium underline underline-offset-2 hover:opacity-80"
                                         data-testid="converted-task-link"
                                     >
-                                        {suggestion.convertedTaskId}
+                                        Open converted task
                                     </Link>
                                 </dd>
                             </div>
@@ -246,13 +246,13 @@ export function WorkSuggestionDetailView({
                     <CardContent className="space-y-4">
                         <div className="grid gap-3 sm:grid-cols-2">
                             <div className="space-y-2 sm:col-span-2">
-                                <Label htmlFor="suggestion-assignees">Assignees (user ids)</Label>
+                                <Label htmlFor="suggestion-assignees">Assignees</Label>
                                 <Input
                                     id="suggestion-assignees"
                                     data-testid="suggestion-assignees"
                                     value={assigneesInput}
                                     onChange={(event) => setAssigneesInput(event.target.value)}
-                                    placeholder="Optional comma-separated user ids"
+                                    placeholder="Optional comma-separated owners"
                                     disabled={actionPending}
                                 />
                             </div>

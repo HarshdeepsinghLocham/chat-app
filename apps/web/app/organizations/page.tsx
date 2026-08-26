@@ -5,13 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-    useAddOrganizationMember,
     useCreateOrganization,
+    useCreateOrganizationInvitation,
+    useOrganizationInvitations,
     useOrganizationMembers,
     useOrganizationsList,
+    useRevokeOrganizationInvitation,
     useUpdateOrganizationPolicy,
     useUpdateOrganizationQuota,
 } from "@/lib/queries/use-organizations";
+import { UserChip } from "@/components/people/user-chip";
 
 const STORAGE_KEY = "semantask.activeOrganizationId";
 
@@ -19,17 +22,20 @@ export default function OrganizationsPage() {
     const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
     const [name, setName] = useState("");
     const [slug, setSlug] = useState("");
-    const [memberUserId, setMemberUserId] = useState("");
+    const [inviteEmail, setInviteEmail] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState<string | null>(null);
 
     const orgsQuery = useOrganizationsList();
     const membersQuery = useOrganizationMembers(activeOrgId);
+    const invitationsQuery = useOrganizationInvitations(activeOrgId);
     const createMutation = useCreateOrganization();
-    const addMemberMutation = useAddOrganizationMember(activeOrgId);
+    const inviteMutation = useCreateOrganizationInvitation(activeOrgId);
+    const revokeMutation = useRevokeOrganizationInvitation(activeOrgId);
 
     const orgs = orgsQuery.data ?? [];
     const members = membersQuery.data ?? [];
+    const invitations = invitationsQuery.data ?? [];
     const loading = orgsQuery.isLoading;
 
     useEffect(() => {
@@ -74,9 +80,10 @@ export default function OrganizationsPage() {
                 localStorage.removeItem(STORAGE_KEY);
             }
         }
+        const selected = orgs.find((org) => org.id === id);
         setStatus(
             id
-                ? `Active organization set. API calls can send X-Organization-Id: ${id}`
+                ? `Active organization: ${selected?.name ?? "Organization"}`
                 : "Personal workspace selected."
         );
     }
@@ -98,17 +105,36 @@ export default function OrganizationsPage() {
         }
     }
 
-    async function handleAddMember() {
+    async function handleInvite() {
         if (!activeOrgId) return;
         setError(null);
         try {
-            await addMemberMutation.mutateAsync({ userId: memberUserId.trim() });
-            setMemberUserId("");
-            setStatus("Member added.");
-        } catch (addError) {
-            setError(addError instanceof Error ? addError.message : "Failed to add member");
+            const invitation = await inviteMutation.mutateAsync({ email: inviteEmail.trim() });
+            setInviteEmail("");
+            if (invitation.emailSent) {
+                setStatus(`Invite sent to ${invitation.email}`);
+            } else if (invitation.inviteUrl) {
+                setStatus(`Invite created for ${invitation.email}. Share link: ${invitation.inviteUrl}`);
+            } else {
+                setStatus(`Invite created for ${invitation.email}`);
+            }
+        } catch (inviteError) {
+            setError(inviteError instanceof Error ? inviteError.message : "Failed to invite");
         }
     }
+
+    async function handleRevoke(invitationId: string) {
+        setError(null);
+        try {
+            await revokeMutation.mutateAsync(invitationId);
+            setStatus("Invitation revoked.");
+        } catch (revokeError) {
+            setError(revokeError instanceof Error ? revokeError.message : "Failed to revoke");
+        }
+    }
+
+    const pendingInvites = invitations.filter((invite) => invite.status === "pending");
+    const acceptedInvites = invitations.filter((invite) => invite.status === "accepted");
 
     return (
         <div className="mx-auto max-w-3xl space-y-6 p-6" data-testid="organizations-page">
@@ -118,11 +144,11 @@ export default function OrganizationsPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <p className="text-sm text-muted-foreground">
-                        Personal workspace is the default (no header). Select an organization to scope
-                        conversations via <code>X-Organization-Id</code>.
+                        Create a workspace, invite teammates by email, and keep your active organization
+                        selected for inbox and board.
                     </p>
                     {error ? <p className="text-sm text-red-600">{error}</p> : null}
-                    {status ? <p className="text-sm text-green-700">{status}</p> : null}
+                    {status ? <p className="text-sm text-green-700 break-all">{status}</p> : null}
 
                     <div className="flex flex-wrap gap-2">
                         <Button
@@ -153,7 +179,7 @@ export default function OrganizationsPage() {
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3 sm:flex-row">
                     <Input
-                        placeholder="Name"
+                        placeholder="Organization name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         data-testid="organization-name"
@@ -177,30 +203,87 @@ export default function OrganizationsPage() {
             {activeOrgId ? (
                 <Card>
                     <CardHeader>
-                        <CardTitle>Members</CardTitle>
+                        <CardTitle>Team</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-3">
-                        <ul className="space-y-1 text-sm" data-testid="organization-members">
-                            {members.map((member) => (
-                                <li key={member.id}>
-                                    {member.userId} — {member.role}
-                                </li>
-                            ))}
-                        </ul>
-                        <div className="flex gap-2">
-                            <Input
-                                placeholder="User ID"
-                                value={memberUserId}
-                                onChange={(e) => setMemberUserId(e.target.value)}
-                                data-testid="organization-member-user-id"
-                            />
-                            <Button
-                                onClick={() => void handleAddMember()}
-                                disabled={!memberUserId.trim() || addMemberMutation.isPending}
-                                data-testid="organization-add-member"
-                            >
-                                Add member
-                            </Button>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <p className="text-sm font-medium">Members</p>
+                            <ul className="space-y-2 text-sm" data-testid="organization-members">
+                                {members.map((member) => (
+                                    <li key={member.id} className="flex flex-wrap items-center gap-2">
+                                        <UserChip
+                                            user={
+                                                member.user ?? {
+                                                    id: member.userId,
+                                                    username: "Unknown user",
+                                                }
+                                            }
+                                            showEmail
+                                        />
+                                        <span className="text-xs text-muted-foreground">{member.role}</span>
+                                    </li>
+                                ))}
+                                {members.length === 0 ? (
+                                    <li className="text-muted-foreground">No members yet.</li>
+                                ) : null}
+                            </ul>
+                        </div>
+
+                        <div className="space-y-2 border-t border-border pt-4">
+                            <p className="text-sm font-medium">Invite by email</p>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                                <Input
+                                    placeholder="teammate@company.com"
+                                    value={inviteEmail}
+                                    onChange={(e) => setInviteEmail(e.target.value)}
+                                    data-testid="organization-invite-email"
+                                />
+                                <Button
+                                    onClick={() => void handleInvite()}
+                                    disabled={!inviteEmail.trim() || inviteMutation.isPending}
+                                    data-testid="organization-invite"
+                                >
+                                    Send invite
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2" data-testid="organization-pending-invites">
+                            <p className="text-sm font-medium">Pending invitations</p>
+                            {pendingInvites.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No pending invites.</p>
+                            ) : (
+                                <ul className="space-y-2 text-sm">
+                                    {pendingInvites.map((invite) => (
+                                        <li
+                                            key={invite.id}
+                                            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                                        >
+                                            <span>
+                                                {invite.email} · {invite.role}
+                                            </span>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                data-testid="organization-revoke-invite"
+                                                disabled={revokeMutation.isPending}
+                                                onClick={() => void handleRevoke(invite.id)}
+                                            >
+                                                Revoke
+                                            </Button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            {acceptedInvites.length > 0 ? (
+                                <p className="text-xs text-muted-foreground">
+                                    Recently joined:{" "}
+                                    {acceptedInvites
+                                        .slice(0, 5)
+                                        .map((invite) => invite.email)
+                                        .join(", ")}
+                                </p>
+                            ) : null}
                         </div>
                     </CardContent>
                 </Card>

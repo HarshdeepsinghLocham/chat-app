@@ -14,7 +14,7 @@ import {
     WorkInboxTriage,
     type OrgMemberOption,
 } from "@/components/work-suggestions/work-inbox-triage";
-import { useActiveOrganizationId } from "@/lib/hooks/useActiveOrganizationId";
+import { useActiveOrganization } from "@/lib/hooks/useActiveOrganization";
 import { queryKeys } from "@/lib/queries/keys";
 import { useOrganizationMembers } from "@/lib/queries/use-organizations";
 import {
@@ -67,7 +67,7 @@ function ownersForSuggestion(
 }
 
 export function WorkInboxView() {
-    const organizationId = useActiveOrganizationId();
+    const { organizationId, organization } = useActiveOrganization();
     const searchParams = useSearchParams();
     const highlightedSuggestionId = searchParams.get("suggestion");
     const [conversationId, setConversationId] = useState("");
@@ -97,6 +97,10 @@ export function WorkInboxView() {
             (membersQuery.data ?? []).map((member) => ({
                 userId: member.userId,
                 role: member.role,
+                user: member.user ?? {
+                    id: member.userId,
+                    username: "Unknown user",
+                },
             })),
         [membersQuery.data]
     );
@@ -247,11 +251,13 @@ export function WorkInboxView() {
                         {organizationId ? (
                             <>
                                 <span className="text-muted-foreground">Organization </span>
-                                <span className="font-mono text-xs break-all">{organizationId}</span>
+                                <span className="font-medium" data-testid="work-inbox-org-name">
+                                    {organization?.name ?? "Organization"}
+                                </span>
                             </>
                         ) : (
                             <span className="text-muted-foreground">
-                                Personal — select a conversation id to load suggestions
+                                Personal — select a conversation to load suggestions
                             </span>
                         )}
                     </div>
@@ -277,7 +283,7 @@ export function WorkInboxView() {
                             </select>
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="inbox-conversation">Conversation id</Label>
+                            <Label htmlFor="inbox-conversation">Conversation</Label>
                             <Input
                                 id="inbox-conversation"
                                 data-testid="work-inbox-conversation"
@@ -286,7 +292,7 @@ export function WorkInboxView() {
                                     setPage(1);
                                     setConversationId(event.target.value);
                                 }}
-                                placeholder={organizationId ? "Optional narrow filter" : "Required for personal"}
+                                placeholder={organizationId ? "Optional filter" : "Required for personal"}
                             />
                         </div>
                     </div>
@@ -400,13 +406,13 @@ export function WorkInboxView() {
                                         <dt className="text-xs uppercase tracking-wide text-muted-foreground">
                                             Conversation
                                         </dt>
-                                        <dd className="font-mono text-xs break-all">
+                                        <dd className="break-words">
                                             <Link
                                                 href={conversationMessageHref(item.conversationId)}
-                                                className="underline underline-offset-2 hover:opacity-80"
+                                                className="font-medium underline underline-offset-2 hover:opacity-80"
                                                 data-testid="work-inbox-conversation-link"
                                             >
-                                                {item.conversationId}
+                                                {item.conversationLabel?.trim() || "Open conversation"}
                                             </Link>
                                         </dd>
                                     </div>

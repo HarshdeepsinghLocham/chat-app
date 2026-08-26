@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { WorkSuggestionRecord } from "@semantask/types";
+import type { UserRef, WorkSuggestionRecord } from "@semantask/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UserChip, userDisplayName } from "@/components/people/user-chip";
 
 export type OrgMemberOption = {
     userId: string;
     role: string;
+    user: UserRef;
 };
 
 export type WorkInboxTriageProps = {
@@ -35,6 +37,10 @@ function uniqueIds(ids: string[]): string[] {
     return Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
 }
 
+function memberLabel(member: OrgMemberOption): string {
+    return `${userDisplayName(member.user)} (${member.role})`;
+}
+
 export function WorkInboxTriage({
     suggestion,
     organizationId,
@@ -51,6 +57,14 @@ export function WorkInboxTriage({
     const isConverted = suggestion.status === "converted";
     const canAssign = isConverted;
     const canAcceptOrDismiss = isProposed;
+
+    const memberById = useMemo(() => {
+        const map = new Map<string, OrgMemberOption>();
+        for (const member of members) {
+            map.set(member.userId, member);
+        }
+        return map;
+    }, [members]);
 
     const candidateDefaults = useMemo(
         () => uniqueIds(suggestion.candidates.assigneeCandidates ?? []),
@@ -80,6 +94,11 @@ export function WorkInboxTriage({
         return uniqueIds(parseAssigneeInput(assigneesInput));
     }
 
+    const currentOwners = displayedOwners.map((id) => {
+        const member = memberById.get(id);
+        return member?.user ?? { id, username: "Unknown user" };
+    });
+
     return (
         <div className="space-y-3 border-t border-border pt-3" data-testid="work-inbox-triage">
             <p className="text-xs text-muted-foreground">
@@ -106,7 +125,7 @@ export function WorkInboxTriage({
                     >
                         {members.map((member) => (
                             <option key={member.userId} value={member.userId}>
-                                {member.userId} ({member.role})
+                                {memberLabel(member)}
                             </option>
                         ))}
                     </select>
@@ -116,14 +135,20 @@ export function WorkInboxTriage({
                         data-testid="suggestion-assignees"
                         value={assigneesInput}
                         onChange={(event) => setAssigneesInput(event.target.value)}
-                        placeholder="Comma-separated user ids"
+                        placeholder="Comma-separated usernames or user ids"
                         disabled={actionPending || (!canAcceptOrDismiss && !canAssign)}
                     />
                 )}
-                {displayedOwners.length > 0 ? (
-                    <p className="font-mono text-xs text-muted-foreground" data-testid="work-inbox-owner">
-                        Current: {displayedOwners.join(", ")}
-                    </p>
+                {currentOwners.length > 0 ? (
+                    <div
+                        className="flex flex-wrap gap-2 text-xs text-muted-foreground"
+                        data-testid="work-inbox-owner"
+                    >
+                        <span>Current:</span>
+                        {currentOwners.map((user) => (
+                            <UserChip key={user.id} user={user} size={20} />
+                        ))}
+                    </div>
                 ) : (
                     <p className="text-xs text-muted-foreground" data-testid="work-inbox-owner">
                         No owner selected

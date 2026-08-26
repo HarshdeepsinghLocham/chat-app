@@ -140,6 +140,8 @@ export interface MessageTaskMetadata {
 export interface TaskRecord {
     _id: string;
     conversationId: string;
+    /** Human-readable conversation title when enriched for product UI. */
+    conversationLabel?: string | null;
     parentTaskId: string | null;
     /** Present when created by accepting a WorkSuggestion. */
     suggestionId?: string | null;
@@ -151,6 +153,8 @@ export interface TaskRecord {
     lifecycleState?: TaskLifecycleState;
     priority: TaskPriority;
     assignees: string[];
+    /** Resolved assignee identity when enriched for product UI. */
+    assigneeRefs?: import("../user/user.js").UserRef[];
     dueAt: string | null;
     createdBy: string;
     source: TaskSource;

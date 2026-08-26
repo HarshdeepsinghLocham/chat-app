@@ -1,17 +1,19 @@
-import mongoose, { Types } from "mongoose";
+import type { UserRef } from "@semantask/types";
 import { connectToDatabase } from "@semantask/db";
-import OrganizationModel, {
-    type IOrganization,
-    type OrganizationStatus,
-} from "@semantask/db/models/Organization";
 import OrganizationMembershipModel, {
     ORGANIZATION_MEMBER_ROLES,
     type IOrganizationMembership,
     type OrganizationMemberRole,
 } from "@semantask/db/models/OrganizationMembership";
+import OrganizationModel, {
+    type IOrganization,
+    type OrganizationStatus,
+} from "@semantask/db/models/Organization";
+import mongoose, { Types } from "mongoose";
 import { AuthorizationError } from "./authorization-errors";
 import { isMongoTransactionUnsupported } from "./mongo-transaction";
 import { ValidationError } from "./organization-errors";
+import { resolveUserRefs } from "./user-ref.service";
 
 export const ORGANIZATION_ID_HEADER = "x-organization-id";
 
@@ -312,6 +314,7 @@ export async function listOrganizationMembers(
     userId: string;
     role: OrganizationMemberRole;
     createdAt: string;
+    user: UserRef;
 }>> {
     await assertMembership(organizationId, actorUserId);
     await connectToDatabase();
@@ -322,12 +325,21 @@ export async function listOrganizationMembers(
         .sort({ createdAt: 1 })
         .lean<IOrganizationMembership[]>();
 
-    return members.map((member) => ({
-        id: member._id.toString(),
-        userId: member.userId.toString(),
-        role: member.role,
-        createdAt: member.createdAt.toISOString(),
-    }));
+    const refs = await resolveUserRefs(members.map((member) => member.userId.toString()));
+
+    return members.map((member) => {
+        const userId = member.userId.toString();
+        return {
+            id: member._id.toString(),
+            userId,
+            role: member.role,
+            createdAt: member.createdAt.toISOString(),
+            user: refs.get(userId) ?? {
+                id: userId,
+                username: "Unknown user",
+            },
+        };
+    });
 }
 
 export async function removeOrganizationMember(input: {

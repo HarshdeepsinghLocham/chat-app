@@ -8,13 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActiveOrganizationId } from "@/lib/hooks/useActiveOrganizationId";
+import { useActiveOrganization } from "@/lib/hooks/useActiveOrganization";
 import {
     mutationErrorMessage,
     useMoveWorkBoardCard,
     useWorkBoardList,
     WORK_BOARD_PAGE_LIMIT,
 } from "@/lib/queries/use-work-board";
+import { UserChip } from "@/components/people/user-chip";
 import { conversationMessageHref, taskHref } from "@/lib/work-links";
 import { reviewSuggestionHref } from "@/lib/work-suggestions/map";
 import {
@@ -49,7 +50,7 @@ function groupByBoardStatus(items: TaskRecord[]): Record<BoardStatus, TaskRecord
 }
 
 export function WorkBoardView() {
-    const organizationId = useActiveOrganizationId();
+    const { organizationId, organization } = useActiveOrganization();
     const searchParams = useSearchParams();
     const highlightedTaskId = searchParams.get("task");
     const [conversationId, setConversationId] = useState("");
@@ -109,16 +110,18 @@ export function WorkBoardView() {
                         {organizationId ? (
                             <>
                                 <span className="text-muted-foreground">Organization </span>
-                                <span className="font-mono text-xs break-all">{organizationId}</span>
+                                <span className="font-medium" data-testid="work-board-org-name">
+                                    {organization?.name ?? "Organization"}
+                                </span>
                             </>
                         ) : (
                             <span className="text-muted-foreground">
-                                Personal — enter a conversation id to load the board
+                                Personal — select a conversation to load the board
                             </span>
                         )}
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="board-conversation">Conversation id</Label>
+                        <Label htmlFor="board-conversation">Conversation</Label>
                         <Input
                             id="board-conversation"
                             data-testid="work-board-conversation"
@@ -127,7 +130,7 @@ export function WorkBoardView() {
                                 setPage(1);
                                 setConversationId(event.target.value);
                             }}
-                            placeholder={organizationId ? "Optional narrow filter" : "Required for personal"}
+                            placeholder={organizationId ? "Optional filter" : "Required for personal"}
                         />
                     </div>
                 </CardContent>
@@ -234,9 +237,17 @@ export function WorkBoardView() {
                                                     Assignees
                                                 </dt>
                                                 <dd className="font-medium">
-                                                    {task.assignees.length > 0
-                                                        ? `${task.assignees.length} assigned`
-                                                        : "Unassigned"}
+                                                    {(task.assigneeRefs ?? []).length > 0 ? (
+                                                        <div className="flex flex-wrap gap-2 pt-1">
+                                                            {(task.assigneeRefs ?? []).map((user) => (
+                                                                <UserChip key={user.id} user={user} size={20} />
+                                                            ))}
+                                                        </div>
+                                                    ) : task.assignees.length > 0 ? (
+                                                        `${task.assignees.length} assigned`
+                                                    ) : (
+                                                        "Unassigned"
+                                                    )}
                                                 </dd>
                                             </div>
                                         </dl>
@@ -246,7 +257,7 @@ export function WorkBoardView() {
                                                 className="underline underline-offset-2 hover:opacity-80"
                                                 data-testid="work-board-conversation-link"
                                             >
-                                                Conversation
+                                                {task.conversationLabel?.trim() || "Conversation"}
                                             </Link>
                                             {task.suggestionId ? (
                                                 <Link

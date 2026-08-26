@@ -8,6 +8,8 @@ import {
 } from "@semantask/types";
 import { ValidationError } from "./organization-errors";
 import { normalizeTask } from "./normalizers/task.normalizer";
+import { resolveConversationLabels } from "./conversation-label.service";
+import { resolveUserRefs, userRefOrFallback } from "./user-ref.service";
 
 const DOING_EXECUTION_STATUSES = ["executing", "partial", "waiting_for_input"] as const;
 
@@ -117,8 +119,17 @@ export async function listWorkBoard(input: ListWorkBoardInput): Promise<WorkBoar
             .exec(),
     ]);
 
+    const items = rows.map((row) => normalizeTask(row));
+    const labels = await resolveConversationLabels(items.map((item) => item.conversationId));
+    const assigneeIds = items.flatMap((item) => item.assignees);
+    const assigneeRefs = await resolveUserRefs(assigneeIds);
+
     return {
-        items: rows.map((row) => normalizeTask(row)),
+        items: items.map((item) => ({
+            ...item,
+            conversationLabel: labels.get(item.conversationId) ?? null,
+            assigneeRefs: item.assignees.map((id) => userRefOrFallback(id, assigneeRefs)),
+        })),
         pagination: {
             page,
             limit,

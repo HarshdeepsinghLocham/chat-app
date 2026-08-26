@@ -23,6 +23,7 @@ import { assertAcceptCreatesCoordinationOnly } from "./organization-policy.servi
 import { normalizeTask } from "./normalizers/task.normalizer";
 import { createTask, updateTask } from "./repositories/task.repo";
 import { enqueueOutboxEvent } from "./outbox.service";
+import { resolveConversationLabels } from "./conversation-label.service";
 
 export function isSuggestionStatus(value: unknown): value is WorkSuggestionStatus {
     return typeof value === "string"
@@ -537,8 +538,19 @@ export async function listWorkSuggestions(
             .exec(),
     ]);
 
+    const labels = await resolveConversationLabels(
+        rows.map((row) => row.conversationId.toString())
+    );
+
     return {
-        items: rows.map((row) => normalizeWorkSuggestion(row)),
+        items: rows.map((row) => {
+            const record = normalizeWorkSuggestion(row);
+            const conversationId = record.conversationId;
+            return {
+                ...record,
+                conversationLabel: labels.get(conversationId) ?? null,
+            };
+        }),
         pagination: {
             page,
             limit,
@@ -879,6 +891,22 @@ export async function assignWorkSuggestion(
             },
         },
     });
+
+    if (input.assignees !== undefined && input.assignees.length > 0) {
+        const { notifyUsers } = await import("./notify.service");
+        void notifyUsers(
+            input.assignees.filter((id) => id !== input.actorUserId),
+            {
+                kind: "task_assigned",
+                subject: `Assigned: ${taskRecord.title}`,
+                text: `You were assigned "${taskRecord.title}".`,
+                html: `<p>You were assigned <b>${taskRecord.title}</b>.</p>`,
+                dedupeKey: `assign:${taskRecord._id}:${taskRecord.updatedAt}`,
+                conversationId: taskRecord.conversationId,
+                entityId: taskRecord._id,
+            }
+        ).catch((error) => console.error("assign notify failed", error));
+    }
 
     console.info(JSON.stringify({
         event: "suggestion.assigned",

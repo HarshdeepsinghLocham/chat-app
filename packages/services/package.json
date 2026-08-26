@@ -75,6 +75,11 @@
             "types": "./dist/services/organization.service.d.ts",
             "default": "./dist/services/organization.service.js"
         },
+        "./organization-invite.service": {
+            "import": "./dist/services/organization-invite.service.js",
+            "types": "./dist/services/organization-invite.service.d.ts",
+            "default": "./dist/services/organization-invite.service.js"
+        },
         "./organization-errors": {
             "import": "./dist/services/organization-errors.js",
             "types": "./dist/services/organization-errors.d.ts",

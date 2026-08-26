@@ -738,10 +738,24 @@ export async function createOrganization(input: {
 
 export async function getOrganizationMembers(
     organizationId: string
-): Promise<Array<{ id: string; userId: string; role: string; createdAt: string }>> {
+): Promise<
+    Array<{
+        id: string;
+        userId: string;
+        role: string;
+        createdAt: string;
+        user: { id: string; username: string; email?: string; profilePicture?: string | null };
+    }>
+> {
     const data = await request<{
         success: boolean;
-        data: Array<{ id: string; userId: string; role: string; createdAt: string }>;
+        data: Array<{
+            id: string;
+            userId: string;
+            role: string;
+            createdAt: string;
+            user: { id: string; username: string; email?: string; profilePicture?: string | null };
+        }>;
     }>(`/api/organizations/${organizationId}/members`);
     return data.data;
 }
@@ -795,6 +809,75 @@ export async function updateOrganizationQuota(
             body: JSON.stringify(patch),
         }
     );
+    return data.data;
+}
+
+export type OrganizationInvitationClient = {
+    id: string;
+    organizationId: string;
+    organizationName: string;
+    email: string;
+    role: string;
+    status: string;
+    expiresAt: string;
+    createdAt: string;
+    acceptedAt: string | null;
+    emailSent?: boolean;
+    inviteUrl?: string;
+};
+
+export async function listOrganizationInvitations(
+    organizationId: string
+): Promise<OrganizationInvitationClient[]> {
+    const data = await request<{ success: boolean; data: OrganizationInvitationClient[] }>(
+        `/api/organizations/${organizationId}/invitations`
+    );
+    return data.data;
+}
+
+export async function createOrganizationInvitation(
+    organizationId: string,
+    input: { email: string; role?: string }
+): Promise<OrganizationInvitationClient> {
+    const data = await request<{ success: boolean; data: OrganizationInvitationClient }>(
+        `/api/organizations/${organizationId}/invitations`,
+        {
+            method: "POST",
+            body: JSON.stringify(input),
+        }
+    );
+    return data.data;
+}
+
+export async function revokeOrganizationInvitation(
+    organizationId: string,
+    invitationId: string
+): Promise<void> {
+    await request<{ success: boolean }>(`/api/organizations/${organizationId}/invitations`, {
+        method: "DELETE",
+        body: JSON.stringify({ invitationId }),
+    });
+}
+
+export async function getOrganizationInvitationApi(
+    token: string
+): Promise<OrganizationInvitationClient> {
+    const data = await request<{ success: boolean; data: OrganizationInvitationClient }>(
+        `/api/invitations/${encodeURIComponent(token)}`
+    );
+    return data.data;
+}
+
+export async function acceptOrganizationInvitationApi(token: string): Promise<{
+    invitation: OrganizationInvitationClient;
+    organizationId: string;
+}> {
+    const data = await request<{
+        success: boolean;
+        data: { invitation: OrganizationInvitationClient; organizationId: string };
+    }>(`/api/invitations/${encodeURIComponent(token)}`, {
+        method: "POST",
+    });
     return data.data;
 }
 

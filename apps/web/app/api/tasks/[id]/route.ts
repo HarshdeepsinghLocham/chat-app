@@ -163,6 +163,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 });
             }
 
+            if (Array.isArray(body.assignees) && body.assignees.length > 0) {
+                const { notifyUsers } = await import("@semantask/services/notify.service");
+                void notifyUsers(
+                    body.assignees.filter((id: string) => id !== guard.user.id),
+                    {
+                        kind: "task_assigned",
+                        subject: `Assigned: ${normalized.title}`,
+                        text: `You were assigned "${normalized.title}".`,
+                        html: `<p>You were assigned <b>${normalized.title}</b>.</p>`,
+                        dedupeKey: `assign-patch:${normalized._id}:${normalized.updatedAt}`,
+                        conversationId: normalized.conversationId,
+                        entityId: normalized._id,
+                    }
+                ).catch((error) => console.error("task assign notify failed", error));
+            }
+
             return NextResponse.json(normalized, { status: 200 });
         } catch (error) {
             if (error instanceof z.ZodError) {

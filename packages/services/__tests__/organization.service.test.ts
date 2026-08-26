@@ -1,5 +1,3 @@
-import { canManageMembers } from "../organization.service";
-
 jest.mock("@semantask/db", () => ({
     connectToDatabase: jest.fn().mockResolvedValue(undefined),
 }));
@@ -14,6 +12,13 @@ jest.mock("@semantask/db/models/OrganizationMembership", () => ({
     default: {},
     ORGANIZATION_MEMBER_ROLES: ["owner", "admin", "member"],
 }));
+
+jest.mock("../user-ref.service", () => ({
+    resolveUserRefs: jest.fn(async () => new Map()),
+    userRefOrFallback: (userId: string) => ({ id: userId, username: "Unknown user" }),
+}));
+
+import { canManageMembers } from "../organization.service";
 
 describe("organization.service helpers", () => {
     it("allows owners and admins to manage members", () => {

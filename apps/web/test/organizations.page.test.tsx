@@ -9,7 +9,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 const listOrganizations = jest.fn();
 const createOrganization = jest.fn();
 const getOrganizationMembers = jest.fn();
-const addOrganizationMember = jest.fn();
+const listOrganizationInvitations = jest.fn();
+const createOrganizationInvitation = jest.fn();
+const revokeOrganizationInvitation = jest.fn();
 const updateOrganizationPolicy = jest.fn();
 const updateOrganizationQuota = jest.fn();
 
@@ -17,7 +19,9 @@ jest.mock("@/lib/utils/api", () => ({
     listOrganizations: (...args: unknown[]) => listOrganizations(...args),
     createOrganization: (...args: unknown[]) => createOrganization(...args),
     getOrganizationMembers: (...args: unknown[]) => getOrganizationMembers(...args),
-    addOrganizationMember: (...args: unknown[]) => addOrganizationMember(...args),
+    listOrganizationInvitations: (...args: unknown[]) => listOrganizationInvitations(...args),
+    createOrganizationInvitation: (...args: unknown[]) => createOrganizationInvitation(...args),
+    revokeOrganizationInvitation: (...args: unknown[]) => revokeOrganizationInvitation(...args),
     updateOrganizationPolicy: (...args: unknown[]) => updateOrganizationPolicy(...args),
     updateOrganizationQuota: (...args: unknown[]) => updateOrganizationQuota(...args),
 }));
@@ -39,11 +43,14 @@ describe("OrganizationsPage", () => {
         listOrganizations.mockReset();
         createOrganization.mockReset();
         getOrganizationMembers.mockReset();
-        addOrganizationMember.mockReset();
+        listOrganizationInvitations.mockReset();
+        createOrganizationInvitation.mockReset();
+        revokeOrganizationInvitation.mockReset();
         updateOrganizationPolicy.mockReset();
         updateOrganizationQuota.mockReset();
         window.localStorage.clear();
         getOrganizationMembers.mockResolvedValue([]);
+        listOrganizationInvitations.mockResolvedValue([]);
     });
 
     it("loads organizations and creates a new one", async () => {
@@ -89,9 +96,68 @@ describe("OrganizationsPage", () => {
                 slug: undefined,
             });
         });
-
         expect(await screen.findByTestId("organization-option")).toHaveTextContent("Acme");
-        expect(window.localStorage.getItem("semantask.activeOrganizationId")).toBe("org-1");
+    });
+
+    it("invites a teammate by email for the active organization", async () => {
+        listOrganizations.mockResolvedValue([
+            {
+                id: "org-1",
+                name: "Acme",
+                slug: "acme",
+                status: "active",
+                createdBy: "u1",
+                createdAt: "2026-08-08T10:00:00.000Z",
+                updatedAt: "2026-08-08T10:00:00.000Z",
+                role: "owner",
+            },
+        ]);
+        createOrganizationInvitation.mockResolvedValue({
+            id: "inv-1",
+            organizationId: "org-1",
+            organizationName: "Acme",
+            email: "alex@acme.com",
+            role: "member",
+            status: "pending",
+            expiresAt: "2026-09-01T00:00:00.000Z",
+            createdAt: "2026-08-25T00:00:00.000Z",
+            acceptedAt: null,
+            emailSent: true,
+        });
+        listOrganizationInvitations
+            .mockResolvedValueOnce([])
+            .mockResolvedValue([
+                {
+                    id: "inv-1",
+                    organizationId: "org-1",
+                    organizationName: "Acme",
+                    email: "alex@acme.com",
+                    role: "member",
+                    status: "pending",
+                    expiresAt: "2026-09-01T00:00:00.000Z",
+                    createdAt: "2026-08-25T00:00:00.000Z",
+                    acceptedAt: null,
+                },
+            ]);
+
+        window.localStorage.setItem("semantask.activeOrganizationId", "org-1");
+        renderWithQuery(<OrganizationsPage />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId("organization-invite-email")).toBeInTheDocument();
+        });
+
+        fireEvent.change(screen.getByTestId("organization-invite-email"), {
+            target: { value: "alex@acme.com" },
+        });
+        fireEvent.click(screen.getByTestId("organization-invite"));
+
+        await waitFor(() => {
+            expect(createOrganizationInvitation).toHaveBeenCalledWith("org-1", {
+                email: "alex@acme.com",
+            });
+        });
+        expect(await screen.findByText(/Invite sent to alex@acme.com/)).toBeInTheDocument();
     });
 
     it("does not load members for an invalid stored organization", async () => {

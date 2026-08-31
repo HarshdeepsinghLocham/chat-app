@@ -26,12 +26,17 @@ export function taskHref(taskId: string): string {
     return `/tasks/${encodeURIComponent(taskId)}`;
 }
 
-export function inboxSuggestionHref(suggestionId: string): string {
+export function inboxSuggestionHref(
+    suggestionId: string,
+    conversationId?: string | null
+): string {
     const params = new URLSearchParams({ suggestion: suggestionId });
+    if (conversationId) params.set("conversationId", conversationId);
     return `/inbox?${params.toString()}`;
 }
 
-export function boardTaskHref(taskId: string): string {
+export function boardTaskHref(taskId: string, conversationId?: string | null): string {
     const params = new URLSearchParams({ task: taskId });
+    if (conversationId) params.set("conversationId", conversationId);
     return `/inbox/board?${params.toString()}`;
 }

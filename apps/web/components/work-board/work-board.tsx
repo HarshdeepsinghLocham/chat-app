@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BOARD_STATUSES, type BoardStatus, type TaskRecord } from "@semantask/types";
@@ -16,6 +16,7 @@ import {
     WORK_BOARD_PAGE_LIMIT,
 } from "@/lib/queries/use-work-board";
 import { conversationMessageHref, taskHref } from "@/lib/work-links";
+import { getTask } from "@/lib/utils/api";
 import { reviewSuggestionHref } from "@/lib/work-suggestions/map";
 import {
     boardTaskElementId,
@@ -52,17 +53,59 @@ export function WorkBoardView() {
     const organizationId = useActiveOrganizationId();
     const searchParams = useSearchParams();
     const highlightedTaskId = searchParams.get("task");
-    const [conversationId, setConversationId] = useState("");
+    const queryConversationId = searchParams.get("conversationId")?.trim() ?? "";
+    const [conversationId, setConversationId] = useState(queryConversationId);
     const [page, setPage] = useState(1);
+    const [deepLinkResolved, setDeepLinkResolved] = useState(!highlightedTaskId);
+
+    useEffect(() => {
+        if (queryConversationId) {
+            setConversationId(queryConversationId);
+            setPage(1);
+        }
+    }, [queryConversationId]);
+
+    useEffect(() => {
+        if (!highlightedTaskId) {
+            setDeepLinkResolved(true);
+            return;
+        }
+
+        let cancelled = false;
+        setDeepLinkResolved(false);
+
+        void (async () => {
+            try {
+                const task = await getTask(highlightedTaskId);
+                if (cancelled) return;
+                if (!queryConversationId && task.conversationId) {
+                    setConversationId(task.conversationId);
+                }
+                setPage(1);
+            } catch {
+                // Keep query/org scope when lookup fails.
+            } finally {
+                if (!cancelled) {
+                    setDeepLinkResolved(true);
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [highlightedTaskId, queryConversationId]);
 
     const scopedConversationId = conversationId.trim() || undefined;
-    const hasScope = Boolean(organizationId || scopedConversationId);
+    const resolvingDeepLink = Boolean(highlightedTaskId && !deepLinkResolved);
+    const hasScope = Boolean(organizationId || scopedConversationId || resolvingDeepLink);
 
     const listQuery = useWorkBoardList({
         organizationId,
         conversationId: scopedConversationId,
         page,
         limit: WORK_BOARD_PAGE_LIMIT,
+        enabled: deepLinkResolved,
     });
     const moveMutation = useMoveWorkBoardCard(listQuery.listParams);
 
@@ -70,13 +113,28 @@ export function WorkBoardView() {
     const pagination = listQuery.data?.pagination;
     const totalPages = pagination?.totalPages ?? 1;
     const columns = useMemo(() => groupByBoardStatus(items), [items]);
-    const loading = listQuery.isLoading || listQuery.isFetching;
+    const loading = resolvingDeepLink || listQuery.isLoading || listQuery.isFetching;
     const error = listQuery.error
         ? mutationErrorMessage(listQuery.error, "Failed to load board")
         : null;
     const highlightedOnPage = Boolean(
         highlightedTaskId && items.some((item) => item._id === highlightedTaskId)
     );
+
+    useEffect(() => {
+        if (!highlightedTaskId || !deepLinkResolved || !listQuery.isSuccess) return;
+        if (highlightedOnPage) return;
+        if (page >= totalPages) return;
+        setPage((current) => Math.min(totalPages, current + 1));
+    }, [
+        highlightedTaskId,
+        deepLinkResolved,
+        listQuery.isSuccess,
+        highlightedOnPage,
+        page,
+        totalPages,
+    ]);
+
     useDeepLinkScroll(
         highlightedTaskId ? boardTaskElementId(highlightedTaskId) : null,
         highlightedOnPage

@@ -14,6 +14,7 @@ const assignWorkSuggestionApi = jest.fn();
 const getOrganizationMembers = jest.fn();
 const decideTaskApproval = jest.fn();
 const requestTaskExecutionApi = jest.fn();
+const getWorkSuggestion = jest.fn();
 const refreshConversation = jest.fn(async () => undefined);
 
 const mockInboxSearch = { value: "" };
@@ -36,6 +37,7 @@ jest.mock("@/lib/utils/api", () => ({
     getOrganizationMembers: (...args: unknown[]) => getOrganizationMembers(...args),
     decideTaskApproval: (...args: unknown[]) => decideTaskApproval(...args),
     requestTaskExecutionApi: (...args: unknown[]) => requestTaskExecutionApi(...args),
+    getWorkSuggestion: (...args: unknown[]) => getWorkSuggestion(...args),
 }));
 
 jest.mock("next/navigation", () => ({
@@ -97,6 +99,7 @@ describe("WorkInboxView", () => {
         getOrganizationMembers.mockReset();
         decideTaskApproval.mockReset();
         requestTaskExecutionApi.mockReset();
+        getWorkSuggestion.mockReset();
         refreshConversation.mockClear();
         mockInboxSearch.value = "";
         window.localStorage.clear();
@@ -216,6 +219,7 @@ describe("WorkInboxView", () => {
     it("highlights the row matching ?suggestion=", async () => {
         window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
         mockInboxSearch.value = "suggestion=sug-1";
+        getWorkSuggestion.mockResolvedValue(buildSuggestion());
         listWorkSuggestions.mockResolvedValue({
             items: [buildSuggestion()],
             pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
@@ -225,6 +229,70 @@ describe("WorkInboxView", () => {
         const row = await screen.findByTestId("work-inbox-row");
         expect(row).toHaveAttribute("data-highlighted", "true");
         expect(row).toHaveAttribute("id", "inbox-suggestion-sug-1");
+        await waitFor(() => {
+            expect(listWorkSuggestions).toHaveBeenCalledWith({
+                organizationId: "507f1f77bcf86cd799439015",
+                conversationId: "507f1f77bcf86cd799439014",
+                status: "proposed",
+                page: 1,
+                limit: 20,
+            });
+        });
+    });
+
+    it("loads personal work from ?conversationId= without an active organization", async () => {
+        mockInboxSearch.value = "suggestion=sug-1&conversationId=507f1f77bcf86cd799439014";
+        getWorkSuggestion.mockResolvedValue(buildSuggestion({ status: "converted" }));
+        listWorkSuggestions.mockResolvedValue({
+            items: [buildSuggestion({ status: "converted" })],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        });
+
+        renderWithQuery(<WorkInboxView />);
+
+        await waitFor(() => {
+            expect(listWorkSuggestions).toHaveBeenCalledWith({
+                organizationId: undefined,
+                conversationId: "507f1f77bcf86cd799439014",
+                status: "converted",
+                page: 1,
+                limit: 20,
+            });
+        });
+        expect(await screen.findByTestId("work-inbox-row")).toHaveAttribute("data-highlighted", "true");
+        expect(screen.queryByTestId("work-inbox-onboarding")).not.toBeInTheDocument();
+    });
+
+    it("opens the page that contains a deep-linked suggestion", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        mockInboxSearch.value = "suggestion=sug-2";
+        getWorkSuggestion.mockResolvedValue(buildSuggestion({
+            _id: "sug-2",
+            status: "proposed",
+        }));
+        listWorkSuggestions.mockImplementation(async (params: unknown) => {
+            const page = (params as { page?: number }).page ?? 1;
+            if (page === 2) {
+                return {
+                    items: [buildSuggestion({ _id: "sug-2" })],
+                    pagination: { page: 2, limit: 20, total: 21, totalPages: 2 },
+                };
+            }
+            return {
+                items: [buildSuggestion()],
+                pagination: { page: 1, limit: 20, total: 21, totalPages: 2 },
+            };
+        });
+
+        renderWithQuery(<WorkInboxView />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId("work-inbox-row")).toHaveAttribute("id", "inbox-suggestion-sug-2");
+        });
+        expect(screen.getByTestId("work-inbox-row")).toHaveAttribute("data-highlighted", "true");
+        expect(listWorkSuggestions).toHaveBeenCalledWith(
+            expect.objectContaining({ page: 2, status: "proposed" })
+        );
     });
 
     it("requires dismiss reason and removes row after dismiss", async () => {

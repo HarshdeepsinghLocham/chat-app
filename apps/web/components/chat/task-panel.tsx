@@ -442,6 +442,7 @@ export default function TaskPanel({ conversationId }: TaskPanelProps) {
     const highlightedOnPage = Boolean(
         highlightedTaskId && tasks.some((task) => task._id === highlightedTaskId)
     );
+    const showMobileTaskSurface = Boolean(highlightedTaskId);
     useDeepLinkScroll(
         highlightedTaskId ? taskPanelElementId(highlightedTaskId) : null,
         highlightedOnPage
@@ -552,7 +553,24 @@ export default function TaskPanel({ conversationId }: TaskPanelProps) {
     };
 
     return (
-        <aside className="hidden min-h-0 w-85 shrink-0 border-l border-border bg-[hsl(var(--left-panel))] text-foreground xl:flex xl:flex-col dark:bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.12),transparent_28%),linear-gradient(180deg,hsl(var(--left-panel)),hsl(var(--background)))]">
+        <>
+            {showMobileTaskSurface ? (
+                <div
+                    className="fixed inset-0 z-30 bg-black/40 xl:hidden"
+                    data-testid="task-panel-mobile-backdrop"
+                    aria-hidden="true"
+                />
+            ) : null}
+            <aside
+                data-testid="task-panel"
+                data-mobile-visible={showMobileTaskSurface ? "true" : "false"}
+                className={cn(
+                    "min-h-0 shrink-0 border-l border-border bg-[hsl(var(--left-panel))] text-foreground dark:bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.12),transparent_28%),linear-gradient(180deg,hsl(var(--left-panel)),hsl(var(--background)))]",
+                    showMobileTaskSurface
+                        ? "fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col shadow-xl xl:static xl:z-auto xl:w-85 xl:shadow-none"
+                        : "hidden w-85 xl:flex xl:flex-col"
+                )}
+            >
             <div className="border-b border-border px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                     <div>
@@ -609,6 +627,7 @@ export default function TaskPanel({ conversationId }: TaskPanelProps) {
                     </div>
                 </AnimatePresence>
             </div>
-        </aside>
+            </aside>
+        </>
     );
 }

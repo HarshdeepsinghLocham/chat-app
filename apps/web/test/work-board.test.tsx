@@ -9,6 +9,7 @@ import type { TaskRecord } from "@semantask/types";
 
 const listWorkBoard = jest.fn();
 const patchTaskApi = jest.fn();
+const getTask = jest.fn();
 
 const mockBoardSearch = { value: "" };
 
@@ -25,6 +26,7 @@ jest.mock("@/lib/utils/api", () => ({
     ApiHttpError,
     listWorkBoard: (...args: unknown[]) => listWorkBoard(...args),
     patchTaskApi: (...args: unknown[]) => patchTaskApi(...args),
+    getTask: (...args: unknown[]) => getTask(...args),
 }));
 
 jest.mock("next/navigation", () => ({
@@ -85,6 +87,7 @@ describe("WorkBoardView", () => {
     beforeEach(() => {
         listWorkBoard.mockReset();
         patchTaskApi.mockReset();
+        getTask.mockReset();
         mockBoardSearch.value = "";
         window.localStorage.clear();
     });
@@ -135,6 +138,7 @@ describe("WorkBoardView", () => {
     it("highlights the card matching ?task=", async () => {
         window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
         mockBoardSearch.value = "task=task-1";
+        getTask.mockResolvedValue(buildTask());
         listWorkBoard.mockResolvedValue({
             items: [buildTask()],
             pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
@@ -151,5 +155,64 @@ describe("WorkBoardView", () => {
             "href",
             "/c/507f1f77bcf86cd799439014"
         );
+        await waitFor(() => {
+            expect(listWorkBoard).toHaveBeenCalledWith({
+                organizationId: "507f1f77bcf86cd799439015",
+                conversationId: "507f1f77bcf86cd799439014",
+                boardStatus: undefined,
+                page: 1,
+                limit: 50,
+            });
+        });
+    });
+
+    it("loads personal work from ?conversationId= without an active organization", async () => {
+        mockBoardSearch.value = "task=task-1&conversationId=507f1f77bcf86cd799439014";
+        getTask.mockResolvedValue(buildTask());
+        listWorkBoard.mockResolvedValue({
+            items: [buildTask()],
+            pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
+        });
+
+        renderWithQuery(<WorkBoardView />);
+
+        await waitFor(() => {
+            expect(listWorkBoard).toHaveBeenCalledWith({
+                organizationId: undefined,
+                conversationId: "507f1f77bcf86cd799439014",
+                boardStatus: undefined,
+                page: 1,
+                limit: 50,
+            });
+        });
+        expect(await screen.findByTestId("work-board-card")).toHaveAttribute("data-highlighted", "true");
+        expect(screen.queryByTestId("work-board-onboarding")).not.toBeInTheDocument();
+    });
+
+    it("opens the page that contains a deep-linked task", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        mockBoardSearch.value = "task=task-2";
+        getTask.mockResolvedValue(buildTask({ _id: "task-2" }));
+        listWorkBoard.mockImplementation(async (params: unknown) => {
+            const page = (params as { page?: number }).page ?? 1;
+            if (page === 2) {
+                return {
+                    items: [buildTask({ _id: "task-2" })],
+                    pagination: { page: 2, limit: 50, total: 51, totalPages: 2 },
+                };
+            }
+            return {
+                items: [buildTask()],
+                pagination: { page: 1, limit: 50, total: 51, totalPages: 2 },
+            };
+        });
+
+        renderWithQuery(<WorkBoardView />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId("work-board-card")).toHaveAttribute("id", "board-task-task-2");
+        });
+        expect(screen.getByTestId("work-board-card")).toHaveAttribute("data-highlighted", "true");
+        expect(listWorkBoard).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
     });
 });

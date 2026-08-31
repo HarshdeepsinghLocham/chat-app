@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import useChatStore from "@/store/chat-store";
 import { socket } from "@/lib/socket/socketClient";
 import ChatBubble from "./chat-bubble";
@@ -14,6 +15,10 @@ import { useConversationPresence } from "@/lib/hooks/useConversationPresence";
 import { useMessageDelivery } from "@/lib/hooks/useMessageDelivery";
 import { recordApiTiming } from "@/lib/utils/performance";
 import { useConversationWorkSuggestions } from "@/hooks/useConversationWorkSuggestions";
+import {
+    DEEP_LINK_HIGHLIGHT_MS,
+    scrollDeepLinkTarget,
+} from "@/lib/deep-link-highlight";
 
 interface MessageContainerProps {
     conversationId: string;
@@ -23,15 +28,21 @@ const MessageContainer = ({ conversationId }: MessageContainerProps) => {
     const sel = useChatStore((s) => s.selectedConversationId);
     let lastDate: string | null = null;
     const messagesByConversation = useChatStore((s) => s.messagesByConversation);
+    const hasMoreByConversation = useChatStore((s) => s.hasMoreByConversation);
     const setMessages = useChatStore((s) => s.setMessages);
     const setHasMore = useChatStore((s) => s.setHasMore);
     const updateEditedMessage = useChatStore((s) => s.updateEditedMessage);
     const setReplyTo = useChatStore((s) => s.setReplyTo);
     const topRef = useRef<HTMLDivElement>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
+    const focusedMessageRef = useRef<string | null>(null);
+    const attemptedDeepLinkCursorsRef = useRef<Set<string>>(new Set());
     const { user } = useUser();
     const currentUserId = user?._id ?? null;
     const [newMessages, setNewMessages] = useState(false);
+    const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+    const searchParams = useSearchParams();
+    const deepLinkedMessageId = searchParams.get("msg");
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [loading, setLoading] = useState(false);
 
@@ -80,17 +91,70 @@ const MessageContainer = ({ conversationId }: MessageContainerProps) => {
         }
     }, [sel, setMessages, setHasMore]);
 
+    const messages = messagesByConversation[conversationId] ?? [];
+    const deepLinkOnPage = Boolean(
+        deepLinkedMessageId
+        && messages.some((message) => String(message._id) === deepLinkedMessageId)
+    );
+
     useEffect(() => {
+        if (deepLinkedMessageId && !deepLinkOnPage) return;
         if (messagesByConversation[conversationId]?.length > 0 && bottomRef.current) {
             bottomRef.current.scrollIntoView({ behavior: "auto" });
         }
-    }, [conversationId, messagesByConversation]);
+    }, [conversationId, deepLinkOnPage, deepLinkedMessageId, messagesByConversation]);
 
     useEffect(() => {
+        if (deepLinkedMessageId && !deepLinkOnPage) return;
         if (bottomRef.current) {
             bottomRef.current.scrollIntoView({ behavior: "smooth" });
         }
-    }, [conversationId, messagesByConversation]);
+    }, [conversationId, deepLinkOnPage, deepLinkedMessageId, messagesByConversation]);
+
+    useEffect(() => {
+        attemptedDeepLinkCursorsRef.current = new Set();
+        focusedMessageRef.current = null;
+    }, [conversationId, deepLinkedMessageId]);
+
+    useEffect(() => {
+        if (!deepLinkedMessageId) {
+            focusedMessageRef.current = null;
+            return;
+        }
+        if (focusedMessageRef.current === deepLinkedMessageId) return;
+        const pageMessages = messagesByConversation[conversationId] ?? [];
+        const isOnPage = pageMessages.some((message) => String(message._id) === deepLinkedMessageId);
+        if (!isOnPage) {
+            if (pageMessages.length === 0) return;
+            if (hasMoreByConversation[conversationId] === false) return;
+            const cursor = String(pageMessages[0]._id);
+            if (!cursor || attemptedDeepLinkCursorsRef.current.has(cursor)) return;
+            attemptedDeepLinkCursorsRef.current.add(cursor);
+            const controller = new AbortController();
+            void fetchMessages(cursor, controller.signal);
+            return () => controller.abort();
+        }
+
+        const timeout = window.setTimeout(() => {
+            if (scrollDeepLinkTarget(deepLinkedMessageId)) {
+                focusedMessageRef.current = deepLinkedMessageId;
+                setHighlightedMessageId(deepLinkedMessageId);
+                window.setTimeout(() => {
+                    setHighlightedMessageId((current) =>
+                        current === deepLinkedMessageId ? null : current
+                    );
+                }, DEEP_LINK_HIGHLIGHT_MS);
+            }
+        }, 80);
+
+        return () => window.clearTimeout(timeout);
+    }, [
+        deepLinkedMessageId,
+        conversationId,
+        messagesByConversation,
+        hasMoreByConversation,
+        fetchMessages,
+    ]);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -154,7 +218,7 @@ const MessageContainer = ({ conversationId }: MessageContainerProps) => {
         return groups;
     }
 
-    const grouped = groupMessages(messagesByConversation[conversationId] ?? []);
+    const grouped = groupMessages(messages);
 
     return (
         <div className="relative h-full min-h-0 flex-1 overflow-y-auto bg-[hsl(var(--container))] bg-chat-tile-light bg-repeat pb-24 text-[hsl(var(--foreground))] dark:bg-chat-tile-dark sm:pb-28 lg:pb-0">
@@ -197,6 +261,7 @@ const MessageContainer = ({ conversationId }: MessageContainerProps) => {
                                     showAvatar={group.showAvatar && i === 0}
                                     showUsername={group.showUsername && i === 0}
                                     suggestionId={getSuggestionId(String(msg._id))}
+                                    highlighted={highlightedMessageId === String(msg._id)}
                                 />
                             ))}
                         </motion.div>

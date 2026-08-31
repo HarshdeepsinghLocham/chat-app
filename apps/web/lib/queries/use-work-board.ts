@@ -24,6 +24,7 @@ export function useWorkBoardList(params: {
     boardStatus?: BoardStatus | "";
     page: number;
     limit?: number;
+    enabled?: boolean;
 }) {
     const limit = params.limit ?? WORK_BOARD_PAGE_LIMIT;
     const listParams: WorkBoardListParams = {
@@ -33,7 +34,8 @@ export function useWorkBoardList(params: {
         page: params.page,
         limit,
     };
-    const enabled = Boolean(listParams.organizationId || listParams.conversationId);
+    const enabled = (params.enabled ?? true)
+        && Boolean(listParams.organizationId || listParams.conversationId);
 
     const query = useQuery({
         queryKey: queryKeys.workBoard.list(listParams),

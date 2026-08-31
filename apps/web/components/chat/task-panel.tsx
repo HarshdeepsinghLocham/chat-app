@@ -2,14 +2,23 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { TaskExecutionEventRecord, TaskRecord, TaskStatus } from "@semantask/types";
 import { authenticatedFetch } from "@/lib/utils/api";
 import { getSocket } from "@/hooks/socketClient";
 import { useTaskExecution } from "@/hooks/useTaskExecution";
+import { useDeepLinkScroll } from "@/hooks/useDeepLinkScroll";
 import useTaskStore from "@/store/task-store";
 import { Button } from "@/components/ui/button";
 import { Check, Loader2, Sparkles } from "lucide-react";
+import { taskHref } from "@/lib/work-links";
+import { reviewSuggestionHref } from "@/lib/work-suggestions/map";
+import {
+    DEEP_LINK_HIGHLIGHT_CLASS,
+    taskPanelElementId,
+} from "@/lib/deep-link-highlight";
+import { cn } from "@/lib/utils/utils";
 
 interface TaskPanelProps {
     conversationId: string;
@@ -31,6 +40,7 @@ interface ExecutionStep {
 
 interface TaskInlineCardProps {
     task: TaskRecord;
+    highlighted?: boolean;
     onStatusChange: (taskId: string, status: TaskStatus) => void;
     onCancel: (taskId: string) => Promise<void>;
 }
@@ -156,7 +166,7 @@ function canCancelTask(task: TaskRecord): boolean {
         && !task.cancelRequestedAt;
 }
 
-function TaskInlineCard({ task, onStatusChange, onCancel }: TaskInlineCardProps) {
+function TaskInlineCard({ task, highlighted = false, onStatusChange, onCancel }: TaskInlineCardProps) {
     const shouldReduceMotion = useReducedMotion();
     const executionView = useTaskExecution(task._id);
     const setExecutionEvents = useTaskStore((state) => state.setExecutionEvents);
@@ -232,11 +242,17 @@ function TaskInlineCard({ task, onStatusChange, onCancel }: TaskInlineCardProps)
     return (
         <motion.article
             layout
+            id={taskPanelElementId(task._id)}
+            data-testid="task-panel-card"
+            data-highlighted={highlighted ? "true" : "false"}
             initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
             animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
             exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm backdrop-blur-sm"
+            className={cn(
+                "overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm backdrop-blur-sm",
+                highlighted && DEEP_LINK_HIGHLIGHT_CLASS
+            )}
         >
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -248,7 +264,24 @@ function TaskInlineCard({ task, onStatusChange, onCancel }: TaskInlineCardProps)
                             {task.status.replace("_", " ")}
                         </span>
                     </div>
-                    <h4 className="truncate text-sm font-semibold tracking-tight text-foreground">{task.title}</h4>
+                    <h4 className="truncate text-sm font-semibold tracking-tight text-foreground">
+                        <Link
+                            href={taskHref(task._id)}
+                            className="hover:underline"
+                            data-testid="task-panel-task-link"
+                        >
+                            {task.title}
+                        </Link>
+                    </h4>
+                    {task.suggestionId ? (
+                        <Link
+                            href={reviewSuggestionHref(task.suggestionId) ?? "#"}
+                            className="mt-1 inline-block text-[11px] underline underline-offset-2 text-muted-foreground hover:text-foreground"
+                            data-testid="task-panel-suggestion-link"
+                        >
+                            Suggestion
+                        </Link>
+                    ) : null}
                     {task.description && (
                         <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">{task.description}</p>
                     )}
@@ -382,6 +415,8 @@ function TaskInlineCard({ task, onStatusChange, onCancel }: TaskInlineCardProps)
 }
 
 export default function TaskPanel({ conversationId }: TaskPanelProps) {
+    const searchParams = useSearchParams();
+    const highlightedTaskId = searchParams.get("task");
     const [loading, setLoading] = useState(false);
     const [creating, setCreating] = useState(false);
     const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -403,6 +438,15 @@ export default function TaskPanel({ conversationId }: TaskPanelProps) {
                 return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
             });
     }, [conversationTaskIds, tasksById]);
+
+    const highlightedOnPage = Boolean(
+        highlightedTaskId && tasks.some((task) => task._id === highlightedTaskId)
+    );
+    const showMobileTaskSurface = Boolean(highlightedTaskId);
+    useDeepLinkScroll(
+        highlightedTaskId ? taskPanelElementId(highlightedTaskId) : null,
+        highlightedOnPage
+    );
 
     const loadTasks = useCallback(
         async (opts?: { silent?: boolean }) => {
@@ -509,7 +553,24 @@ export default function TaskPanel({ conversationId }: TaskPanelProps) {
     };
 
     return (
-        <aside className="hidden min-h-0 w-85 shrink-0 border-l border-border bg-[hsl(var(--left-panel))] text-foreground xl:flex xl:flex-col dark:bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.12),transparent_28%),linear-gradient(180deg,hsl(var(--left-panel)),hsl(var(--background)))]">
+        <>
+            {showMobileTaskSurface ? (
+                <div
+                    className="fixed inset-0 z-30 bg-black/40 xl:hidden"
+                    data-testid="task-panel-mobile-backdrop"
+                    aria-hidden="true"
+                />
+            ) : null}
+            <aside
+                data-testid="task-panel"
+                data-mobile-visible={showMobileTaskSurface ? "true" : "false"}
+                className={cn(
+                    "min-h-0 shrink-0 border-l border-border bg-[hsl(var(--left-panel))] text-foreground dark:bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.12),transparent_28%),linear-gradient(180deg,hsl(var(--left-panel)),hsl(var(--background)))]",
+                    showMobileTaskSurface
+                        ? "fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col shadow-xl xl:static xl:z-auto xl:w-85 xl:shadow-none"
+                        : "hidden w-85 xl:flex xl:flex-col"
+                )}
+            >
             <div className="border-b border-border px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                     <div>
@@ -555,11 +616,18 @@ export default function TaskPanel({ conversationId }: TaskPanelProps) {
                 <AnimatePresence initial={false} mode="popLayout">
                     <div className="space-y-3">
                         {tasks.map((task) => (
-                            <TaskInlineCard key={task._id} task={task} onStatusChange={updateTaskStatus} onCancel={cancelTask} />
+                            <TaskInlineCard
+                                key={task._id}
+                                task={task}
+                                highlighted={task._id === highlightedTaskId}
+                                onStatusChange={updateTaskStatus}
+                                onCancel={cancelTask}
+                            />
                         ))}
                     </div>
                 </AnimatePresence>
             </div>
-        </aside>
+            </aside>
+        </>
     );
 }

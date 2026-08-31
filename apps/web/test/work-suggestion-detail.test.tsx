@@ -100,6 +100,14 @@ describe("WorkSuggestionDetailView", () => {
         expect(detail).toHaveTextContent("Follow up with the new hire");
         expect(detail).toHaveTextContent("88%");
         expect(detail).toHaveTextContent("msg-1");
+        expect(screen.getByTestId("source-message-link")).toHaveAttribute(
+            "href",
+            "/c/conv-1?msg=msg-1"
+        );
+        expect(screen.getByRole("link", { name: /back to chat/i })).toHaveAttribute(
+            "href",
+            "/c/conv-1"
+        );
         expect(screen.getByTestId("work-suggestion-actions")).toBeInTheDocument();
         expect(screen.getByTestId("suggestion-accept")).toBeInTheDocument();
         expect(screen.getByTestId("suggestion-dismiss")).toBeInTheDocument();
@@ -118,6 +126,7 @@ describe("WorkSuggestionDetailView", () => {
             />
         );
         expect(screen.getByTestId("converted-task-id")).toHaveTextContent("task-1");
+        expect(screen.getByTestId("converted-task-link")).toHaveAttribute("href", "/tasks/task-1");
         expect(screen.getByTestId("suggestion-assign")).toBeInTheDocument();
         expect(screen.queryByTestId("suggestion-accept")).not.toBeInTheDocument();
     });

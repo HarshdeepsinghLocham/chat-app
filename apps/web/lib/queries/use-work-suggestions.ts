@@ -34,6 +34,7 @@ export function useWorkSuggestionsList(params: {
     status: "" | WorkSuggestionStatus;
     page: number;
     limit?: number;
+    enabled?: boolean;
 }) {
     const limit = params.limit ?? WORK_INBOX_PAGE_LIMIT;
     const listParams: WorkSuggestionsListParams = {
@@ -43,7 +44,8 @@ export function useWorkSuggestionsList(params: {
         page: params.page,
         limit,
     };
-    const enabled = Boolean(listParams.organizationId || listParams.conversationId);
+    const enabled = (params.enabled ?? true)
+        && Boolean(listParams.organizationId || listParams.conversationId);
 
     const query = useQuery({
         queryKey: queryKeys.workSuggestions.list(listParams),

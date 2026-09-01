@@ -48,12 +48,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             const access = await requireTaskAccess(id, guard.user);
             if (access.response) return access.response;
 
-            const task = await TaskModel.findById(id).exec();
+            const task = await TaskModel.findById(id).lean();
             if (!task) {
                 return NextResponse.json({ error: "Task not found" }, { status: 404 });
             }
 
-            return NextResponse.json(await enrichTaskForProduct(task), { status: 200 });
+            return NextResponse.json(await enrichTaskForProduct(task as ITask), { status: 200 });
         } catch (error) {
             console.error("GET /api/tasks/:id error", error);
             return NextResponse.json({ error: "Failed to load task" }, { status: 500 });

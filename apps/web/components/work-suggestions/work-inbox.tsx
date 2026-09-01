@@ -1,9 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import type { WorkSuggestionRecord, WorkSuggestionStatus } from "@semantask/types";
+import {
+    isWorkSuggestionStatus,
+    type WorkSuggestionRecord,
+    type WorkSuggestionStatus,
+} from "@semantask/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +34,7 @@ import {
 import { conversationMessageHref } from "@/lib/work-links";
 import { SuggestionTrustPanel } from "@/components/work-suggestions/suggestion-trust";
 import { suggestionOutcome } from "@/lib/work-suggestions/trust";
+import { getWorkSuggestion } from "@/lib/utils/api";
 import {
     DEEP_LINK_HIGHLIGHT_CLASS,
     inboxSuggestionElementId,
@@ -75,9 +80,11 @@ export function WorkInboxView() {
     const currentUserId = user?._id ?? null;
     const searchParams = useSearchParams();
     const highlightedSuggestionId = searchParams.get("suggestion");
-    const [conversationId, setConversationId] = useState("");
+    const queryConversationId = searchParams.get("conversationId")?.trim() ?? "";
+    const [conversationId, setConversationId] = useState(queryConversationId);
     const [status, setStatus] = useState<"" | WorkSuggestionStatus>("proposed");
     const [page, setPage] = useState(1);
+    const [deepLinkResolved, setDeepLinkResolved] = useState(!highlightedSuggestionId);
     const [ownerById, setOwnerById] = useState<Record<string, string[]>>({});
     const [actingId, setActingId] = useState<string | null>(null);
     const [actionErrorById, setActionErrorById] = useState<Record<string, string | null>>({});
@@ -85,8 +92,50 @@ export function WorkInboxView() {
     const queryClient = useQueryClient();
     const refreshConversation = useWorkSuggestionStore((state) => state.refreshConversation);
 
+    useEffect(() => {
+        if (queryConversationId) {
+            setConversationId(queryConversationId);
+            setPage(1);
+        }
+    }, [queryConversationId]);
+
+    useEffect(() => {
+        if (!highlightedSuggestionId) {
+            setDeepLinkResolved(true);
+            return;
+        }
+
+        let cancelled = false;
+        setDeepLinkResolved(false);
+
+        void (async () => {
+            try {
+                const suggestion = await getWorkSuggestion(highlightedSuggestionId);
+                if (cancelled) return;
+                if (!queryConversationId && suggestion.conversationId) {
+                    setConversationId(suggestion.conversationId);
+                }
+                if (isWorkSuggestionStatus(suggestion.status)) {
+                    setStatus(suggestion.status);
+                }
+                setPage(1);
+            } catch {
+                // Keep query/org scope and default filters when lookup fails.
+            } finally {
+                if (!cancelled) {
+                    setDeepLinkResolved(true);
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [highlightedSuggestionId, queryConversationId]);
+
     const scopedConversationId = conversationId.trim() || undefined;
-    const hasScope = Boolean(organizationId || scopedConversationId);
+    const resolvingDeepLink = Boolean(highlightedSuggestionId && !deepLinkResolved);
+    const hasScope = Boolean(organizationId || scopedConversationId || resolvingDeepLink);
 
     const listQuery = useWorkSuggestionsList({
         organizationId,
@@ -94,6 +143,7 @@ export function WorkInboxView() {
         status,
         page,
         limit: WORK_INBOX_PAGE_LIMIT,
+        enabled: deepLinkResolved,
     });
 
     const membersQuery = useOrganizationMembers(organizationId);
@@ -118,13 +168,28 @@ export function WorkInboxView() {
     const items = listQuery.data?.items ?? [];
     const pagination = listQuery.data?.pagination;
     const totalPages = pagination?.totalPages ?? 1;
-    const loading = listQuery.isLoading || listQuery.isFetching;
+    const loading = resolvingDeepLink || listQuery.isLoading || listQuery.isFetching;
     const error = listQuery.error
         ? mutationErrorMessage(listQuery.error, "Failed to load inbox")
         : null;
     const highlightedOnPage = Boolean(
         highlightedSuggestionId && items.some((item) => item._id === highlightedSuggestionId)
     );
+
+    useEffect(() => {
+        if (!highlightedSuggestionId || !deepLinkResolved || !listQuery.isSuccess) return;
+        if (highlightedOnPage) return;
+        if (page >= totalPages) return;
+        setPage((current) => Math.min(totalPages, current + 1));
+    }, [
+        highlightedSuggestionId,
+        deepLinkResolved,
+        listQuery.isSuccess,
+        highlightedOnPage,
+        page,
+        totalPages,
+    ]);
+
     useDeepLinkScroll(
         highlightedSuggestionId ? inboxSuggestionElementId(highlightedSuggestionId) : null,
         highlightedOnPage

@@ -85,7 +85,7 @@ describe("TaskPanel deep links", () => {
         mockTaskSearch.value = "task=task-1";
         authenticatedFetch.mockImplementation(async (url: unknown) => {
             if (String(url).includes("execution-events")) {
-                return { ok: true, json: async () => [] };
+                return { ok: true, json: async () => ({ events: [] }) };
             }
             return { ok: true, json: async () => [buildTask()] };
         });
@@ -103,5 +103,6 @@ describe("TaskPanel deep links", () => {
             "/work-suggestions/sug-1"
         );
         expect(screen.getByLabelText("Run status")).toBeInTheDocument();
+        expect(screen.getByTestId("task-panel")).toHaveAttribute("data-mobile-visible", "true");
     });
 });

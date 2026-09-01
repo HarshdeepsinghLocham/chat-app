@@ -20,6 +20,12 @@ describe("work-links href helpers", () => {
     it("builds task, inbox, and board hrefs", () => {
         expect(taskHref("task-1")).toBe("/work/task-1");
         expect(inboxSuggestionHref("sug-1")).toBe("/inbox?suggestion=sug-1");
+        expect(inboxSuggestionHref("sug-1", "conv-1")).toBe(
+            "/inbox?suggestion=sug-1&conversationId=conv-1"
+        );
         expect(boardTaskHref("task-1")).toBe("/inbox/board?task=task-1");
+        expect(boardTaskHref("task-1", "conv-1")).toBe(
+            "/inbox/board?task=task-1&conversationId=conv-1"
+        );
     });
 });

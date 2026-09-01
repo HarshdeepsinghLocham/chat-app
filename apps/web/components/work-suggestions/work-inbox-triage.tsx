@@ -86,7 +86,12 @@ export function WorkInboxTriage({
     const [dismissReason, setDismissReason] = useState("");
 
     useEffect(() => {
-        setSelectedMemberIds(defaultOwner(displayedOwners));
+        const next = defaultOwner(displayedOwners);
+        setSelectedMemberIds((current) => {
+            const currentId = current[0] ?? UNASSIGNED;
+            const nextId = next[0] ?? UNASSIGNED;
+            return currentId === nextId ? current : next;
+        });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [suggestion._id, displayedOwners, selectableIds, candidateDefaults]);
 
@@ -129,7 +134,7 @@ export function WorkInboxTriage({
                             </option>
                         ))}
                 </select>
-                {!organizationId && !currentUserId ? (
+                {!organizationId ? (
                     <p className="text-xs text-muted-foreground">
                         Personal workspace: Me or Unassigned only.
                     </p>

@@ -62,10 +62,8 @@ export function WorkBoardView() {
     const [deepLinkResolved, setDeepLinkResolved] = useState(!highlightedTaskId);
 
     useEffect(() => {
-        if (queryConversationId) {
-            setConversationId(queryConversationId);
-            setPage(1);
-        }
+        setConversationId(queryConversationId);
+        setPage(1);
     }, [queryConversationId]);
 
     useEffect(() => {
@@ -108,19 +106,13 @@ export function WorkBoardView() {
         conversationId: scopedConversationId,
         page,
         limit: WORK_BOARD_PAGE_LIMIT,
+        priority: priorityFilter || undefined,
+        due: dueFilter,
         enabled: deepLinkResolved,
     });
     const moveMutation = useMoveWorkBoardCard(listQuery.listParams);
 
-    const items = (listQuery.data?.items ?? []).filter((item) => {
-        if (priorityFilter && item.priority !== priorityFilter) return false;
-        if (dueFilter === "none" && item.dueAt) return false;
-        if (dueFilter === "overdue") {
-            if (!item.dueAt) return false;
-            if (new Date(item.dueAt).getTime() >= Date.now()) return false;
-        }
-        return true;
-    });
+    const items = listQuery.data?.items ?? [];
     const pagination = listQuery.data?.pagination;
     const totalPages = pagination?.totalPages ?? 1;
     const columns = useMemo(() => groupByBoardStatus(items), [items]);
@@ -209,7 +201,10 @@ export function WorkBoardView() {
                                 data-testid="work-board-due-filter"
                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                                 value={dueFilter}
-                                onChange={(event) => setDueFilter(event.target.value as typeof dueFilter)}
+                                onChange={(event) => {
+                                    setPage(1);
+                                    setDueFilter(event.target.value as typeof dueFilter);
+                                }}
                             >
                                 <option value="all">All</option>
                                 <option value="overdue">Overdue</option>
@@ -223,7 +218,10 @@ export function WorkBoardView() {
                                 data-testid="work-board-priority-filter"
                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                                 value={priorityFilter}
-                                onChange={(event) => setPriorityFilter(event.target.value)}
+                                onChange={(event) => {
+                                    setPage(1);
+                                    setPriorityFilter(event.target.value);
+                                }}
                             >
                                 <option value="">All</option>
                                 <option value="low">low</option>

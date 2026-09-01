@@ -13,6 +13,7 @@ const inviteUpdateOne = jest.fn<any>();
 
 jest.mock("@semantask/db/models/OrganizationInvitation", () => ({
     __esModule: true,
+    ORGANIZATION_INVITATION_ROLES: ["admin", "member"],
     default: {
         create: (...args: unknown[]) => inviteCreate(...args),
         findOne: (...args: unknown[]) => inviteFindOne(...args),
@@ -162,5 +163,17 @@ describe("organization-invite.service", () => {
                 email: `!@!.${"!.".repeat(200)}`,
             })
         ).rejects.toBeInstanceOf(ValidationError);
+    });
+
+    it("rejects owner invitations", async () => {
+        await expect(
+            createOrganizationInvitation({
+                organizationId: new Types.ObjectId().toString(),
+                actorUserId: new Types.ObjectId().toString(),
+                email: "owner@acme.com",
+                role: "owner" as never,
+            })
+        ).rejects.toBeInstanceOf(ValidationError);
+        expect(inviteCreate).not.toHaveBeenCalled();
     });
 });

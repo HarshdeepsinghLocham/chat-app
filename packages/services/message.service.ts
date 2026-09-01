@@ -166,6 +166,7 @@ async function notifyMentionsFromMessage(input: {
 
     const { extractAssigneeUserIds } = await import("./message-intent.helpers");
     const { notifyUsers } = await import("./notify.service");
+    const { escapeHtml } = await import("./html-escape");
     const mentioned = extractAssigneeUserIds(
         input.content,
         conversation.participants.map((participant) => ({
@@ -181,7 +182,7 @@ async function notifyMentionsFromMessage(input: {
         kind: "mention",
         subject: "You were mentioned in Semantask",
         text: `You were mentioned: ${input.content.slice(0, 140)}`,
-        html: `<p>You were mentioned:</p><p>${input.content.slice(0, 280)}</p>`,
+        html: `<p>You were mentioned:</p><p>${escapeHtml(input.content.slice(0, 280))}</p>`,
         dedupeKey: `mention:${input.messageId}`,
         conversationId: input.conversationId,
         entityId: input.messageId,

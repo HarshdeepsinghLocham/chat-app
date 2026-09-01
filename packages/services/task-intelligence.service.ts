@@ -98,6 +98,7 @@ async function findPossibleDuplicateTask(input: {
         boardStatus: { $ne: "done" },
     })
         .select("_id title")
+        .sort({ updatedAt: -1 })
         .limit(50)
         .lean();
 

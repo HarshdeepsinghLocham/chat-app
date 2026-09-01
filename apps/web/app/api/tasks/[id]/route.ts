@@ -15,6 +15,7 @@ import {
     AuthorizationError,
 } from "@semantask/services/authorization.service";
 import { resolveBoardStatus } from "@semantask/types";
+import { escapeHtml } from "@semantask/services/html-escape";
 import type { ITask } from "@semantask/db/models/Task";
 
 const updateTaskBodySchema = z.object({
@@ -165,19 +166,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             }
 
             if (Array.isArray(body.assignees) && body.assignees.length > 0) {
-                const { notifyUsers } = await import("@semantask/services/notify.service");
-                void notifyUsers(
-                    body.assignees.filter((id: string) => id !== guard.user.id),
-                    {
-                        kind: "task_assigned",
-                        subject: `Assigned: ${normalized.title}`,
-                        text: `You were assigned "${normalized.title}".`,
-                        html: `<p>You were assigned <b>${normalized.title}</b>.</p>`,
-                        dedupeKey: `assign-patch:${normalized._id}:${normalized.updatedAt}`,
-                        conversationId: normalized.conversationId,
-                        entityId: normalized._id,
-                    }
-                ).catch((error) => console.error("task assign notify failed", error));
+                const previousAssigneeIds = new Set(
+                    (before.assignees ?? []).map((id) => id.toString())
+                );
+                const addedAssignees = body.assignees.filter(
+                    (id: string) => id !== guard.user.id && !previousAssigneeIds.has(id)
+                );
+                if (addedAssignees.length > 0) {
+                    const { notifyUsers } = await import("@semantask/services/notify.service");
+                    await notifyUsers(
+                        addedAssignees,
+                        {
+                            kind: "task_assigned",
+                            subject: `Assigned: ${normalized.title}`,
+                            text: `You were assigned "${normalized.title}".`,
+                            html: `<p>You were assigned <b>${escapeHtml(normalized.title)}</b>.</p>`,
+                            dedupeKey: `assign-patch:${normalized._id}:${normalized.updatedAt}`,
+                            conversationId: normalized.conversationId,
+                            entityId: normalized._id,
+                        }
+                    ).catch((error) => console.error("task assign notify failed", error));
+                }
             }
 
             return NextResponse.json(normalized, { status: 200 });

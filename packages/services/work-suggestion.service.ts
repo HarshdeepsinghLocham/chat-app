@@ -762,6 +762,11 @@ export async function acceptWorkSuggestion(
                 : null,
             actorUserId: input.actorUserId,
         });
+        await proposeExecutionFromSuggestion({
+            task,
+            suggestion: raced,
+            actorUserId: input.actorUserId,
+        });
         return {
             suggestion: normalizeWorkSuggestion(raced),
             task: taskRecord,

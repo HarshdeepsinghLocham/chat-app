@@ -16,12 +16,20 @@ export function WorkSearchBox() {
             setHits([]);
             return;
         }
+        let current = true;
         const handle = window.setTimeout(() => {
             void searchOrganizationWork(organizationId, query)
-                .then(setHits)
-                .catch(() => setHits([]));
+                .then((result) => {
+                    if (current) setHits(result);
+                })
+                .catch(() => {
+                    if (current) setHits([]);
+                });
         }, 250);
-        return () => window.clearTimeout(handle);
+        return () => {
+            current = false;
+            window.clearTimeout(handle);
+        };
     }, [organizationId, query]);
 
     if (!organizationId) return null;

@@ -489,6 +489,8 @@ export async function listWorkBoard(params: {
     conversationId?: string;
     organizationId?: string;
     boardStatus?: BoardStatus;
+    priority?: string;
+    due?: "overdue" | "none";
     page?: number;
     limit?: number;
 }): Promise<WorkBoardListResult> {
@@ -496,6 +498,8 @@ export async function listWorkBoard(params: {
     if (params.conversationId) searchParams.set("conversationId", params.conversationId);
     if (params.organizationId) searchParams.set("organizationId", params.organizationId);
     if (params.boardStatus) searchParams.set("boardStatus", params.boardStatus);
+    if (params.priority) searchParams.set("priority", params.priority);
+    if (params.due) searchParams.set("due", params.due);
     if (params.page) searchParams.set("page", String(params.page));
     if (params.limit) searchParams.set("limit", String(params.limit));
 

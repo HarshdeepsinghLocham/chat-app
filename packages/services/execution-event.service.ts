@@ -166,11 +166,10 @@ export async function persistExecutionUpdatePayload(
         })();
     }
 
-    if (stateKind === "succeeded" || step === "completed") {
-        void notifyExecutionOutcome(payload, "execution_succeeded");
-    }
     if (stateKind === "failed" || step === "failed" || step === "exception") {
         void notifyExecutionOutcome(payload, "execution_failed");
+    } else if (stateKind === "succeeded" || step === "completed") {
+        void notifyExecutionOutcome(payload, "execution_succeeded");
     }
 
     return event;

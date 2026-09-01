@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import type { TaskPriority, WorkSuggestionRecord } from "@semantask/types";
 import {
@@ -32,11 +32,15 @@ export default function WorkSuggestionDetailPage() {
 
     const organizationId = suggestion?.organizationId ?? activeOrgId;
     const membersQuery = useOrganizationMembers(organizationId);
-    const members: OrgMemberOption[] = (membersQuery.data ?? []).map((member) => ({
-        userId: member.userId,
-        role: member.role,
-        user: member.user ?? { id: member.userId, username: "Unknown user" },
-    }));
+    const members: OrgMemberOption[] = useMemo(
+        () =>
+            (membersQuery.data ?? []).map((member) => ({
+                userId: member.userId,
+                role: member.role,
+                user: member.user ?? { id: member.userId, username: "Unknown user" },
+            })),
+        [membersQuery.data]
+    );
 
     useEffect(() => {
         if (!id) {

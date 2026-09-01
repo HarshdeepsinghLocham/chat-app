@@ -182,8 +182,10 @@ function mockTaskUpsert() {
     });
     taskFind.mockReturnValue({
         select: jest.fn().mockReturnValue({
-            limit: jest.fn().mockReturnValue({
-                lean: jest.fn().mockResolvedValue([]),
+            sort: jest.fn().mockReturnValue({
+                limit: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue([]),
+                }),
             }),
         }),
     });

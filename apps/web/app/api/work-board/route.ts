@@ -14,12 +14,18 @@ import {
     organizationApiErrorStatus,
     ValidationError,
 } from "@semantask/services/organization-errors";
-import { isBoardStatus } from "@semantask/types";
+import { isBoardStatus, type TaskPriority } from "@semantask/types";
+
+const TASK_PRIORITIES = new Set<TaskPriority>(["low", "medium", "high", "urgent"]);
 
 function parsePositiveInt(value: string | null, fallback: number): number {
     if (!value) return fallback;
     const parsed = Number.parseInt(value, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function isTaskPriority(value: string | null): value is TaskPriority {
+    return Boolean(value && TASK_PRIORITIES.has(value as TaskPriority));
 }
 
 export async function GET(req: Request) {
@@ -39,6 +45,8 @@ export async function GET(req: Request) {
     const conversationId = url.searchParams.get("conversationId")?.trim() || undefined;
     const organizationId = url.searchParams.get("organizationId")?.trim() || undefined;
     const boardStatusParam = url.searchParams.get("boardStatus");
+    const priorityParam = url.searchParams.get("priority")?.trim() || null;
+    const dueParam = url.searchParams.get("due")?.trim() || null;
     const page = parsePositiveInt(url.searchParams.get("page"), 1);
     const limit = parsePositiveInt(url.searchParams.get("limit"), 20);
 
@@ -52,6 +60,20 @@ export async function GET(req: Request) {
     if (boardStatusParam && !isBoardStatus(boardStatusParam)) {
         return NextResponse.json(
             { success: false, error: "Invalid boardStatus" },
+            { status: 400 }
+        );
+    }
+
+    if (priorityParam && !isTaskPriority(priorityParam)) {
+        return NextResponse.json(
+            { success: false, error: "Invalid priority" },
+            { status: 400 }
+        );
+    }
+
+    if (dueParam && dueParam !== "all" && dueParam !== "overdue" && dueParam !== "none") {
+        return NextResponse.json(
+            { success: false, error: "Invalid due filter" },
             { status: 400 }
         );
     }
@@ -73,6 +95,8 @@ export async function GET(req: Request) {
             conversationId,
             organizationId,
             boardStatus: isBoardStatus(boardStatusParam) ? boardStatusParam : undefined,
+            priority: isTaskPriority(priorityParam) ? priorityParam : undefined,
+            due: dueParam === "overdue" || dueParam === "none" ? dueParam : undefined,
             page,
             limit,
         });

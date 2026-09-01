@@ -5,6 +5,7 @@ import WorkSuggestionModel from "@semantask/db/models/WorkSuggestion";
 import TaskActionModel from "@semantask/db/models/TaskAction";
 import OrganizationMembershipModel from "@semantask/db/models/OrganizationMembership";
 import { Conversation } from "@semantask/db/models/Conversation";
+import { User } from "@semantask/db/models/User";
 import { resolveUserRefs, userRefOrFallback } from "./user-ref.service";
 import { ValidationError } from "./organization-errors";
 
@@ -38,7 +39,7 @@ export async function searchOrganizationWork(input: {
     const orgId = new Types.ObjectId(input.organizationId);
     const rx = new RegExp(escapeRegex(q), "i");
 
-    const [tasks, conversations, members, suggestions, actionsParentTasks] = await Promise.all([
+    const [tasks, conversations, userHits, suggestions, actionHits] = await Promise.all([
         TaskModel.find({ organizationId: orgId, title: rx })
             .select({ title: 1 })
             .limit(8)
@@ -50,53 +51,68 @@ export async function searchOrganizationWork(input: {
             .select({ name: 1, groupName: 1 })
             .limit(6)
             .lean<{ _id: Types.ObjectId; name?: string; groupName?: string }[]>(),
-        OrganizationMembershipModel.find({ organizationId: orgId })
-            .select({ userId: 1, role: 1 })
+        User.find({ $or: [{ username: rx }, { email: rx }] })
+            .select({ _id: 1, username: 1, email: 1 })
             .limit(50)
-            .lean<{ userId: Types.ObjectId; role: string }[]>(),
+            .lean<{ _id: Types.ObjectId; username: string; email?: string }[]>(),
         WorkSuggestionModel.find({ organizationId: orgId, title: rx })
             .select({ title: 1 })
             .limit(6)
             .lean<{ _id: Types.ObjectId; title: string }[]>(),
-        TaskModel.find({ organizationId: orgId })
-            .select({ _id: 1 })
-            .limit(200)
-            .lean<{ _id: Types.ObjectId }[]>(),
-    ]);
-
-    const actionTaskIds = actionsParentTasks.map((row) => row._id);
-    const actions = actionTaskIds.length
-        ? await TaskActionModel.find({
-            taskId: { $in: actionTaskIds },
+        TaskActionModel.find({
             $or: [{ toolName: rx }, { actionType: rx }, { summary: rx }],
         })
             .select({ toolName: 1, actionType: 1, taskId: 1, summary: 1 })
-            .limit(6)
+            .limit(50)
             .lean<{
                 _id: Types.ObjectId;
                 toolName?: string | null;
                 actionType: string;
                 taskId: Types.ObjectId;
                 summary?: string | null;
-            }[]>()
-        : [];
+            }[]>(),
+    ]);
 
-    const refs = await resolveUserRefs(members.map((row) => row.userId.toString()));
-    const people = members
+    const userIds = userHits.map((user) => user._id);
+    const actionTaskIds = actionHits.map((action) => action.taskId);
+    const [memberHits, orgActionTasks] = await Promise.all([
+        userIds.length
+            ? OrganizationMembershipModel.find({
+                organizationId: orgId,
+                userId: { $in: userIds },
+            })
+                .select({ userId: 1, role: 1 })
+                .limit(6)
+                .lean<{ userId: Types.ObjectId; role: string }[]>()
+            : Promise.resolve([] as { userId: Types.ObjectId; role: string }[]),
+        actionTaskIds.length
+            ? TaskModel.find({
+                organizationId: orgId,
+                _id: { $in: actionTaskIds },
+            })
+                .select({ _id: 1 })
+                .limit(6)
+                .lean<{ _id: Types.ObjectId }[]>()
+            : Promise.resolve([] as { _id: Types.ObjectId }[]),
+    ]);
+
+    const orgActionTaskIds = new Set(orgActionTasks.map((row) => row._id.toString()));
+    const actions = actionHits
+        .filter((action) => orgActionTaskIds.has(action.taskId.toString()))
+        .slice(0, 6);
+
+    const refs = await resolveUserRefs(memberHits.map((row) => row.userId.toString()));
+    const people = memberHits
         .map((row) => {
             const user = userRefOrFallback(row.userId.toString(), refs);
-            const hay = `${user.username} ${user.email ?? ""} ${row.role}`.toLowerCase();
-            return hay.includes(q.toLowerCase())
-                ? {
-                    kind: "person" as const,
-                    id: user.id,
-                    title: user.username,
-                    subtitle: row.role,
-                    href: "/organizations",
-                }
-                : null;
+            return {
+                kind: "person" as const,
+                id: user.id,
+                title: user.username,
+                subtitle: row.role,
+                href: "/organizations",
+            };
         })
-        .filter((row): row is NonNullable<typeof row> => Boolean(row))
         .slice(0, 6);
 
     return [

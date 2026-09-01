@@ -1,5 +1,4 @@
 import mongoose, { Document, Model, Schema, Types } from "mongoose";
-import type { OrganizationMemberRole } from "./OrganizationMembership";
 
 export const ORGANIZATION_INVITATION_STATUSES = [
     "pending",
@@ -9,11 +8,14 @@ export const ORGANIZATION_INVITATION_STATUSES = [
 ] as const;
 export type OrganizationInvitationStatus = (typeof ORGANIZATION_INVITATION_STATUSES)[number];
 
+export const ORGANIZATION_INVITATION_ROLES = ["admin", "member"] as const;
+export type OrganizationInvitationRole = (typeof ORGANIZATION_INVITATION_ROLES)[number];
+
 export interface IOrganizationInvitation extends Document {
     _id: Types.ObjectId;
     organizationId: Types.ObjectId;
     email: string;
-    role: OrganizationMemberRole;
+    role: OrganizationInvitationRole;
     token: string;
     status: OrganizationInvitationStatus;
     invitedBy: Types.ObjectId;

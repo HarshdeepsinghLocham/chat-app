@@ -106,7 +106,7 @@ export function useAcceptWorkSuggestion(listParams: WorkSuggestionsListParams) {
     return useMutation({
         mutationFn: ({ item, assignees }: AcceptVariables) =>
             acceptWorkSuggestionApi(item._id, {
-                assignees,
+                ...(assignees.length > 0 ? { assignees } : {}),
             }),
         onMutate: async ({ item, statusFilter }: AcceptVariables): Promise<ListCacheContext> => {
             await queryClient.cancelQueries({ queryKey: listKey });

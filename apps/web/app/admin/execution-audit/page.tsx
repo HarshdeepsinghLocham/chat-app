@@ -17,7 +17,10 @@ export default function ExecutionAuditPage() {
         let cancelled = false;
         void getAdminExecutionAudit({ page, limit: 20 })
             .then((result) => {
-                if (!cancelled) setData(result);
+                if (!cancelled) {
+                    setError(null);
+                    setData(result);
+                }
             })
             .catch((loadError) => {
                 if (!cancelled) {
@@ -37,6 +40,9 @@ export default function ExecutionAuditPage() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                     {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                    {(data?.events ?? []).length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No execution events.</p>
+                    ) : (
                     <ul className="space-y-2 text-sm">
                         {(data?.events ?? []).map((event) => (
                             <li key={event.id} className="rounded-md border border-border px-3 py-2">
@@ -58,6 +64,7 @@ export default function ExecutionAuditPage() {
                             </li>
                         ))}
                     </ul>
+                    )}
                     <div className="flex gap-2">
                         <Button
                             size="sm"

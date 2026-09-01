@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { Types } from "mongoose";
-import type { OrganizationMemberRole } from "@semantask/db/models/OrganizationMembership";
 import { connectToDatabase } from "@semantask/db";
 import OrganizationInvitationModel, {
+    type OrganizationInvitationRole,
     type OrganizationInvitationStatus,
+    ORGANIZATION_INVITATION_ROLES,
 } from "@semantask/db/models/OrganizationInvitation";
 import OrganizationMembershipModel from "@semantask/db/models/OrganizationMembership";
 import OrganizationModel from "@semantask/db/models/Organization";
@@ -18,7 +19,7 @@ import {
 import { assertMemberQuotaAvailable } from "./organization-quota.service";
 
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-const INVITE_ROLES: OrganizationMemberRole[] = ["admin", "member"];
+const INVITE_ROLES: OrganizationInvitationRole[] = [...ORGANIZATION_INVITATION_ROLES];
 /** RFC 5321 / common practice upper bound; avoids ReDoS on huge inputs. */
 const MAX_EMAIL_LENGTH = 254;
 
@@ -27,7 +28,7 @@ export type OrganizationInvitationRecord = {
     organizationId: string;
     organizationName: string;
     email: string;
-    role: OrganizationMemberRole;
+    role: OrganizationInvitationRole;
     status: OrganizationInvitationStatus;
     token: string;
     invitedBy: string;
@@ -78,7 +79,7 @@ type InvitationLean = {
     _id: Types.ObjectId;
     organizationId: Types.ObjectId;
     email: string;
-    role: OrganizationMemberRole;
+    role: OrganizationInvitationRole;
     token: string;
     status: OrganizationInvitationStatus;
     invitedBy: Types.ObjectId;
@@ -117,7 +118,7 @@ export async function createOrganizationInvitation(input: {
     organizationId: string;
     actorUserId: string;
     email: string;
-    role?: OrganizationMemberRole;
+    role?: OrganizationInvitationRole;
 }): Promise<OrganizationInvitationRecord> {
     await assertCanManageMembers(input.organizationId, input.actorUserId);
     await assertOrganizationActive(input.organizationId);

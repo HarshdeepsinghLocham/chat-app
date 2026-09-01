@@ -41,10 +41,11 @@ export function serializeTaskAction(action: ITaskAction): TaskActionRecord {
 export async function listTaskActionsForTask(taskId: string): Promise<ITaskAction[]> {
     if (!isValidObjectId(taskId)) return [];
     await connectToDatabase();
-    return TaskActionModel.find({ taskId: new Types.ObjectId(taskId) })
-        .sort({ createdAt: 1 })
+    const rows = await TaskActionModel.find({ taskId: new Types.ObjectId(taskId) })
+        .sort({ createdAt: -1 })
         .limit(100)
         .exec();
+    return rows.slice().reverse();
 }
 
 export async function enrichTaskForProduct(doc: ITask): Promise<TaskRecord> {

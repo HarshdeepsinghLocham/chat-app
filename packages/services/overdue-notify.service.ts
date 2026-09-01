@@ -3,6 +3,7 @@ import { connectToDatabase } from "@semantask/db";
 import TaskModel from "@semantask/db/models/Task";
 import { boardStatusQuery, isValidObjectId } from "./work-board.service";
 import { notifyUser } from "./notify.service";
+import { escapeHtml } from "./html-escape";
 
 function openBoardStatusOrClause(): Record<string, unknown>[] {
     const todo = boardStatusQuery("todo") as { $or: Record<string, unknown>[] };
@@ -57,7 +58,7 @@ export async function notifyOverdueTasks(options?: {
                 kind: "task_overdue",
                 subject: `Overdue: ${task.title}`,
                 text: `Task "${task.title}" is overdue (due ${new Date(task.dueAt).toLocaleDateString()}).`,
-                html: `<p>Task <b>${task.title}</b> is overdue (due ${new Date(task.dueAt).toLocaleDateString()}).</p>`,
+                html: `<p>Task <b>${escapeHtml(task.title)}</b> is overdue (due ${new Date(task.dueAt).toLocaleDateString()}).</p>`,
                 dedupeKey: `overdue:${task._id.toString()}:${dayKey}`,
                 conversationId: task.conversationId.toString(),
                 entityId: task._id.toString(),

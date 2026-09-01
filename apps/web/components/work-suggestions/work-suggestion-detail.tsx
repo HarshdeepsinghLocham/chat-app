@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { TaskPriority, WorkSuggestionRecord } from "@semantask/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -64,6 +64,11 @@ export function WorkSuggestionDetailView({
 }: WorkSuggestionDetailViewProps) {
     const [dueAtInput, setDueAtInput] = useState("");
     const [priorityInput, setPriorityInput] = useState<TaskPriority | "">("");
+    const owners = useMemo(() => {
+        if (displayedOwners) return displayedOwners;
+        if (suggestion?.status === "proposed") return suggestion.candidates.assigneeCandidates ?? [];
+        return [];
+    }, [displayedOwners, suggestion?.status, suggestion?.candidates.assigneeCandidates]);
 
     if (loading) {
         return (
@@ -130,7 +135,6 @@ export function WorkSuggestionDetailView({
     const assigneeCount = candidates.assigneeCandidates?.length ?? 0;
     const isProposed = suggestion.status === "proposed";
     const isConverted = suggestion.status === "converted";
-    const owners = displayedOwners ?? (isProposed ? candidates.assigneeCandidates ?? [] : []);
 
     const extraFields = () => {
         const dueAt = dueAtInput.trim() ? new Date(dueAtInput).toISOString() : undefined;

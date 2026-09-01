@@ -43,6 +43,11 @@ jest.mock("@/lib/services/outbox.service", () => ({
     enqueueOutboxEvent: (...args: unknown[]) => enqueueOutboxEvent(...args),
 }));
 
+const notifyUsers = jest.fn();
+jest.mock("@semantask/services/notify.service", () => ({
+    notifyUsers: (...args: unknown[]) => notifyUsers(...args),
+}));
+
 const findById = jest.fn();
 jest.mock("@/models/Task", () => ({
     __esModule: true,
@@ -52,12 +57,13 @@ jest.mock("@/models/Task", () => ({
 }));
 
 jest.mock("@/server/normalizers/task.normalizer", () => ({
-    normalizeTask: (doc: { _id: { toString(): string }; conversationId: { toString(): string }; boardStatus?: string; version: number; updatedAt: Date }) => ({
+    normalizeTask: (doc: { _id: { toString(): string }; conversationId: { toString(): string }; boardStatus?: string; version: number; updatedAt: Date; title?: string }) => ({
         _id: doc._id.toString(),
         conversationId: doc.conversationId.toString(),
         boardStatus: doc.boardStatus ?? "todo",
         version: doc.version,
         updatedAt: doc.updatedAt.toISOString(),
+        title: doc.title ?? "Task",
     }),
 }));
 
@@ -190,6 +196,45 @@ describe("PATCH /api/tasks/:id boardStatus", () => {
         expect(response.status).toBe(200);
         expect(requireTaskAccess).toHaveBeenCalled();
         expect(assertCanMutateCoordinationTask).not.toHaveBeenCalled();
+    });
+
+    it("notifies only newly added assignees and HTML-escapes the title", async () => {
+        const existingAssignee = "507f1f77bcf86cd799439020";
+        const newAssignee = "507f1f77bcf86cd799439021";
+        findById.mockReturnValue({
+            lean: jest.fn().mockResolvedValue(
+                buildTask({
+                    title: "Fix <script>alert(1)</script>",
+                    assignees: [existingAssignee],
+                })
+            ),
+        });
+        updateTask.mockResolvedValue(
+            buildTask({
+                title: "Fix <script>alert(1)</script>",
+                assignees: [existingAssignee, newAssignee],
+                version: 2,
+            })
+        );
+        notifyUsers.mockResolvedValue(undefined);
+
+        const response = await PATCH(
+            new Request(`http://localhost/api/tasks/${taskId}`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                    assignees: [existingAssignee, newAssignee, user.id],
+                }),
+            }) as never,
+            { params: Promise.resolve({ id: taskId }) }
+        );
+
+        expect(response.status).toBe(200);
+        expect(notifyUsers).toHaveBeenCalledTimes(1);
+        const payload = notifyUsers.mock.calls[0][1] as { html: string; kind: string };
+        expect(notifyUsers.mock.calls[0][0]).toEqual([newAssignee]);
+        expect(payload.kind).toBe("task_assigned");
+        expect(payload.html).toContain("Fix &lt;script&gt;alert(1)&lt;/script&gt;");
+        expect(payload.html).not.toContain("<script>");
     });
 });
 

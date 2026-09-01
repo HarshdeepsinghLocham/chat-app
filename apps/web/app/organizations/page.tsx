@@ -19,10 +19,8 @@ import {
     useUpdateOrganizationQuota,
 } from "@/lib/queries/use-organizations";
 import { UserChip } from "@/components/people/user-chip";
-import { writeActiveOrganizationId } from "@/hooks/useActiveOrganizationId";
+import { writeActiveOrganizationId, readActiveOrganizationId } from "@/hooks/useActiveOrganizationId";
 import { getOrganizationUsage, listOrganizationToolGrants } from "@/lib/utils/api";
-
-const STORAGE_KEY = "semantask.activeOrganizationId";
 
 export default function OrganizationsPage() {
     const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
@@ -51,7 +49,7 @@ export default function OrganizationsPage() {
 
     useEffect(() => {
         if (!orgsQuery.data) return;
-        const stored = window.localStorage.getItem(STORAGE_KEY);
+        const stored = readActiveOrganizationId();
         if (stored && orgsQuery.data.some((org) => org.id === stored)) {
             setActiveOrgId(stored);
             return;

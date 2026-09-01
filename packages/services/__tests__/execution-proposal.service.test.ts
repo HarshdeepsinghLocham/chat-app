@@ -103,4 +103,25 @@ describe("proposeExecutionFromSuggestion", () => {
         expect(createTaskAction).toHaveBeenCalledTimes(2);
         expect(actionFindOne).toHaveBeenCalled();
     });
+
+    it("stores prohibited proposals as blocked with the policy reason", async () => {
+        createTaskAction.mockResolvedValue({
+            _id: new Types.ObjectId(),
+            executionState: "blocked",
+        });
+
+        await proposeExecutionFromSuggestion({
+            task,
+            suggestion: { ...suggestion, executionPolicy: "prohibited" } as IWorkSuggestion,
+            actorUserId,
+        });
+
+        expect(createTaskAction).toHaveBeenCalledWith(
+            expect.objectContaining({
+                executionState: "blocked",
+                error: "Organization policy prohibits send_email.",
+                reason: "Organization policy prohibits send_email.",
+            })
+        );
+    });
 });

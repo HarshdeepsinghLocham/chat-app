@@ -50,6 +50,15 @@ async function claimDedupeKey(key: string): Promise<boolean> {
     }
 }
 
+async function releaseDedupeKey(key: string): Promise<void> {
+    if (!key.trim()) return;
+    try {
+        await NotifyDedupeModel.deleteOne({ key: key.slice(0, 240) });
+    } catch (error) {
+        console.error("notify.dedupe release failed", error);
+    }
+}
+
 async function resolveUserEmail(userId: string): Promise<{ email: string; username: string } | null> {
     if (!isValidObjectId(userId)) return null;
     await connectToDatabase();
@@ -99,10 +108,7 @@ async function sendEmail(input: {
         }
     }
 
-    console.info("notify.email skipped (configure RESEND_API_KEY + RESEND_FROM_EMAIL)", {
-        to: input.to,
-        subject: input.subject,
-    });
+    console.info("notify.email skipped (configure RESEND_API_KEY + RESEND_FROM_EMAIL)");
     return "skipped";
 }
 
@@ -135,19 +141,26 @@ async function pushSocketNotify(input: NotifyUserInput): Promise<void> {
 
 /** Minimum product notification: Resend email when configured + optional socket push. */
 export async function notifyUser(input: NotifyUserInput): Promise<void> {
-    const claimed = await claimDedupeKey(`${input.dedupeKey}:${input.userId}`);
+    const dedupeKey = `${input.dedupeKey}:${input.userId}`;
+    const claimed = await claimDedupeKey(dedupeKey);
     if (!claimed) return;
 
     const user = await resolveUserEmail(input.userId);
-    if (!user) return;
+    if (!user) {
+        await releaseDedupeKey(dedupeKey);
+        return;
+    }
 
     const html = input.html ?? `<p>${input.text}</p>`;
-    await sendEmail({
+    const delivery = await sendEmail({
         to: user.email,
         subject: input.subject,
         text: input.text,
         html,
     });
+    if (delivery !== "sent") {
+        await releaseDedupeKey(dedupeKey);
+    }
     await pushSocketNotify(input);
 }
 

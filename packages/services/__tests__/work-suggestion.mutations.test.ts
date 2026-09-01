@@ -370,6 +370,34 @@ describe("work-suggestion mutations", () => {
             expect(taskDeleteOne).not.toHaveBeenCalled();
         });
 
+        it("proposes execution when a concurrent accept already converted the suggestion", async () => {
+            const proposed = buildSuggestion({ suggestedTool: "send_email" } as Partial<IWorkSuggestion>);
+            const converted = buildSuggestion({
+                status: "converted",
+                convertedTaskId: new Types.ObjectId(taskId),
+                suggestedTool: "send_email",
+            } as Partial<IWorkSuggestion>);
+            const task = buildTask();
+            suggestionFindById
+                .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(proposed) })
+                .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(converted) });
+            taskFindOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
+            createTask.mockResolvedValue(task);
+            suggestionFindOneAndUpdate.mockReturnValue({
+                exec: jest.fn().mockResolvedValue(null),
+            });
+
+            const result = await acceptWorkSuggestion({ suggestionId, actorUserId });
+
+            expect(result.task._id).toBe(taskId);
+            expect(proposeExecutionFromSuggestion).toHaveBeenCalledWith({
+                task,
+                suggestion: converted,
+                actorUserId,
+            });
+            expect(taskDeleteOne).not.toHaveBeenCalled();
+        });
+
         it("validates assignees are organization members", async () => {
             const outsider = new Types.ObjectId().toString();
             suggestionFindById.mockReturnValue({

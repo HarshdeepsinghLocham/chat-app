@@ -187,9 +187,7 @@ describe("WorkInboxView", () => {
         fireEvent.click(screen.getByTestId("suggestion-accept"));
 
         await waitFor(() => {
-            expect(acceptWorkSuggestionApi).toHaveBeenCalledWith("sug-1", {
-                assignees: [],
-            });
+            expect(acceptWorkSuggestionApi).toHaveBeenCalledWith("sug-1", {});
         });
         expect(decideTaskApproval).not.toHaveBeenCalled();
         expect(requestTaskExecutionApi).not.toHaveBeenCalled();
@@ -267,7 +265,7 @@ describe("WorkInboxView", () => {
 
         await waitFor(() => {
             expect(listWorkSuggestions).toHaveBeenCalledWith({
-                organizationId: undefined,
+                organizationId: "507f1f77bcf86cd799439015",
                 conversationId: "507f1f77bcf86cd799439014",
                 status: "converted",
                 page: 1,
@@ -308,6 +306,55 @@ describe("WorkInboxView", () => {
         expect(listWorkSuggestions).toHaveBeenCalledWith(
             expect.objectContaining({ page: 2, status: "proposed" })
         );
+    });
+
+    it("scopes a deep-linked org suggestion to its organizationId", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439016");
+        mockInboxSearch.value = "suggestion=sug-1";
+        getWorkSuggestion.mockResolvedValue(buildSuggestion({
+            organizationId: "507f1f77bcf86cd799439015",
+        }));
+        listWorkSuggestions.mockResolvedValue({
+            items: [buildSuggestion()],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        });
+
+        renderWithQuery(<WorkInboxView />);
+
+        await waitFor(() => {
+            expect(listWorkSuggestions).toHaveBeenCalledWith({
+                organizationId: "507f1f77bcf86cd799439015",
+                conversationId: "507f1f77bcf86cd799439014",
+                status: "proposed",
+                page: 1,
+                limit: 20,
+            });
+        });
+    });
+
+    it("clears organization scope for a personal deep-linked suggestion", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        mockInboxSearch.value = "suggestion=sug-1";
+        getWorkSuggestion.mockResolvedValue(buildSuggestion({
+            organizationId: null,
+            status: "proposed",
+        }));
+        listWorkSuggestions.mockResolvedValue({
+            items: [buildSuggestion({ organizationId: null })],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        });
+
+        renderWithQuery(<WorkInboxView />);
+
+        await waitFor(() => {
+            expect(listWorkSuggestions).toHaveBeenCalledWith({
+                organizationId: undefined,
+                conversationId: "507f1f77bcf86cd799439014",
+                status: "proposed",
+                page: 1,
+                limit: 20,
+            });
+        });
     });
 
     it("requires dismiss reason and removes row after dismiss", async () => {

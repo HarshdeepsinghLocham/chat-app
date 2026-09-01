@@ -15,7 +15,8 @@ import {
     organizationApiErrorStatus,
 } from "@semantask/services/organization-errors";
 import { OrgQuotaExceededError } from "@semantask/services/organization-quota.service";
-import type { OrganizationMemberRole } from "@semantask/db/models/OrganizationMembership";
+import { escapeHtml } from "@semantask/services/html-escape";
+import type { OrganizationInvitationRole } from "@semantask/db/models/OrganizationInvitation";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -62,7 +63,7 @@ export async function POST(req: Request, context: RouteContext) {
     const { id } = await context.params;
     try {
         await connectToDatabase();
-        const body = (await req.json()) as { email?: string; role?: OrganizationMemberRole };
+        const body = (await req.json()) as { email?: string; role?: OrganizationInvitationRole };
         if (!body.email?.trim()) {
             return NextResponse.json(
                 { success: false, error: "email is required" },
@@ -85,7 +86,7 @@ export async function POST(req: Request, context: RouteContext) {
                     to: invitation.email,
                     subject: `Join ${invitation.organizationName} on Semantask`,
                     text: `You are invited to join ${invitation.organizationName} on Semantask.\n\nAccept the invitation:\n${link}\n\nThis link expires on ${new Date(invitation.expiresAt).toLocaleString()}.`,
-                    html: `<p>You are invited to join <b>${invitation.organizationName}</b> on Semantask.</p><p><a href="${link}">Accept invitation</a></p><p>This link expires on ${new Date(invitation.expiresAt).toLocaleString()}.</p>`,
+                    html: `<p>You are invited to join <b>${escapeHtml(invitation.organizationName)}</b> on Semantask.</p><p><a href="${link}">Accept invitation</a></p><p>This link expires on ${new Date(invitation.expiresAt).toLocaleString()}.</p>`,
                 });
                 emailSent = true;
             } catch (mailError) {
@@ -201,13 +202,17 @@ export async function PATCH(req: Request, context: RouteContext) {
         const link = inviteUrl(invitation.token);
         let emailSent = false;
         if (isSmtpConfigured()) {
-            await sendTransactionalEmail({
-                to: invitation.email,
-                subject: `You're invited to ${invitation.organizationName}`,
-                text: `Join ${invitation.organizationName}: ${link}`,
-                html: `<p>Join <b>${invitation.organizationName}</b>: <a href="${link}">${link}</a></p>`,
-            });
-            emailSent = true;
+            try {
+                await sendTransactionalEmail({
+                    to: invitation.email,
+                    subject: `You're invited to ${invitation.organizationName}`,
+                    text: `Join ${invitation.organizationName}: ${link}`,
+                    html: `<p>Join <b>${escapeHtml(invitation.organizationName)}</b>: <a href="${link}">${link}</a></p>`,
+                });
+                emailSent = true;
+            } catch (mailError) {
+                console.error("invite resend email failed", mailError);
+            }
         }
 
         const { token: _token, ...rest } = invitation;

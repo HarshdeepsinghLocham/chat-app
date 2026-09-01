@@ -7,6 +7,7 @@ jest.mock("@semantask/db", () => ({
 
 const userFindById = jest.fn<any>();
 const notifyDedupeCreate = jest.fn<any>();
+const notifyDedupeDeleteOne = jest.fn<any>();
 
 jest.mock("@semantask/db/models/User", () => ({
     User: {
@@ -18,6 +19,7 @@ jest.mock("@semantask/db/models/NotifyDedupe", () => ({
     __esModule: true,
     default: {
         create: (...args: unknown[]) => notifyDedupeCreate(...args),
+        deleteOne: (...args: unknown[]) => notifyDedupeDeleteOne(...args),
     },
 }));
 
@@ -31,6 +33,8 @@ describe("notify.service", () => {
         userFindById.mockReset();
         notifyDedupeCreate.mockReset();
         notifyDedupeCreate.mockResolvedValue({});
+        notifyDedupeDeleteOne.mockReset();
+        notifyDedupeDeleteOne.mockResolvedValue({});
         fetchMock.mockReset();
         delete process.env.RESEND_API_KEY;
         delete process.env.RESEND_FROM_EMAIL;
@@ -59,6 +63,7 @@ describe("notify.service", () => {
 
         expect(fetchMock).not.toHaveBeenCalled();
         expect(notifyDedupeCreate).toHaveBeenCalled();
+        expect(notifyDedupeDeleteOne).toHaveBeenCalled();
     });
 
     it("sends via Resend when configured", async () => {
@@ -91,6 +96,7 @@ describe("notify.service", () => {
                 method: "POST",
             })
         );
+        expect(notifyDedupeDeleteOne).not.toHaveBeenCalled();
     });
 
     it("skips send when dedupe key was already claimed", async () => {

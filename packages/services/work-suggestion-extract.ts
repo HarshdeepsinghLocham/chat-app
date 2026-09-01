@@ -151,7 +151,7 @@ export function inferSuggestedTool(content: string, actionVerb = ""): SuggestedW
     ) {
         return "schedule_meeting";
     }
-    if (/\bschedule_meeting\b/.test(lower) || /\bmeeting\b/.test(lower) && /\bcalendar\b/.test(lower)) {
+    if (/\bschedule_meeting\b/.test(lower) || (/\bmeeting\b/.test(lower) && /\bcalendar\b/.test(lower))) {
         return "schedule_meeting";
     }
 

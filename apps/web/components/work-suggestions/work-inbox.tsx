@@ -85,6 +85,9 @@ export function WorkInboxView() {
     const [status, setStatus] = useState<"" | WorkSuggestionStatus>("proposed");
     const [page, setPage] = useState(1);
     const [deepLinkResolved, setDeepLinkResolved] = useState(!highlightedSuggestionId);
+    const [deepLinkOrganizationId, setDeepLinkOrganizationId] = useState<string | null | undefined>(
+        undefined
+    );
     const [ownerById, setOwnerById] = useState<Record<string, string[]>>({});
     const [actingId, setActingId] = useState<string | null>(null);
     const [actionErrorById, setActionErrorById] = useState<Record<string, string | null>>({});
@@ -102,6 +105,7 @@ export function WorkInboxView() {
     useEffect(() => {
         if (!highlightedSuggestionId) {
             setDeepLinkResolved(true);
+            setDeepLinkOrganizationId(undefined);
             return;
         }
 
@@ -112,6 +116,7 @@ export function WorkInboxView() {
             try {
                 const suggestion = await getWorkSuggestion(highlightedSuggestionId);
                 if (cancelled) return;
+                setDeepLinkOrganizationId(suggestion.organizationId ?? null);
                 if (!queryConversationId && suggestion.conversationId) {
                     setConversationId(suggestion.conversationId);
                 }
@@ -135,10 +140,13 @@ export function WorkInboxView() {
 
     const scopedConversationId = conversationId.trim() || undefined;
     const resolvingDeepLink = Boolean(highlightedSuggestionId && !deepLinkResolved);
-    const hasScope = Boolean(organizationId || scopedConversationId || resolvingDeepLink);
+    const listOrganizationId = highlightedSuggestionId
+        ? (deepLinkOrganizationId ?? undefined)
+        : organizationId;
+    const hasScope = Boolean(listOrganizationId || scopedConversationId || resolvingDeepLink);
 
     const listQuery = useWorkSuggestionsList({
-        organizationId,
+        organizationId: listOrganizationId,
         conversationId: scopedConversationId,
         status,
         page,

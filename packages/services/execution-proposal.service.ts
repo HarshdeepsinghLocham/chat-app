@@ -124,9 +124,13 @@ export async function proposeExecutionFromSuggestion(input: {
             toolName: tool,
             messageId: input.suggestion.messageId.toString(),
             parameters: drafted.parameters,
-            executionState: "approval_pending",
+            executionState: policy === "prohibited" ? "blocked" : "approval_pending",
             summary: `Proposed ${tool.replace(/_/g, " ")} for “${input.suggestion.title}”.`,
-            error: drafted.paramsComplete ? null : "Recipient or parameters are incomplete.",
+            error: policy === "prohibited"
+                ? reason
+                : drafted.paramsComplete
+                    ? null
+                    : "Recipient or parameters are incomplete.",
             patch: {
                 before: null,
                 after: {

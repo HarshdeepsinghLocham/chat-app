@@ -22,6 +22,8 @@ export function useWorkBoardList(params: {
     organizationId?: string | null;
     conversationId?: string;
     boardStatus?: BoardStatus | "";
+    priority?: string;
+    due?: "all" | "overdue" | "none";
     page: number;
     limit?: number;
     enabled?: boolean;
@@ -31,6 +33,8 @@ export function useWorkBoardList(params: {
         organizationId: params.organizationId ?? undefined,
         conversationId: params.conversationId,
         boardStatus: params.boardStatus ?? "",
+        priority: params.priority || undefined,
+        due: params.due && params.due !== "all" ? params.due : undefined,
         page: params.page,
         limit,
     };
@@ -44,6 +48,10 @@ export function useWorkBoardList(params: {
                 organizationId: listParams.organizationId,
                 conversationId: listParams.conversationId,
                 boardStatus: listParams.boardStatus || undefined,
+                priority: listParams.priority,
+                due: listParams.due === "overdue" || listParams.due === "none"
+                    ? listParams.due
+                    : undefined,
                 page: listParams.page,
                 limit: listParams.limit,
             }),

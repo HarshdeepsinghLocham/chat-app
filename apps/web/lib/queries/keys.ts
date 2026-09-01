@@ -12,6 +12,8 @@ export type WorkBoardListParams = {
     organizationId?: string;
     conversationId?: string;
     boardStatus?: BoardStatus | "";
+    priority?: string;
+    due?: "all" | "overdue" | "none";
     page: number;
     limit: number;
 };
@@ -48,6 +50,8 @@ export const queryKeys = {
                 params.organizationId ?? null,
                 params.conversationId ?? null,
                 params.boardStatus || null,
+                params.priority || null,
+                params.due && params.due !== "all" ? params.due : null,
                 params.page,
                 params.limit,
             ] as const,

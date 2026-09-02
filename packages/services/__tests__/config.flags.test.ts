@@ -5,6 +5,7 @@ import {
     getEffectiveExecutionMode,
     isAcceptCreatesExecutionEnabled,
     isCoordinationBoardEnabled,
+    isOrgDashboardEnabled,
     isExecutionModeEnforce,
     isSuggestionIngressEnabled,
     isWorkInboxUiEnabled,
@@ -17,6 +18,7 @@ const ENV_KEYS = [
     "GRANDFATHER_AUTO_TENANTS",
     "TASK_CLASSIFIER_MODE",
     "COORDINATION_BOARD",
+    "ORG_DASHBOARD",
 ] as const;
 
 const originalEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
@@ -135,6 +137,19 @@ describe("coordination board flag", () => {
     it("enables COORDINATION_BOARD when set", () => {
         expect(isCoordinationBoardEnabled("1")).toBe(true);
         expect(isCoordinationBoardEnabled("true")).toBe(true);
+    });
+});
+
+describe("org dashboard flag", () => {
+    it("defaults ORG_DASHBOARD off", () => {
+        delete process.env.ORG_DASHBOARD;
+        expect(isOrgDashboardEnabled()).toBe(false);
+        expect(isOrgDashboardEnabled("0")).toBe(false);
+    });
+
+    it("enables ORG_DASHBOARD when set", () => {
+        expect(isOrgDashboardEnabled("1")).toBe(true);
+        expect(isOrgDashboardEnabled("true")).toBe(true);
     });
 });
 

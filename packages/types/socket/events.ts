@@ -62,6 +62,7 @@ export const SocketEvents = {
     TASK_LINKED_TO_MESSAGE: "task:linked_to_message",
     TASK_EXECUTION_UPDATED: "task:execution_updated",
     MESSAGE_SEMANTIC_UPDATED: "message:semantic_updated",
+    USER_NOTIFICATION: "user:notification",
     TYPING_START: "typing:start",
     TYPING_STOP: "typing:stop",
     USER_ONLINE: "user:online",
@@ -117,6 +118,14 @@ export interface ServerToClientEvents {
     [SocketEvents.TASK_LINKED_TO_MESSAGE]: (data: TaskLinkedToMessagePayload) => void;
     [SocketEvents.TASK_EXECUTION_UPDATED]: (data: TaskExecutionUpdatedPayload) => void;
     [SocketEvents.MESSAGE_SEMANTIC_UPDATED]: (data: MessageSemanticUpdatedPayload) => void;
+    [SocketEvents.USER_NOTIFICATION]: (data: {
+        kind: string;
+        subject: string;
+        text: string;
+        entityId?: string | null;
+        conversationId?: string | null;
+        dedupeKey?: string;
+    }) => void;
 
     // Typing
     [SocketEvents.TYPING_START]: (data: TypingPayload) => void;

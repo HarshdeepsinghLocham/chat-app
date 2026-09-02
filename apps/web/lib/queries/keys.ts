@@ -12,6 +12,8 @@ export type WorkBoardListParams = {
     organizationId?: string;
     conversationId?: string;
     boardStatus?: BoardStatus | "";
+    priority?: string;
+    due?: "all" | "overdue" | "none";
     page: number;
     limit: number;
 };
@@ -19,6 +21,10 @@ export type WorkBoardListParams = {
 export type TaskApprovalsListParams = {
     organizationId?: string;
     conversationId?: string;
+};
+
+export type WorkSummaryParams = {
+    organizationId: string | null;
 };
 
 export const queryKeys = {
@@ -44,6 +50,8 @@ export const queryKeys = {
                 params.organizationId ?? null,
                 params.conversationId ?? null,
                 params.boardStatus || null,
+                params.priority || null,
+                params.due && params.due !== "all" ? params.due : null,
                 params.page,
                 params.limit,
             ] as const,
@@ -63,5 +71,12 @@ export const queryKeys = {
         list: () => ["organizations", "list"] as const,
         members: (organizationId: string) =>
             ["organizations", "members", organizationId] as const,
+        invitations: (organizationId: string) =>
+            ["organizations", "invitations", organizationId] as const,
+    },
+    workSummary: {
+        all: ["workSummary"] as const,
+        detail: (organizationId: string | null) =>
+            ["workSummary", "detail", organizationId] as const,
     },
 };

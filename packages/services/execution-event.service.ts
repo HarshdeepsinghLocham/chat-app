@@ -118,7 +118,7 @@ export async function persistExecutionUpdatePayload(
     const phase = (payload.phase ?? "reason") as TaskExecutionEventPhase;
     const type = mapPayloadStateToEventType(payload.state, payload.step);
 
-    return appendExecutionEvent({
+    const event = await appendExecutionEvent({
         taskId: payload.taskId,
         conversationId: payload.conversationId,
         runId: payload.runId,
@@ -135,4 +135,72 @@ export async function persistExecutionUpdatePayload(
             toolName: payload.details?.toolName ?? null,
         },
     });
+
+    const stateKind =
+        typeof payload.state === "object" && payload.state && "kind" in payload.state
+            ? String((payload.state as { kind?: string }).kind)
+            : String(payload.state ?? "");
+    const step = typeof payload.step === "string" ? payload.step : "";
+    if (stateKind === "blocked" || step.includes("blocked")) {
+        void (async () => {
+            try {
+                const task = await TaskModel.findById(payload.taskId)
+                    .select({ title: 1, assignees: 1, conversationId: 1 })
+                    .lean<{
+                        title: string;
+                        assignees?: Array<{ toString(): string }>;
+                        conversationId: { toString(): string };
+                    } | null>();
+                if (!task) return;
+                const { notifyTaskBlocked } = await import("./notify-blocked.service");
+                await notifyTaskBlocked({
+                    taskId: payload.taskId,
+                    title: task.title,
+                    conversationId: task.conversationId.toString(),
+                    assigneeIds: (task.assignees ?? []).map((id) => id.toString()),
+                    reason: payload.error ?? payload.summary ?? null,
+                });
+            } catch (error) {
+                console.error("blocked notify failed", error);
+            }
+        })();
+    }
+
+    if (stateKind === "failed" || step === "failed" || step === "exception") {
+        void notifyExecutionOutcome(payload, "execution_failed");
+    } else if (stateKind === "succeeded" || step === "completed") {
+        void notifyExecutionOutcome(payload, "execution_succeeded");
+    }
+
+    return event;
+}
+
+async function notifyExecutionOutcome(
+    payload: TaskExecutionUpdatedPayload,
+    kind: "execution_succeeded" | "execution_failed"
+): Promise<void> {
+    try {
+        const task = await TaskModel.findById(payload.taskId)
+            .select({ title: 1, assignees: 1, conversationId: 1 })
+            .lean<{
+                title: string;
+                assignees?: Array<{ toString(): string }>;
+                conversationId: { toString(): string };
+            } | null>();
+        if (!task) return;
+        const { notifyUsers } = await import("./notify.service");
+        const succeeded = kind === "execution_succeeded";
+        await notifyUsers((task.assignees ?? []).map((id) => id.toString()), {
+            kind,
+            subject: succeeded ? `Finished: ${task.title}` : `Failed: ${task.title}`,
+            text: succeeded
+                ? `"${task.title}" finished successfully.`
+                : `"${task.title}" failed: ${payload.error ?? payload.summary ?? "see task details"}.`,
+            dedupeKey: `${kind}:${payload.taskId}:${payload.runId ?? "run"}`,
+            conversationId: task.conversationId.toString(),
+            entityId: payload.taskId,
+        });
+    } catch (error) {
+        console.error("execution outcome notify failed", error);
+    }
 }

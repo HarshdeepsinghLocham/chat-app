@@ -81,12 +81,12 @@ describe("TaskDeepLinkPage", () => {
         expect(replace).not.toHaveBeenCalled();
     });
 
-    it("redirects to chat with task and source message params", async () => {
+    it("redirects to the work detail page", async () => {
         getTask.mockResolvedValue(buildTask());
         render(React.createElement(TaskDeepLinkPage));
 
         await waitFor(() => {
-            expect(replace).toHaveBeenCalledWith("/c/conv-1?msg=msg-1&task=task-1");
+            expect(replace).toHaveBeenCalledWith("/work/task-1");
         });
         expect(screen.queryByTestId("task-deep-link-forbidden")).not.toBeInTheDocument();
     });

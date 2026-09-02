@@ -16,6 +16,15 @@ jest.mock("@semantask/db/models/Task", () => ({
     },
 }));
 
+jest.mock("../conversation-label.service", () => ({
+    resolveConversationLabels: jest.fn(async () => new Map()),
+}));
+
+jest.mock("../user-ref.service", () => ({
+    resolveUserRefs: jest.fn(async () => new Map()),
+    userRefOrFallback: (userId: string) => ({ id: userId, username: "Unknown user" }),
+}));
+
 import { boardStatusQuery, listWorkBoard } from "../work-board.service";
 import { ValidationError } from "../organization-errors";
 import { normalizeTask } from "../normalizers/task.normalizer";

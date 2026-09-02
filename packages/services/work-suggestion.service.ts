@@ -1,5 +1,8 @@
 import mongoose from "mongoose";
 import type {
+    SuggestionConfidenceSignal,
+    SuggestionExecutionPolicy,
+    SuggestedWorkTool,
     TaskPriority,
     TaskRecord,
     WorkSuggestionCandidates,
@@ -20,9 +23,12 @@ import {
     suggestionsDismissedCounter,
 } from "@semantask/observability/metrics";
 import { assertAcceptCreatesCoordinationOnly } from "./organization-policy.service";
+import { assertUsersAreOrgMembers } from "./organization.service";
+import { proposeExecutionFromSuggestion } from "./execution-proposal.service";
 import { normalizeTask } from "./normalizers/task.normalizer";
 import { createTask, updateTask } from "./repositories/task.repo";
 import { enqueueOutboxEvent } from "./outbox.service";
+import { resolveConversationLabels } from "./conversation-label.service";
 
 export function isSuggestionStatus(value: unknown): value is WorkSuggestionStatus {
     return typeof value === "string"
@@ -37,6 +43,11 @@ export type CreateWorkSuggestionInput = {
     status?: WorkSuggestionStatus;
     title: string;
     summary?: string;
+    requestedOutcome?: string | null;
+    suggestedTool?: SuggestedWorkTool | null;
+    executionPolicy?: SuggestionExecutionPolicy | null;
+    confidenceSignals?: SuggestionConfidenceSignal[];
+    possibleDuplicateTaskId?: string | null;
     confidence: number;
     candidates?: Partial<WorkSuggestionCandidates>;
     extractorVersion: string;
@@ -191,7 +202,7 @@ async function createOrReuseAcceptTask(input: {
             parentTaskId: null,
             suggestionId,
             title: input.suggestion.title,
-            description: input.suggestion.summary ?? "",
+            description: input.suggestion.requestedOutcome || input.suggestion.summary || "",
             assignees: input.assignees,
             dueAt: input.dueAt,
             priority: input.priority,
@@ -340,6 +351,15 @@ export function normalizeWorkSuggestion(doc: IWorkSuggestion): WorkSuggestionRec
         title: doc.title,
         summary: doc.summary ?? "",
         confidence: doc.confidence,
+        requestedOutcome: doc.requestedOutcome ?? null,
+        suggestedTool: (doc.suggestedTool ?? null) as SuggestedWorkTool | null,
+        executionPolicy: (doc.executionPolicy ?? null) as SuggestionExecutionPolicy | null,
+        confidenceSignals: Array.isArray(doc.confidenceSignals)
+            ? [...doc.confidenceSignals]
+            : [],
+        possibleDuplicateTaskId: doc.possibleDuplicateTaskId
+            ? doc.possibleDuplicateTaskId.toString()
+            : null,
         candidates: {
             assigneeCandidates: (doc.candidates?.assigneeCandidates ?? []).map((id) => id.toString()),
             dueAtCandidate: doc.candidates?.dueAtCandidate
@@ -431,6 +451,13 @@ export async function createWorkSuggestion(
             status,
             title: input.title.trim().slice(0, 200),
             summary: (input.summary ?? "").slice(0, 4000),
+            requestedOutcome: (input.requestedOutcome ?? "").trim().slice(0, 4000) || null,
+            suggestedTool: input.suggestedTool ?? null,
+            executionPolicy: input.executionPolicy ?? null,
+            confidenceSignals: input.confidenceSignals ?? [],
+            possibleDuplicateTaskId: isValidObjectId(input.possibleDuplicateTaskId)
+                ? new mongoose.Types.ObjectId(input.possibleDuplicateTaskId)
+                : null,
             confidence: Math.max(0, Math.min(1, input.confidence)),
             candidates: {
                 assigneeCandidates,
@@ -537,8 +564,19 @@ export async function listWorkSuggestions(
             .exec(),
     ]);
 
+    const labels = await resolveConversationLabels(
+        rows.map((row) => row.conversationId.toString())
+    );
+
     return {
-        items: rows.map((row) => normalizeWorkSuggestion(row)),
+        items: rows.map((row) => {
+            const record = normalizeWorkSuggestion(row);
+            const conversationId = record.conversationId;
+            return {
+                ...record,
+                conversationLabel: labels.get(conversationId) ?? null,
+            };
+        }),
         pagination: {
             page,
             limit,
@@ -550,7 +588,7 @@ export async function listWorkSuggestions(
 
 /**
  * Accept a proposed WorkSuggestion into a coordination Task.
- * Never enqueues task.execution.* or creates TaskAction execution requests.
+ * Never enqueues task.execution.* — may create an approval_pending proposal only.
  */
 export async function acceptWorkSuggestion(
     input: AcceptWorkSuggestionInput
@@ -584,6 +622,11 @@ export async function acceptWorkSuggestion(
         if (!existingTask) {
             throw new ConflictError("Converted suggestion is missing its task");
         }
+        await proposeExecutionFromSuggestion({
+            task: existingTask,
+            suggestion,
+            actorUserId: input.actorUserId,
+        });
         const taskRecord = normalizeTask(existingTask);
         // Idempotent retry may have committed conversion before outbox insert succeeded.
         await enqueueSuggestionAcceptedOutbox({
@@ -611,6 +654,10 @@ export async function acceptWorkSuggestion(
         input.priority,
         (suggestion.candidates?.priorityCandidate ?? "") as TaskPriority | ""
     );
+
+    if (assignees.length > 0 && suggestion.organizationId) {
+        await assertUsersAreOrgMembers(suggestion.organizationId.toString(), assignees);
+    }
 
     const { task, created: taskCreated } = await createOrReuseAcceptTask({
         suggestion,
@@ -662,7 +709,28 @@ export async function acceptWorkSuggestion(
 
         if (taskCreated) {
             await enqueueTaskCreatedFanout(taskRecord, input.actorUserId);
+            if (assignees.length > 0) {
+                const { notifyUsers } = await import("./notify.service");
+                void notifyUsers(
+                    assignees.filter((id) => id !== input.actorUserId),
+                    {
+                        kind: "task_assigned",
+                        subject: `Assigned: ${taskRecord.title}`,
+                        text: `You were assigned "${taskRecord.title}".`,
+                        html: `<p>You were assigned <b>${taskRecord.title}</b>.</p>`,
+                        dedupeKey: `assign:${taskRecord._id}:accept`,
+                        conversationId: taskRecord.conversationId,
+                        entityId: taskRecord._id,
+                    }
+                ).catch((error) => console.error("accept assign notify failed", error));
+            }
         }
+
+        await proposeExecutionFromSuggestion({
+            task,
+            suggestion: converted,
+            actorUserId: input.actorUserId,
+        });
 
         suggestionsAcceptedCounter.inc();
         const createdAtMs = suggestion.createdAt instanceof Date
@@ -692,6 +760,11 @@ export async function acceptWorkSuggestion(
             organizationId: raced.organizationId
                 ? raced.organizationId.toString()
                 : null,
+            actorUserId: input.actorUserId,
+        });
+        await proposeExecutionFromSuggestion({
+            task,
+            suggestion: raced,
             actorUserId: input.actorUserId,
         });
         return {
@@ -839,6 +912,13 @@ export async function assignWorkSuggestion(
         throw new ConflictError("Suggestion must be converted before assign");
     }
 
+    if (input.assignees !== undefined && suggestion.organizationId) {
+        await assertUsersAreOrgMembers(
+            suggestion.organizationId.toString(),
+            input.assignees
+        );
+    }
+
     const dueAt = input.dueAt !== undefined
         ? resolveDueAt(input.dueAt, undefined)
         : undefined;
@@ -879,6 +959,22 @@ export async function assignWorkSuggestion(
             },
         },
     });
+
+    if (input.assignees !== undefined && input.assignees.length > 0) {
+        const { notifyUsers } = await import("./notify.service");
+        void notifyUsers(
+            input.assignees.filter((id) => id !== input.actorUserId),
+            {
+                kind: "task_assigned",
+                subject: `Assigned: ${taskRecord.title}`,
+                text: `You were assigned "${taskRecord.title}".`,
+                html: `<p>You were assigned <b>${taskRecord.title}</b>.</p>`,
+                dedupeKey: `assign:${taskRecord._id}:${taskRecord.updatedAt}`,
+                conversationId: taskRecord.conversationId,
+                entityId: taskRecord._id,
+            }
+        ).catch((error) => console.error("assign notify failed", error));
+    }
 
     console.info(JSON.stringify({
         event: "suggestion.assigned",

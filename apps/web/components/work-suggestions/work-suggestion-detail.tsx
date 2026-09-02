@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { TaskPriority, WorkSuggestionRecord } from "@semantask/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,12 +8,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { conversationMessageHref, taskHref } from "@/lib/work-links";
+import { SuggestionTrustPanel } from "@/components/work-suggestions/suggestion-trust";
+import { suggestionOutcome } from "@/lib/work-suggestions/trust";
+import {
+    WorkInboxTriage,
+    type OrgMemberOption,
+} from "@/components/work-suggestions/work-inbox-triage";
 
 export type WorkSuggestionDetailViewProps = {
     loading: boolean;
     errorStatus: number | null;
     errorMessage: string | null;
     suggestion: WorkSuggestionRecord | null;
+    organizationId?: string | null;
+    members?: OrgMemberOption[];
+    currentUserId?: string | null;
+    displayedOwners?: string[];
     actionError?: string | null;
     actionPending?: boolean;
     onAccept?: (input: {
@@ -36,18 +46,15 @@ function formatTimestamp(iso: string) {
     return value.toLocaleString();
 }
 
-function parseAssigneeInput(value: string): string[] {
-    return value
-        .split(/[\s,]+/)
-        .map((part) => part.trim())
-        .filter((part) => part.length > 0);
-}
-
 export function WorkSuggestionDetailView({
     loading,
     errorStatus,
     errorMessage,
     suggestion,
+    organizationId = null,
+    members = [],
+    currentUserId = null,
+    displayedOwners,
     actionError = null,
     actionPending = false,
     onAccept,
@@ -55,10 +62,13 @@ export function WorkSuggestionDetailView({
     onAssign,
     onAllowAiTools,
 }: WorkSuggestionDetailViewProps) {
-    const [dismissReason, setDismissReason] = useState("");
-    const [assigneesInput, setAssigneesInput] = useState("");
     const [dueAtInput, setDueAtInput] = useState("");
     const [priorityInput, setPriorityInput] = useState<TaskPriority | "">("");
+    const owners = useMemo(() => {
+        if (displayedOwners) return displayedOwners;
+        if (suggestion?.status === "proposed") return suggestion.candidates.assigneeCandidates ?? [];
+        return [];
+    }, [displayedOwners, suggestion?.status, suggestion?.candidates.assigneeCandidates]);
 
     if (loading) {
         return (
@@ -126,14 +136,10 @@ export function WorkSuggestionDetailView({
     const isProposed = suggestion.status === "proposed";
     const isConverted = suggestion.status === "converted";
 
-    const buildMutationInput = () => {
-        const assignees = parseAssigneeInput(assigneesInput);
-        const dueAt = dueAtInput.trim()
-            ? new Date(dueAtInput).toISOString()
-            : undefined;
+    const extraFields = () => {
+        const dueAt = dueAtInput.trim() ? new Date(dueAtInput).toISOString() : undefined;
         const priority = priorityInput || undefined;
         return {
-            ...(assignees.length > 0 ? { assignees } : {}),
             ...(dueAt !== undefined ? { dueAt } : {}),
             ...(priority ? { priority } : {}),
         };
@@ -158,17 +164,14 @@ export function WorkSuggestionDetailView({
                     <CardTitle>{suggestion.title}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                    <p className="text-muted-foreground whitespace-pre-wrap">
-                        {suggestion.summary || "No summary provided."}
+                    <p className="text-muted-foreground whitespace-pre-wrap" data-testid="suggestion-outcome">
+                        {suggestionOutcome(suggestion)}
                     </p>
+                    <SuggestionTrustPanel suggestion={suggestion} />
                     <dl className="grid gap-2 sm:grid-cols-2">
                         <div>
                             <dt className="text-xs uppercase tracking-wide text-muted-foreground">Status</dt>
                             <dd className="font-medium capitalize">{suggestion.status}</dd>
-                        </div>
-                        <div>
-                            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Confidence</dt>
-                            <dd className="font-medium">{Math.round(suggestion.confidence * 100)}%</dd>
                         </div>
                         <div>
                             <dt className="text-xs uppercase tracking-wide text-muted-foreground">Created</dt>
@@ -176,13 +179,13 @@ export function WorkSuggestionDetailView({
                         </div>
                         <div>
                             <dt className="text-xs uppercase tracking-wide text-muted-foreground">Source message</dt>
-                            <dd className="font-mono text-xs break-all">
+                            <dd>
                                 <Link
                                     href={conversationMessageHref(suggestion.conversationId, suggestion.messageId)}
-                                    className="underline underline-offset-2 hover:opacity-80"
+                                    className="font-medium underline underline-offset-2 hover:opacity-80"
                                     data-testid="source-message-link"
                                 >
-                                    {suggestion.messageId}
+                                    {suggestion.conversationLabel?.trim() || "Open source message"}
                                 </Link>
                             </dd>
                         </div>
@@ -204,7 +207,7 @@ export function WorkSuggestionDetailView({
                             </dt>
                             <dd className="font-medium">
                                 {assigneeCount > 0
-                                    ? candidates.assigneeCandidates.join(", ")
+                                    ? `${assigneeCount} candidate${assigneeCount === 1 ? "" : "s"}`
                                     : "—"}
                             </dd>
                         </div>
@@ -213,13 +216,13 @@ export function WorkSuggestionDetailView({
                                 <dt className="text-xs uppercase tracking-wide text-muted-foreground">
                                     Converted task
                                 </dt>
-                                <dd className="font-mono text-xs break-all" data-testid="converted-task-id">
+                                <dd data-testid="converted-task-id">
                                     <Link
                                         href={taskHref(suggestion.convertedTaskId)}
-                                        className="underline underline-offset-2 hover:opacity-80"
+                                        className="font-medium underline underline-offset-2 hover:opacity-80"
                                         data-testid="converted-task-link"
                                     >
-                                        {suggestion.convertedTaskId}
+                                        Open converted task
                                     </Link>
                                 </dd>
                             </div>
@@ -245,17 +248,6 @@ export function WorkSuggestionDetailView({
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="space-y-2 sm:col-span-2">
-                                <Label htmlFor="suggestion-assignees">Assignees (user ids)</Label>
-                                <Input
-                                    id="suggestion-assignees"
-                                    data-testid="suggestion-assignees"
-                                    value={assigneesInput}
-                                    onChange={(event) => setAssigneesInput(event.target.value)}
-                                    placeholder="Optional comma-separated user ids"
-                                    disabled={actionPending}
-                                />
-                            </div>
                             <div className="space-y-2">
                                 <Label htmlFor="suggestion-due-at">Due at</Label>
                                 <Input
@@ -288,71 +280,19 @@ export function WorkSuggestionDetailView({
                             </div>
                         </div>
 
-                        {isProposed ? (
-                            <>
-                                <div className="space-y-2">
-                                    <Label htmlFor="suggestion-dismiss-reason">Dismiss reason</Label>
-                                    <Input
-                                        id="suggestion-dismiss-reason"
-                                        data-testid="suggestion-dismiss-reason"
-                                        value={dismissReason}
-                                        onChange={(event) => setDismissReason(event.target.value)}
-                                        placeholder="Required to dismiss"
-                                        disabled={actionPending}
-                                    />
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    <Button
-                                        data-testid="suggestion-accept"
-                                        disabled={actionPending || !onAccept}
-                                        onClick={() => void onAccept?.(buildMutationInput())}
-                                    >
-                                        Accept
-                                    </Button>
-                                    <Button
-                                        data-testid="suggestion-dismiss"
-                                        variant="outline"
-                                        disabled={actionPending || !onDismiss || !dismissReason.trim()}
-                                        onClick={() => void onDismiss?.(dismissReason.trim())}
-                                    >
-                                        Dismiss
-                                    </Button>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="flex flex-wrap gap-2">
-                                <Button
-                                    data-testid="suggestion-assign"
-                                    disabled={actionPending || !onAssign}
-                                    onClick={() => void onAssign?.(buildMutationInput())}
-                                >
-                                    Save assignment
-                                </Button>
-                                {suggestion.convertedTaskId ? (
-                                    <Button
-                                        data-testid="suggestion-allow-ai-tools"
-                                        variant="outline"
-                                        disabled={actionPending || !onAllowAiTools}
-                                        onClick={() => void onAllowAiTools?.()}
-                                    >
-                                        Allow AI tools
-                                    </Button>
-                                ) : null}
-                            </div>
-                        )}
-
-                        {isConverted ? (
-                            <p className="text-xs text-muted-foreground">
-                                Allow AI tools requests execution approval for the converted task. It is
-                                not the same as accepting a suggestion.
-                            </p>
-                        ) : null}
-
-                        {actionError ? (
-                            <p className="text-sm text-destructive" data-testid="suggestion-action-error">
-                                {actionError}
-                            </p>
-                        ) : null}
+                        <WorkInboxTriage
+                            suggestion={suggestion}
+                            organizationId={organizationId ?? suggestion.organizationId}
+                            members={members}
+                            displayedOwners={owners}
+                            currentUserId={currentUserId}
+                            actionPending={actionPending}
+                            actionError={actionError}
+                            onAccept={(assignees) => void onAccept?.({ assignees, ...extraFields() })}
+                            onDismiss={(reason) => void onDismiss?.(reason)}
+                            onAssign={(assignees) => void onAssign?.({ assignees, ...extraFields() })}
+                            onAllowAiTools={onAllowAiTools}
+                        />
                     </CardContent>
                 </Card>
             )}

@@ -5,43 +5,58 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-    useAddOrganizationMember,
     useCreateOrganization,
+    useCreateOrganizationInvitation,
+    useLeaveOrganization,
+    useOrganizationInvitations,
     useOrganizationMembers,
     useOrganizationsList,
+    useRemoveOrganizationMember,
+    useResendOrganizationInvitation,
+    useRevokeOrganizationInvitation,
+    useUpdateOrganizationMemberRole,
     useUpdateOrganizationPolicy,
     useUpdateOrganizationQuota,
 } from "@/lib/queries/use-organizations";
-
-const STORAGE_KEY = "semantask.activeOrganizationId";
+import { UserChip } from "@/components/people/user-chip";
+import { writeActiveOrganizationId, readActiveOrganizationId } from "@/hooks/useActiveOrganizationId";
+import { getOrganizationUsage, listOrganizationToolGrants } from "@/lib/utils/api";
 
 export default function OrganizationsPage() {
     const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
     const [name, setName] = useState("");
     const [slug, setSlug] = useState("");
-    const [memberUserId, setMemberUserId] = useState("");
+    const [inviteEmail, setInviteEmail] = useState("");
+    const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
     const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState<string | null>(null);
 
     const orgsQuery = useOrganizationsList();
     const membersQuery = useOrganizationMembers(activeOrgId);
+    const invitationsQuery = useOrganizationInvitations(activeOrgId);
     const createMutation = useCreateOrganization();
-    const addMemberMutation = useAddOrganizationMember(activeOrgId);
+    const inviteMutation = useCreateOrganizationInvitation(activeOrgId);
+    const revokeMutation = useRevokeOrganizationInvitation(activeOrgId);
+    const resendMutation = useResendOrganizationInvitation(activeOrgId);
+    const removeMemberMutation = useRemoveOrganizationMember(activeOrgId);
+    const roleMutation = useUpdateOrganizationMemberRole(activeOrgId);
+    const leaveMutation = useLeaveOrganization();
 
     const orgs = orgsQuery.data ?? [];
     const members = membersQuery.data ?? [];
+    const invitations = invitationsQuery.data ?? [];
     const loading = orgsQuery.isLoading;
 
     useEffect(() => {
         if (!orgsQuery.data) return;
-        const stored = window.localStorage.getItem(STORAGE_KEY);
+        const stored = readActiveOrganizationId();
         if (stored && orgsQuery.data.some((org) => org.id === stored)) {
             setActiveOrgId(stored);
             return;
         }
         if (stored) {
             setActiveOrgId(null);
-            window.localStorage.removeItem(STORAGE_KEY);
+            writeActiveOrganizationId(null);
         }
     }, [orgsQuery.data]);
 
@@ -67,16 +82,11 @@ export default function OrganizationsPage() {
 
     function selectOrg(id: string | null) {
         setActiveOrgId(id);
-        if (typeof window !== "undefined") {
-            if (id) {
-                localStorage.setItem(STORAGE_KEY, id);
-            } else {
-                localStorage.removeItem(STORAGE_KEY);
-            }
-        }
+        writeActiveOrganizationId(id);
+        const selected = orgs.find((org) => org.id === id);
         setStatus(
             id
-                ? `Active organization set. API calls can send X-Organization-Id: ${id}`
+                ? `Active organization: ${selected?.name ?? "Organization"}`
                 : "Personal workspace selected."
         );
     }
@@ -98,17 +108,84 @@ export default function OrganizationsPage() {
         }
     }
 
-    async function handleAddMember() {
+    async function handleInvite() {
         if (!activeOrgId) return;
         setError(null);
         try {
-            await addMemberMutation.mutateAsync({ userId: memberUserId.trim() });
-            setMemberUserId("");
-            setStatus("Member added.");
-        } catch (addError) {
-            setError(addError instanceof Error ? addError.message : "Failed to add member");
+            const invitation = await inviteMutation.mutateAsync({
+                email: inviteEmail.trim(),
+                role: inviteRole,
+            });
+            setInviteEmail("");
+            if (invitation.emailSent) {
+                setStatus(`Invite sent to ${invitation.email}`);
+            } else if (invitation.inviteUrl) {
+                setStatus(`Invite created for ${invitation.email}. Share link: ${invitation.inviteUrl}`);
+            } else {
+                setStatus(`Invite created for ${invitation.email}`);
+            }
+        } catch (inviteError) {
+            setError(inviteError instanceof Error ? inviteError.message : "Failed to invite");
         }
     }
+
+    async function handleRevoke(invitationId: string) {
+        setError(null);
+        try {
+            await revokeMutation.mutateAsync(invitationId);
+            setStatus("Invitation revoked.");
+        } catch (revokeError) {
+            setError(revokeError instanceof Error ? revokeError.message : "Failed to revoke");
+        }
+    }
+
+    async function handleResend(invitationId: string) {
+        setError(null);
+        try {
+            await resendMutation.mutateAsync(invitationId);
+            setStatus("Invitation resent.");
+        } catch (resendError) {
+            setError(resendError instanceof Error ? resendError.message : "Failed to resend");
+        }
+    }
+
+    async function handleRemoveMember(userId: string) {
+        setError(null);
+        try {
+            await removeMemberMutation.mutateAsync(userId);
+            setStatus("Member removed.");
+        } catch (removeError) {
+            setError(removeError instanceof Error ? removeError.message : "Failed to remove member");
+        }
+    }
+
+    async function handleChangeRole(userId: string, role: string) {
+        setError(null);
+        try {
+            await roleMutation.mutateAsync({ userId, role });
+            setStatus("Role updated.");
+        } catch (roleError) {
+            setError(roleError instanceof Error ? roleError.message : "Failed to change role");
+        }
+    }
+
+    async function handleLeave() {
+        if (!activeOrgId) return;
+        setError(null);
+        try {
+            await leaveMutation.mutateAsync(activeOrgId);
+            selectOrg(null);
+            setStatus("You left the organization.");
+        } catch (leaveError) {
+            setError(leaveError instanceof Error ? leaveError.message : "Failed to leave");
+        }
+    }
+
+    const pendingInvites = invitations.filter((invite) => invite.status === "pending");
+    const acceptedInvites = invitations.filter((invite) => invite.status === "accepted");
+    const activeOrg = orgs.find((org) => org.id === activeOrgId);
+    const canManage = activeOrg?.role === "owner" || activeOrg?.role === "admin";
+    const canLeave = activeOrg?.role === "member" || activeOrg?.role === "admin";
 
     return (
         <div className="mx-auto max-w-3xl space-y-6 p-6" data-testid="organizations-page">
@@ -118,11 +195,11 @@ export default function OrganizationsPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <p className="text-sm text-muted-foreground">
-                        Personal workspace is the default (no header). Select an organization to scope
-                        conversations via <code>X-Organization-Id</code>.
+                        Create a workspace, invite teammates by email, and keep your active organization
+                        selected for inbox and board.
                     </p>
                     {error ? <p className="text-sm text-red-600">{error}</p> : null}
-                    {status ? <p className="text-sm text-green-700">{status}</p> : null}
+                    {status ? <p className="text-sm text-green-700 break-all">{status}</p> : null}
 
                     <div className="flex flex-wrap gap-2">
                         <Button
@@ -144,6 +221,19 @@ export default function OrganizationsPage() {
                     </div>
 
                     {loading ? <p className="text-sm">Loading…</p> : null}
+
+                    <div
+                        className="rounded-md border border-dashed border-border px-3 py-3 text-sm"
+                        data-testid="organization-onboarding"
+                    >
+                        <p className="font-medium">First-run checklist</p>
+                        <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted-foreground">
+                            <li>Create an organization</li>
+                            <li>Invite a teammate</li>
+                            <li>Connect tools via policy grants</li>
+                            <li>Send a sample request in chat, then accept it from Inbox</li>
+                        </ol>
+                    </div>
                 </CardContent>
             </Card>
 
@@ -153,7 +243,7 @@ export default function OrganizationsPage() {
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3 sm:flex-row">
                     <Input
-                        placeholder="Name"
+                        placeholder="Organization name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         data-testid="organization-name"
@@ -177,36 +267,163 @@ export default function OrganizationsPage() {
             {activeOrgId ? (
                 <Card>
                     <CardHeader>
-                        <CardTitle>Members</CardTitle>
+                        <CardTitle>Team</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-3">
-                        <ul className="space-y-1 text-sm" data-testid="organization-members">
-                            {members.map((member) => (
-                                <li key={member.id}>
-                                    {member.userId} — {member.role}
-                                </li>
-                            ))}
-                        </ul>
-                        <div className="flex gap-2">
-                            <Input
-                                placeholder="User ID"
-                                value={memberUserId}
-                                onChange={(e) => setMemberUserId(e.target.value)}
-                                data-testid="organization-member-user-id"
-                            />
-                            <Button
-                                onClick={() => void handleAddMember()}
-                                disabled={!memberUserId.trim() || addMemberMutation.isPending}
-                                data-testid="organization-add-member"
-                            >
-                                Add member
-                            </Button>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <p className="text-sm font-medium">People</p>
+                            <ul className="space-y-2 text-sm" data-testid="organization-members">
+                                {members.map((member) => (
+                                    <li
+                                        key={member.id}
+                                        className="flex flex-wrap items-center gap-2"
+                                        data-testid="organization-member-row"
+                                    >
+                                        <UserChip
+                                            user={
+                                                member.user ?? {
+                                                    id: member.userId,
+                                                    username: "Unknown user",
+                                                }
+                                            }
+                                            showEmail
+                                        />
+                                        {canManage && member.role !== "owner" ? (
+                                            <select
+                                                aria-label={`Role for ${member.user?.username ?? "member"}`}
+                                                data-testid="organization-member-role"
+                                                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                                                value={member.role}
+                                                disabled={roleMutation.isPending}
+                                                onChange={(event) =>
+                                                    void handleChangeRole(member.userId, event.target.value)
+                                                }
+                                            >
+                                                <option value="member">member</option>
+                                                <option value="admin">admin</option>
+                                            </select>
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground">{member.role}</span>
+                                        )}
+                                        {canManage && member.role !== "owner" ? (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                data-testid="organization-remove-member"
+                                                disabled={removeMemberMutation.isPending}
+                                                onClick={() => void handleRemoveMember(member.userId)}
+                                            >
+                                                Remove
+                                            </Button>
+                                        ) : null}
+                                    </li>
+                                ))}
+                                {members.length === 0 ? (
+                                    <li className="text-muted-foreground">No members yet.</li>
+                                ) : null}
+                            </ul>
+                            {canLeave ? (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    data-testid="organization-leave"
+                                    disabled={leaveMutation.isPending}
+                                    onClick={() => void handleLeave()}
+                                >
+                                    Leave organization
+                                </Button>
+                            ) : activeOrg?.role === "owner" ? (
+                                <p className="text-xs text-muted-foreground">
+                                    Owners cannot leave without transferring ownership.
+                                </p>
+                            ) : null}
+                        </div>
+
+                        <div className="space-y-2 border-t border-border pt-4">
+                            <p className="text-sm font-medium">Invite by email</p>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                                <Input
+                                    placeholder="teammate@company.com"
+                                    value={inviteEmail}
+                                    onChange={(e) => setInviteEmail(e.target.value)}
+                                    data-testid="organization-invite-email"
+                                />
+                                <select
+                                    aria-label="Invite role"
+                                    data-testid="organization-invite-role"
+                                    className="h-10 rounded-md border border-input bg-background px-2 text-sm"
+                                    value={inviteRole}
+                                    onChange={(event) =>
+                                        setInviteRole(event.target.value as "member" | "admin")
+                                    }
+                                >
+                                    <option value="member">member</option>
+                                    <option value="admin">admin</option>
+                                </select>
+                                <Button
+                                    onClick={() => void handleInvite()}
+                                    disabled={!inviteEmail.trim() || inviteMutation.isPending || !canManage}
+                                    data-testid="organization-invite"
+                                >
+                                    Send invite
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2" data-testid="organization-pending-invites">
+                            <p className="text-sm font-medium">Pending invitations</p>
+                            {pendingInvites.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No pending invites.</p>
+                            ) : (
+                                <ul className="space-y-2 text-sm">
+                                    {pendingInvites.map((invite) => (
+                                        <li
+                                            key={invite.id}
+                                            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                                        >
+                                            <span>
+                                                {invite.email} · {invite.role}
+                                            </span>
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    data-testid="organization-resend-invite"
+                                                    disabled={resendMutation.isPending}
+                                                    onClick={() => void handleResend(invite.id)}
+                                                >
+                                                    Resend
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    data-testid="organization-revoke-invite"
+                                                    disabled={revokeMutation.isPending}
+                                                    onClick={() => void handleRevoke(invite.id)}
+                                                >
+                                                    Revoke
+                                                </Button>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            {acceptedInvites.length > 0 ? (
+                                <p className="text-xs text-muted-foreground">
+                                    Recently joined:{" "}
+                                    {acceptedInvites
+                                        .slice(0, 5)
+                                        .map((invite) => invite.email)
+                                        .join(", ")}
+                                </p>
+                            ) : null}
                         </div>
                     </CardContent>
                 </Card>
             ) : null}
 
             {activeOrgId ? <OrgPolicyQuotaPanel organizationId={activeOrgId} /> : null}
+            {activeOrgId ? <OrgUsageGrantsPanel organizationId={activeOrgId} members={members} /> : null}
         </div>
     );
 }
@@ -303,6 +520,89 @@ function OrgPolicyQuotaPanel({ organizationId }: { organizationId: string }) {
                             Save quota
                         </Button>
                     </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function OrgUsageGrantsPanel({
+    organizationId,
+    members,
+}: {
+    organizationId: string;
+    members: Array<{
+        userId: string;
+        role: string;
+        user?: { id: string; username: string; email?: string };
+    }>;
+}) {
+    const [tokens, setTokens] = useState<number | null>(null);
+    const [grants, setGrants] = useState<
+        Array<{ id: string; userId: string; toolName: string; grantedBy: string; createdAt: string }>
+    >([]);
+
+    useEffect(() => {
+        let cancelled = false;
+        void Promise.all([
+            getOrganizationUsage(organizationId),
+            listOrganizationToolGrants(organizationId),
+        ])
+            .then(([usage, grantData]) => {
+                if (cancelled) return;
+                setTokens(usage.tokensThisMonth);
+                setGrants(grantData.grants);
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setTokens(null);
+                setGrants([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [organizationId]);
+
+    const memberById = new Map(members.map((member) => [member.userId, member]));
+
+    return (
+        <Card data-testid="organization-usage-grants">
+            <CardHeader>
+                <CardTitle>Usage &amp; tool permissions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <p className="text-sm" data-testid="organization-usage">
+                    Tokens this month: {tokens == null ? "—" : tokens.toLocaleString()}
+                </p>
+                <div className="space-y-2">
+                    <p className="text-sm font-medium">Person / Tool / Permission</p>
+                    {grants.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No tool grants yet.</p>
+                    ) : (
+                        <ul className="space-y-2 text-sm">
+                            {grants.map((grant) => {
+                                const member = memberById.get(grant.userId);
+                                return (
+                                    <li
+                                        key={grant.id}
+                                        className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2"
+                                    >
+                                        <UserChip
+                                            user={
+                                                member?.user ?? {
+                                                    id: grant.userId,
+                                                    username: "Unknown user",
+                                                }
+                                            }
+                                            size={20}
+                                        />
+                                        <span>{grant.toolName.replace(/_/g, " ")}</span>
+                                        <span className="text-xs text-muted-foreground">allowed</span>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
                 </div>
             </CardContent>
         </Card>

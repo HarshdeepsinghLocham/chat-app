@@ -12,6 +12,7 @@ const acceptWorkSuggestionApi = jest.fn();
 const dismissWorkSuggestionApi = jest.fn();
 const assignWorkSuggestionApi = jest.fn();
 const getOrganizationMembers = jest.fn();
+const listOrganizations = jest.fn();
 const decideTaskApproval = jest.fn();
 const requestTaskExecutionApi = jest.fn();
 const getWorkSuggestion = jest.fn();
@@ -35,6 +36,7 @@ jest.mock("@/lib/utils/api", () => ({
     dismissWorkSuggestionApi: (...args: unknown[]) => dismissWorkSuggestionApi(...args),
     assignWorkSuggestionApi: (...args: unknown[]) => assignWorkSuggestionApi(...args),
     getOrganizationMembers: (...args: unknown[]) => getOrganizationMembers(...args),
+    listOrganizations: (...args: unknown[]) => listOrganizations(...args),
     decideTaskApproval: (...args: unknown[]) => decideTaskApproval(...args),
     requestTaskExecutionApi: (...args: unknown[]) => requestTaskExecutionApi(...args),
     getWorkSuggestion: (...args: unknown[]) => getWorkSuggestion(...args),
@@ -97,6 +99,7 @@ describe("WorkInboxView", () => {
         dismissWorkSuggestionApi.mockReset();
         assignWorkSuggestionApi.mockReset();
         getOrganizationMembers.mockReset();
+        listOrganizations.mockReset();
         decideTaskApproval.mockReset();
         requestTaskExecutionApi.mockReset();
         getWorkSuggestion.mockReset();
@@ -104,6 +107,18 @@ describe("WorkInboxView", () => {
         mockInboxSearch.value = "";
         window.localStorage.clear();
         getOrganizationMembers.mockResolvedValue([]);
+        listOrganizations.mockResolvedValue([
+            {
+                id: "507f1f77bcf86cd799439015",
+                name: "Acme",
+                slug: "acme",
+                status: "active",
+                createdBy: "u1",
+                createdAt: "2026-08-08T10:00:00.000Z",
+                updatedAt: "2026-08-08T10:00:00.000Z",
+                role: "owner",
+            },
+        ]);
     });
 
     it("shows onboarding when no org or conversation scope is set", async () => {
@@ -142,7 +157,7 @@ describe("WorkInboxView", () => {
             "href",
             "/c/507f1f77bcf86cd799439014"
         );
-        expect(screen.getByTestId("suggestion-accept")).toBeInTheDocument();
+        expect(await screen.findByTestId("suggestion-accept")).toHaveTextContent("Accept & assign");
         expect(screen.getByTestId("suggestion-dismiss")).toBeInTheDocument();
         expect(screen.getByTestId("suggestion-assign")).toBeDisabled();
     });
@@ -172,9 +187,7 @@ describe("WorkInboxView", () => {
         fireEvent.click(screen.getByTestId("suggestion-accept"));
 
         await waitFor(() => {
-            expect(acceptWorkSuggestionApi).toHaveBeenCalledWith("sug-1", {
-                assignees: ["507f1f77bcf86cd799439099"],
-            });
+            expect(acceptWorkSuggestionApi).toHaveBeenCalledWith("sug-1", {});
         });
         expect(decideTaskApproval).not.toHaveBeenCalled();
         expect(requestTaskExecutionApi).not.toHaveBeenCalled();
@@ -252,7 +265,7 @@ describe("WorkInboxView", () => {
 
         await waitFor(() => {
             expect(listWorkSuggestions).toHaveBeenCalledWith({
-                organizationId: undefined,
+                organizationId: "507f1f77bcf86cd799439015",
                 conversationId: "507f1f77bcf86cd799439014",
                 status: "converted",
                 page: 1,
@@ -295,6 +308,55 @@ describe("WorkInboxView", () => {
         );
     });
 
+    it("scopes a deep-linked org suggestion to its organizationId", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439016");
+        mockInboxSearch.value = "suggestion=sug-1";
+        getWorkSuggestion.mockResolvedValue(buildSuggestion({
+            organizationId: "507f1f77bcf86cd799439015",
+        }));
+        listWorkSuggestions.mockResolvedValue({
+            items: [buildSuggestion()],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        });
+
+        renderWithQuery(<WorkInboxView />);
+
+        await waitFor(() => {
+            expect(listWorkSuggestions).toHaveBeenCalledWith({
+                organizationId: "507f1f77bcf86cd799439015",
+                conversationId: "507f1f77bcf86cd799439014",
+                status: "proposed",
+                page: 1,
+                limit: 20,
+            });
+        });
+    });
+
+    it("clears organization scope for a personal deep-linked suggestion", async () => {
+        window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        mockInboxSearch.value = "suggestion=sug-1";
+        getWorkSuggestion.mockResolvedValue(buildSuggestion({
+            organizationId: null,
+            status: "proposed",
+        }));
+        listWorkSuggestions.mockResolvedValue({
+            items: [buildSuggestion({ organizationId: null })],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        });
+
+        renderWithQuery(<WorkInboxView />);
+
+        await waitFor(() => {
+            expect(listWorkSuggestions).toHaveBeenCalledWith({
+                organizationId: undefined,
+                conversationId: "507f1f77bcf86cd799439014",
+                status: "proposed",
+                page: 1,
+                limit: 20,
+            });
+        });
+    });
+
     it("requires dismiss reason and removes row after dismiss", async () => {
         window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
         listWorkSuggestions
@@ -328,13 +390,26 @@ describe("WorkInboxView", () => {
 
     it("assigns owner on converted suggestions and updates displayed owner", async () => {
         window.localStorage.setItem("semantask.activeOrganizationId", "507f1f77bcf86cd799439015");
+        getOrganizationMembers.mockResolvedValue([
+            {
+                id: "mem-1",
+                userId: "507f1f77bcf86cd799439088",
+                role: "member",
+                createdAt: "2026-08-08T10:00:00.000Z",
+                user: {
+                    id: "507f1f77bcf86cd799439088",
+                    username: "Alex",
+                    email: "alex@example.com",
+                },
+            },
+        ]);
         listWorkSuggestions.mockResolvedValue({
             items: [
                 buildSuggestion({
                     status: "converted",
                     convertedTaskId: "task-1",
                     candidates: {
-                        assigneeCandidates: ["507f1f77bcf86cd799439099"],
+                        assigneeCandidates: ["507f1f77bcf86cd799439088"],
                         dueAtCandidate: null,
                         priorityCandidate: "",
                     },
@@ -367,8 +442,8 @@ describe("WorkInboxView", () => {
         });
 
         const assignees = await screen.findByTestId("suggestion-assignees");
-        fireEvent.change(assignees, {
-            target: { value: "507f1f77bcf86cd799439088" },
+        await waitFor(() => {
+            expect(assignees).toHaveValue("507f1f77bcf86cd799439088");
         });
         fireEvent.click(screen.getByTestId("suggestion-assign"));
 
@@ -377,9 +452,7 @@ describe("WorkInboxView", () => {
                 assignees: ["507f1f77bcf86cd799439088"],
             });
         });
-        expect(await screen.findByTestId("work-inbox-owner")).toHaveTextContent(
-            "507f1f77bcf86cd799439088"
-        );
+        expect(await screen.findByTestId("work-inbox-owner")).toHaveTextContent("Alex");
     });
 
     it("restores the row when accept fails", async () => {

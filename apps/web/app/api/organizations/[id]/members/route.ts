@@ -4,8 +4,10 @@ import { requireAuthUser } from "@/lib/utils/auth/requireAuthUser";
 import {
     addOrganizationMember,
     assertCanManageMembers,
+    leaveOrganization,
     listOrganizationMembers,
     removeOrganizationMember,
+    updateOrganizationMemberRole,
 } from "@semantask/services/organization.service";
 import { AuthorizationError } from "@semantask/services/authorization.service";
 import type { OrganizationMemberRole } from "@semantask/db/models/OrganizationMembership";
@@ -153,6 +155,62 @@ export async function DELETE(req: Request, context: RouteContext) {
         }
         const message = error instanceof Error ? error.message : "Failed to remove member";
         console.error("DELETE /api/organizations/[id]/members error", error);
+        return NextResponse.json(
+            { success: false, error: message },
+            { status: organizationApiErrorStatus(error) }
+        );
+    }
+}
+
+export async function PATCH(req: Request, context: RouteContext) {
+    const guard = await requireAuthUser();
+    if (guard.response) {
+        return guard.response;
+    }
+
+    const { id } = await context.params;
+    try {
+        await connectToDatabase();
+        const body = (await req.json()) as { userId?: string; role?: OrganizationMemberRole; leave?: boolean };
+
+        if (body.leave) {
+            await leaveOrganization({
+                organizationId: id,
+                actorUserId: guard.user.id,
+            });
+            return NextResponse.json({ success: true });
+        }
+
+        if (!body.userId || !body.role) {
+            return NextResponse.json(
+                { success: false, error: "userId and role are required" },
+                { status: 400 }
+            );
+        }
+
+        const membership = await updateOrganizationMemberRole({
+            organizationId: id,
+            actorUserId: guard.user.id,
+            userId: body.userId,
+            role: body.role,
+        });
+
+        return NextResponse.json({
+            success: true,
+            data: {
+                id: membership._id.toString(),
+                userId: membership.userId.toString(),
+                role: membership.role,
+            },
+        });
+    } catch (error) {
+        if (error instanceof AuthorizationError) {
+            return NextResponse.json(
+                { success: false, error: error.message },
+                { status: error.code === "NOT_FOUND" ? 404 : 403 }
+            );
+        }
+        const message = error instanceof Error ? error.message : "Failed to update member";
         return NextResponse.json(
             { success: false, error: message },
             { status: organizationApiErrorStatus(error) }

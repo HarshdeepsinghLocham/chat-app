@@ -45,6 +45,18 @@ jest.mock("../organization-policy.service", () => ({
     assertAcceptCreatesCoordinationOnly: jest.fn(),
 }));
 
+jest.mock("../conversation-label.service", () => ({
+    resolveConversationLabels: jest.fn(async () => new Map()),
+}));
+
+jest.mock("../execution-proposal.service", () => ({
+    proposeExecutionFromSuggestion: jest.fn(async () => ({ action: null, created: false })),
+}));
+
+jest.mock("../organization.service", () => ({
+    assertUsersAreOrgMembers: jest.fn(async () => undefined),
+}));
+
 import {
     createWorkSuggestion,
     getWorkSuggestion,

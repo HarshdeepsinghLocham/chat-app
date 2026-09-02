@@ -183,6 +183,17 @@ app.post("/internal/task-updated", (req, res) => {
     return res.json({ success: true });
 });
 
+app.post("/internal/user-notify", (req, res) => {
+    const { userId, payload } = req.body || {};
+
+    if (!userId || !payload) {
+        return res.status(400).json({ error: "Invalid payload" });
+    }
+
+    emitToUser(String(userId), SocketEvents.USER_NOTIFICATION, payload);
+    return res.json({ success: true });
+});
+
 app.post("/internal/task-linked-to-message", (req, res) => {
     const { conversationId, payload } = req.body || {};
 

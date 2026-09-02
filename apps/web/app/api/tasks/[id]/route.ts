@@ -8,12 +8,14 @@ import { requireTaskAccess } from "@/lib/utils/auth/requireConversationAccess";
 import { updateTask } from "@/lib/repositories/task.repo";
 import TaskModel from "@/models/Task";
 import { normalizeTask } from "@/server/normalizers/task.normalizer";
+import { enrichTaskForProduct } from "@semantask/services/task-product.service";
 import { enqueueOutboxEvent } from "@/lib/services/outbox.service";
 import {
     assertCanMutateCoordinationTask,
     AuthorizationError,
 } from "@semantask/services/authorization.service";
 import { resolveBoardStatus } from "@semantask/types";
+import { escapeHtml } from "@semantask/services/html-escape";
 import type { ITask } from "@semantask/db/models/Task";
 
 const updateTaskBodySchema = z.object({
@@ -52,7 +54,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
                 return NextResponse.json({ error: "Task not found" }, { status: 404 });
             }
 
-            return NextResponse.json(normalizeTask(task as ITask), { status: 200 });
+            return NextResponse.json(await enrichTaskForProduct(task as ITask), { status: 200 });
         } catch (error) {
             console.error("GET /api/tasks/:id error", error);
             return NextResponse.json({ error: "Failed to load task" }, { status: 500 });
@@ -161,6 +163,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                         actorUserId: guard.user.id,
                     },
                 });
+            }
+
+            if (Array.isArray(body.assignees) && body.assignees.length > 0) {
+                const previousAssigneeIds = new Set(
+                    (before.assignees ?? []).map((id) => id.toString())
+                );
+                const addedAssignees = body.assignees.filter(
+                    (id: string) => id !== guard.user.id && !previousAssigneeIds.has(id)
+                );
+                if (addedAssignees.length > 0) {
+                    const { notifyUsers } = await import("@semantask/services/notify.service");
+                    await notifyUsers(
+                        addedAssignees,
+                        {
+                            kind: "task_assigned",
+                            subject: `Assigned: ${normalized.title}`,
+                            text: `You were assigned "${normalized.title}".`,
+                            html: `<p>You were assigned <b>${escapeHtml(normalized.title)}</b>.</p>`,
+                            dedupeKey: `assign-patch:${normalized._id}:${normalized.updatedAt}`,
+                            conversationId: normalized.conversationId,
+                            entityId: normalized._id,
+                        }
+                    ).catch((error) => console.error("task assign notify failed", error));
+                }
             }
 
             return NextResponse.json(normalized, { status: 200 });

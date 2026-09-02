@@ -7,6 +7,7 @@ import type {
     UIMessage,
     WorkSuggestionRecord,
     WorkSuggestionStatus,
+    WorkSummary,
 } from "@semantask/types";
 import {
     AuthSessionPendingError,
@@ -488,6 +489,8 @@ export async function listWorkBoard(params: {
     conversationId?: string;
     organizationId?: string;
     boardStatus?: BoardStatus;
+    priority?: string;
+    due?: "overdue" | "none";
     page?: number;
     limit?: number;
 }): Promise<WorkBoardListResult> {
@@ -495,6 +498,8 @@ export async function listWorkBoard(params: {
     if (params.conversationId) searchParams.set("conversationId", params.conversationId);
     if (params.organizationId) searchParams.set("organizationId", params.organizationId);
     if (params.boardStatus) searchParams.set("boardStatus", params.boardStatus);
+    if (params.priority) searchParams.set("priority", params.priority);
+    if (params.due) searchParams.set("due", params.due);
     if (params.page) searchParams.set("page", String(params.page));
     if (params.limit) searchParams.set("limit", String(params.limit));
 
@@ -521,6 +526,48 @@ export async function getCoordinationBoardEnabled(): Promise<boolean> {
     }
 
     return Boolean(payload?.data?.enabled);
+}
+
+export async function getOrgDashboardEnabled(): Promise<boolean> {
+    const response = await authenticatedFetch("/api/work-summary/enabled");
+    const rawText = await response.text();
+    const payload = parseAuthPayload(rawText) as ApiErrorPayload & {
+        success?: boolean;
+        data?: { enabled?: boolean };
+    } | null;
+
+    if (!response.ok) {
+        throw new ApiHttpError(
+            response.status,
+            payload?.error || rawText || `Request failed with status ${response.status}`
+        );
+    }
+
+    return Boolean(payload?.data?.enabled);
+}
+
+export async function getOrganizationWorkSummary(organizationId: string): Promise<WorkSummary> {
+    const response = await authenticatedFetch(
+        `/api/organizations/${encodeURIComponent(organizationId)}/work-summary`
+    );
+    const rawText = await response.text();
+    const payload = parseAuthPayload(rawText) as ApiErrorPayload & {
+        success?: boolean;
+        data?: WorkSummary;
+    } | null;
+
+    if (!response.ok) {
+        throw new ApiHttpError(
+            response.status,
+            payload?.error || rawText || `Request failed with status ${response.status}`
+        );
+    }
+
+    if (!payload?.data) {
+        throw new ApiHttpError(500, "Invalid work summary response");
+    }
+
+    return payload.data;
 }
 
 export async function patchTaskApi(
@@ -695,10 +742,24 @@ export async function createOrganization(input: {
 
 export async function getOrganizationMembers(
     organizationId: string
-): Promise<Array<{ id: string; userId: string; role: string; createdAt: string }>> {
+): Promise<
+    Array<{
+        id: string;
+        userId: string;
+        role: string;
+        createdAt: string;
+        user: { id: string; username: string; email?: string; profilePicture?: string | null };
+    }>
+> {
     const data = await request<{
         success: boolean;
-        data: Array<{ id: string; userId: string; role: string; createdAt: string }>;
+        data: Array<{
+            id: string;
+            userId: string;
+            role: string;
+            createdAt: string;
+            user: { id: string; username: string; email?: string; profilePicture?: string | null };
+        }>;
     }>(`/api/organizations/${organizationId}/members`);
     return data.data;
 }
@@ -752,6 +813,218 @@ export async function updateOrganizationQuota(
             body: JSON.stringify(patch),
         }
     );
+    return data.data;
+}
+
+export type OrganizationInvitationClient = {
+    id: string;
+    organizationId: string;
+    organizationName: string;
+    email: string;
+    role: string;
+    status: string;
+    expiresAt: string;
+    createdAt: string;
+    acceptedAt: string | null;
+    emailSent?: boolean;
+    inviteUrl?: string;
+};
+
+export async function listOrganizationInvitations(
+    organizationId: string
+): Promise<OrganizationInvitationClient[]> {
+    const data = await request<{ success: boolean; data: OrganizationInvitationClient[] }>(
+        `/api/organizations/${organizationId}/invitations`
+    );
+    return data.data;
+}
+
+export async function createOrganizationInvitation(
+    organizationId: string,
+    input: { email: string; role?: string }
+): Promise<OrganizationInvitationClient> {
+    const data = await request<{ success: boolean; data: OrganizationInvitationClient }>(
+        `/api/organizations/${organizationId}/invitations`,
+        {
+            method: "POST",
+            body: JSON.stringify(input),
+        }
+    );
+    return data.data;
+}
+
+export async function revokeOrganizationInvitation(
+    organizationId: string,
+    invitationId: string
+): Promise<void> {
+    await request<{ success: boolean }>(`/api/organizations/${organizationId}/invitations`, {
+        method: "DELETE",
+        body: JSON.stringify({ invitationId }),
+    });
+}
+
+export async function resendOrganizationInvitation(
+    organizationId: string,
+    invitationId: string
+): Promise<OrganizationInvitationClient> {
+    const data = await request<{ success: boolean; data: OrganizationInvitationClient }>(
+        `/api/organizations/${organizationId}/invitations`,
+        {
+            method: "PATCH",
+            body: JSON.stringify({ invitationId }),
+        }
+    );
+    return data.data;
+}
+
+export async function removeOrganizationMember(
+    organizationId: string,
+    userId: string
+): Promise<void> {
+    await request<{ success: boolean }>(`/api/organizations/${organizationId}/members`, {
+        method: "DELETE",
+        body: JSON.stringify({ userId }),
+    });
+}
+
+export async function updateOrganizationMemberRole(
+    organizationId: string,
+    input: { userId: string; role: string }
+): Promise<void> {
+    await request<{ success: boolean }>(`/api/organizations/${organizationId}/members`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+    });
+}
+
+export async function leaveOrganization(organizationId: string): Promise<void> {
+    await request<{ success: boolean }>(`/api/organizations/${organizationId}/members`, {
+        method: "PATCH",
+        body: JSON.stringify({ leave: true }),
+    });
+}
+
+export async function getOrganizationInvitationApi(
+    token: string
+): Promise<OrganizationInvitationClient> {
+    const data = await request<{ success: boolean; data: OrganizationInvitationClient }>(
+        `/api/invitations/${encodeURIComponent(token)}`
+    );
+    return data.data;
+}
+
+export async function acceptOrganizationInvitationApi(token: string): Promise<{
+    invitation: OrganizationInvitationClient;
+    organizationId: string;
+}> {
+    const data = await request<{
+        success: boolean;
+        data: { invitation: OrganizationInvitationClient; organizationId: string };
+    }>(`/api/invitations/${encodeURIComponent(token)}`, {
+        method: "POST",
+    });
+    return data.data;
+}
+
+export type WorkSearchHit = {
+    kind: "task" | "conversation" | "person" | "suggestion" | "execution";
+    id: string;
+    title: string;
+    href: string;
+    subtitle?: string | null;
+};
+
+export async function searchOrganizationWork(
+    organizationId: string,
+    query: string
+): Promise<WorkSearchHit[]> {
+    const data = await request<{ success: boolean; data: WorkSearchHit[] }>(
+        `/api/organizations/${organizationId}/search?q=${encodeURIComponent(query)}`
+    );
+    return data.data;
+}
+
+export async function getOrganizationUsage(organizationId: string): Promise<{
+    tokensThisMonth: number;
+    periodStart: string;
+}> {
+    const data = await request<{
+        success: boolean;
+        data: { tokensThisMonth: number; periodStart: string };
+    }>(`/api/organizations/${organizationId}/usage`);
+    return data.data;
+}
+
+export async function listOrganizationToolGrants(organizationId: string): Promise<{
+    grants: Array<{
+        id: string;
+        userId: string;
+        toolName: string;
+        grantedBy: string;
+        revokedAt: string | null;
+        createdAt: string;
+    }>;
+}> {
+    const data = await request<{
+        success: boolean;
+        data: {
+            grants: Array<{
+                id: string;
+                userId: string;
+                toolName: string;
+                grantedBy: string;
+                revokedAt: string | null;
+                createdAt: string;
+            }>;
+        };
+    }>(`/api/organizations/${organizationId}/tool-grants`);
+    return data.data;
+}
+
+export async function getAdminExecutionAudit(params?: {
+    page?: number;
+    limit?: number;
+    taskId?: string;
+    tool?: string;
+}): Promise<{
+    events: Array<{
+        id: string;
+        taskId: string;
+        taskTitle?: string | null;
+        actorId: string | null;
+        actorRef?: { id: string; username: string } | null;
+        runId: string | null;
+        toolName: string;
+        action: string;
+        paramsHash: string;
+        createdAt: string;
+    }>;
+    pagination: { page: number; limit: number; total: number; totalPages: number };
+}> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set("page", String(params.page));
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.taskId) searchParams.set("taskId", params.taskId);
+    if (params?.tool) searchParams.set("tool", params.tool);
+    const query = searchParams.toString();
+    const data = await request<{
+        success: boolean;
+        data: {
+            events: Array<{
+                id: string;
+                taskId: string;
+                taskTitle?: string | null;
+                actorId: string | null;
+                actorRef?: { id: string; username: string } | null;
+                runId: string | null;
+                toolName: string;
+                action: string;
+                paramsHash: string;
+                createdAt: string;
+            }>;
+            pagination: { page: number; limit: number; total: number; totalPages: number };
+        };
+    }>(`/api/admin/execution-audit${query ? `?${query}` : ""}`);
     return data.data;
 }
 

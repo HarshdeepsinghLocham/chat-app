@@ -7,6 +7,15 @@ module.exports = {
             {
                 tsconfig: {
                     types: ["jest", "node"],
+                    esModuleInterop: true,
+                    baseUrl: ".",
+                    paths: {
+                        "@semantask/types": ["../types/index.ts"],
+                        "@semantask/db": ["../db/db.ts"],
+                        "@semantask/db/*": ["../db/*"],
+                        "@semantask/observability": ["../observability/index.ts"],
+                        "@semantask/observability/*": ["../observability/*"],
+                    },
                 },
             },
         ],
@@ -16,6 +25,8 @@ module.exports = {
         "^@semantask/types$": "<rootDir>/../types/index.ts",
         "^@semantask/observability/metrics$": "<rootDir>/../observability/metrics.ts",
         "^@semantask/observability$": "<rootDir>/../observability/index.ts",
+        "^@semantask/db$": "<rootDir>/../db/db.ts",
+        "^@semantask/db/(.*)$": "<rootDir>/../db/$1",
     },
     clearMocks: true,
 };

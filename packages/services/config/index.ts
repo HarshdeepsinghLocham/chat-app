@@ -11,6 +11,7 @@ export {
     getClassifierMode,
     isAcceptCreatesExecutionEnabled,
     isCoordinationBoardEnabled,
+    isOrgDashboardEnabled,
     isSuggestionIngressEnabled,
     isWorkInboxUiEnabled,
     shouldBlockExecutionEnqueue,

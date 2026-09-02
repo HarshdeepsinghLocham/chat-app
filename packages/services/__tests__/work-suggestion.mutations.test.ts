@@ -57,6 +57,28 @@ jest.mock("../organization-policy.service", () => ({
         assertAcceptCreatesCoordinationOnly(...args),
 }));
 
+const proposeExecutionFromSuggestion = jest.fn(async () => ({ action: null, created: false })) as jest.Mock;
+const assertUsersAreOrgMembers = jest.fn(async () => undefined) as jest.Mock;
+
+jest.mock("../execution-proposal.service", () => ({
+    proposeExecutionFromSuggestion: (...args: unknown[]) =>
+        (proposeExecutionFromSuggestion as (...inner: unknown[]) => unknown)(...args),
+}));
+
+jest.mock("../organization.service", () => ({
+    assertUsersAreOrgMembers: (...args: unknown[]) =>
+        (assertUsersAreOrgMembers as (...inner: unknown[]) => unknown)(...args),
+}));
+
+jest.mock("../conversation-label.service", () => ({
+    resolveConversationLabels: jest.fn(async () => new Map()),
+}));
+
+jest.mock("../notify.service", () => ({
+    notifyUser: jest.fn(async () => undefined),
+    notifyUsers: jest.fn(async () => undefined),
+}));
+
 import {
     acceptWorkSuggestion,
     assignWorkSuggestion,
@@ -148,6 +170,10 @@ describe("work-suggestion mutations", () => {
         taskDeleteOne.mockReset();
         createTask.mockReset();
         updateTask.mockReset();
+        proposeExecutionFromSuggestion.mockReset();
+        proposeExecutionFromSuggestion.mockResolvedValue({ action: null, created: false });
+        assertUsersAreOrgMembers.mockReset();
+        assertUsersAreOrgMembers.mockResolvedValue(undefined);
         enqueueOutboxEvent.mockReset();
         assertAcceptCreatesCoordinationOnly.mockReset();
         suggestionsAcceptedCounter.inc.mockReset();
@@ -223,6 +249,7 @@ describe("work-suggestion mutations", () => {
             expect(topics).toContain("task.created");
             expect(topics).not.toContain("task.execution.requested");
             expect(topics).not.toContain("task.execution.approved");
+            expect(proposeExecutionFromSuggestion).toHaveBeenCalledTimes(1);
             expect(suggestionsAcceptedCounter.inc).toHaveBeenCalledTimes(1);
             expect(acceptToTaskLatencyMs.observe).toHaveBeenCalledWith(expect.any(Number));
             const payload = JSON.parse(String(infoSpy.mock.calls[0]?.[0]));
@@ -341,6 +368,82 @@ describe("work-suggestion mutations", () => {
             ).rejects.toBeInstanceOf(ConflictError);
 
             expect(taskDeleteOne).not.toHaveBeenCalled();
+        });
+
+        it("proposes execution when a concurrent accept already converted the suggestion", async () => {
+            const proposed = buildSuggestion({ suggestedTool: "send_email" } as Partial<IWorkSuggestion>);
+            const converted = buildSuggestion({
+                status: "converted",
+                convertedTaskId: new Types.ObjectId(taskId),
+                suggestedTool: "send_email",
+            } as Partial<IWorkSuggestion>);
+            const task = buildTask();
+            suggestionFindById
+                .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(proposed) })
+                .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(converted) });
+            taskFindOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
+            createTask.mockResolvedValue(task);
+            suggestionFindOneAndUpdate.mockReturnValue({
+                exec: jest.fn().mockResolvedValue(null),
+            });
+
+            const result = await acceptWorkSuggestion({ suggestionId, actorUserId });
+
+            expect(result.task._id).toBe(taskId);
+            expect(proposeExecutionFromSuggestion).toHaveBeenCalledWith({
+                task,
+                suggestion: converted,
+                actorUserId,
+            });
+            expect(taskDeleteOne).not.toHaveBeenCalled();
+        });
+
+        it("validates assignees are organization members", async () => {
+            const outsider = new Types.ObjectId().toString();
+            suggestionFindById.mockReturnValue({
+                exec: jest.fn().mockResolvedValue(buildSuggestion()),
+            });
+            assertUsersAreOrgMembers.mockRejectedValue(new Error("Assignee must be an organization member"));
+
+            await expect(
+                acceptWorkSuggestion({
+                    suggestionId,
+                    actorUserId,
+                    assignees: [outsider],
+                })
+            ).rejects.toThrow("Assignee must be an organization member");
+            expect(assertUsersAreOrgMembers).toHaveBeenCalledWith(organizationId, [outsider]);
+            expect(createTask).not.toHaveBeenCalled();
+            expect(enqueueOutboxEvent).not.toHaveBeenCalled();
+        });
+
+        it("proposes execution without enqueueing when suggestedTool is set", async () => {
+            const proposed = buildSuggestion({ suggestedTool: "send_email" } as Partial<IWorkSuggestion>);
+            const task = buildTask();
+            const converted = buildSuggestion({
+                status: "converted",
+                convertedTaskId: new Types.ObjectId(taskId),
+                suggestedTool: "send_email",
+            } as Partial<IWorkSuggestion>);
+            suggestionFindById.mockReturnValue({ exec: jest.fn().mockResolvedValue(proposed) });
+            taskFindOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
+            createTask.mockResolvedValue(task);
+            suggestionFindOneAndUpdate.mockReturnValue({
+                exec: jest.fn().mockResolvedValue(converted),
+            });
+            proposeExecutionFromSuggestion.mockResolvedValue({
+                action: { _id: new Types.ObjectId(), executionState: "approval_pending" } as never,
+                created: true,
+            });
+
+            await acceptWorkSuggestion({ suggestionId, actorUserId });
+
+            expect(proposeExecutionFromSuggestion).toHaveBeenCalledTimes(1);
+            const topics = enqueueOutboxEvent.mock.calls.map(
+                (call) => (call[0] as { topic: string }).topic
+            );
+            expect(topics).not.toContain("task.execution.requested");
+            expect(topics).not.toContain("task.execution.approved");
         });
     });
 

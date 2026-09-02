@@ -23,7 +23,7 @@ export function conversationMessageHref(
 }
 
 export function taskHref(taskId: string): string {
-    return `/tasks/${encodeURIComponent(taskId)}`;
+    return `/work/${encodeURIComponent(taskId)}`;
 }
 
 export function inboxSuggestionHref(

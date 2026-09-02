@@ -18,7 +18,8 @@ import {
     WorkInboxTriage,
     type OrgMemberOption,
 } from "@/components/work-suggestions/work-inbox-triage";
-import { useActiveOrganizationId } from "@/lib/hooks/useActiveOrganizationId";
+import { useUser } from "@/context/UserContext";
+import { useActiveOrganization } from "@/lib/hooks/useActiveOrganization";
 import { queryKeys } from "@/lib/queries/keys";
 import { useOrganizationMembers } from "@/lib/queries/use-organizations";
 import {
@@ -31,6 +32,8 @@ import {
     useWorkSuggestionsList,
 } from "@/lib/queries/use-work-suggestions";
 import { conversationMessageHref } from "@/lib/work-links";
+import { SuggestionTrustPanel } from "@/components/work-suggestions/suggestion-trust";
+import { suggestionOutcome } from "@/lib/work-suggestions/trust";
 import { getWorkSuggestion } from "@/lib/utils/api";
 import {
     DEEP_LINK_HIGHLIGHT_CLASS,
@@ -72,7 +75,9 @@ function ownersForSuggestion(
 }
 
 export function WorkInboxView() {
-    const organizationId = useActiveOrganizationId();
+    const { organizationId, organization } = useActiveOrganization();
+    const { user } = useUser();
+    const currentUserId = user?._id ?? null;
     const searchParams = useSearchParams();
     const highlightedSuggestionId = searchParams.get("suggestion");
     const queryConversationId = searchParams.get("conversationId")?.trim() ?? "";
@@ -80,6 +85,9 @@ export function WorkInboxView() {
     const [status, setStatus] = useState<"" | WorkSuggestionStatus>("proposed");
     const [page, setPage] = useState(1);
     const [deepLinkResolved, setDeepLinkResolved] = useState(!highlightedSuggestionId);
+    const [deepLinkOrganizationId, setDeepLinkOrganizationId] = useState<string | null | undefined>(
+        undefined
+    );
     const [ownerById, setOwnerById] = useState<Record<string, string[]>>({});
     const [actingId, setActingId] = useState<string | null>(null);
     const [actionErrorById, setActionErrorById] = useState<Record<string, string | null>>({});
@@ -97,6 +105,7 @@ export function WorkInboxView() {
     useEffect(() => {
         if (!highlightedSuggestionId) {
             setDeepLinkResolved(true);
+            setDeepLinkOrganizationId(undefined);
             return;
         }
 
@@ -107,6 +116,7 @@ export function WorkInboxView() {
             try {
                 const suggestion = await getWorkSuggestion(highlightedSuggestionId);
                 if (cancelled) return;
+                setDeepLinkOrganizationId(suggestion.organizationId ?? null);
                 if (!queryConversationId && suggestion.conversationId) {
                     setConversationId(suggestion.conversationId);
                 }
@@ -130,10 +140,13 @@ export function WorkInboxView() {
 
     const scopedConversationId = conversationId.trim() || undefined;
     const resolvingDeepLink = Boolean(highlightedSuggestionId && !deepLinkResolved);
-    const hasScope = Boolean(organizationId || scopedConversationId || resolvingDeepLink);
+    const listOrganizationId = highlightedSuggestionId
+        ? (deepLinkOrganizationId ?? undefined)
+        : organizationId;
+    const hasScope = Boolean(listOrganizationId || scopedConversationId || resolvingDeepLink);
 
     const listQuery = useWorkSuggestionsList({
-        organizationId,
+        organizationId: listOrganizationId,
         conversationId: scopedConversationId,
         status,
         page,
@@ -147,6 +160,10 @@ export function WorkInboxView() {
             (membersQuery.data ?? []).map((member) => ({
                 userId: member.userId,
                 role: member.role,
+                user: member.user ?? {
+                    id: member.userId,
+                    username: "Unknown user",
+                },
             })),
         [membersQuery.data]
     );
@@ -312,11 +329,13 @@ export function WorkInboxView() {
                         {organizationId ? (
                             <>
                                 <span className="text-muted-foreground">Organization </span>
-                                <span className="font-mono text-xs break-all">{organizationId}</span>
+                                <span className="font-medium" data-testid="work-inbox-org-name">
+                                    {organization?.name ?? "Organization"}
+                                </span>
                             </>
                         ) : (
                             <span className="text-muted-foreground">
-                                Personal — select a conversation id to load suggestions
+                                Personal — select a conversation to load suggestions
                             </span>
                         )}
                     </div>
@@ -342,7 +361,7 @@ export function WorkInboxView() {
                             </select>
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="inbox-conversation">Conversation id</Label>
+                            <Label htmlFor="inbox-conversation">Conversation</Label>
                             <Input
                                 id="inbox-conversation"
                                 data-testid="work-inbox-conversation"
@@ -351,7 +370,7 @@ export function WorkInboxView() {
                                     setPage(1);
                                     setConversationId(event.target.value);
                                 }}
-                                placeholder={organizationId ? "Optional narrow filter" : "Required for personal"}
+                                placeholder={organizationId ? "Optional filter" : "Required for personal"}
                             />
                         </div>
                     </div>
@@ -438,22 +457,15 @@ export function WorkInboxView() {
                             </CardHeader>
                             <CardContent className="space-y-2 text-sm">
                                 <p className="text-muted-foreground">
-                                    {summarize(item.summary || "No summary provided.")}
+                                    {summarize(suggestionOutcome(item))}
                                 </p>
+                                <SuggestionTrustPanel suggestion={item} />
                                 <dl className="grid gap-2 sm:grid-cols-3">
                                     <div>
                                         <dt className="text-xs uppercase tracking-wide text-muted-foreground">
                                             Status
                                         </dt>
                                         <dd className="font-medium capitalize">{item.status}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                                            Confidence
-                                        </dt>
-                                        <dd className="font-medium">
-                                            {Math.round(item.confidence * 100)}%
-                                        </dd>
                                     </div>
                                     <div>
                                         <dt className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -465,13 +477,13 @@ export function WorkInboxView() {
                                         <dt className="text-xs uppercase tracking-wide text-muted-foreground">
                                             Conversation
                                         </dt>
-                                        <dd className="font-mono text-xs break-all">
+                                        <dd className="break-words">
                                             <Link
                                                 href={conversationMessageHref(item.conversationId)}
-                                                className="underline underline-offset-2 hover:opacity-80"
+                                                className="font-medium underline underline-offset-2 hover:opacity-80"
                                                 data-testid="work-inbox-conversation-link"
                                             >
-                                                {item.conversationId}
+                                                {item.conversationLabel?.trim() || "Open conversation"}
                                             </Link>
                                         </dd>
                                     </div>
@@ -483,6 +495,7 @@ export function WorkInboxView() {
                                         organizationId={organizationId}
                                         members={members}
                                         displayedOwners={ownersForSuggestion(item, ownerById)}
+                                        currentUserId={currentUserId}
                                         actionPending={actingId === item._id}
                                         actionError={actionErrorById[item._id] ?? null}
                                         onAccept={(assignees) => handleAccept(item, assignees)}

@@ -50,6 +50,11 @@
             "types": "./dist/services/work-board.service.d.ts",
             "default": "./dist/services/work-board.service.js"
         },
+        "./work-summary.service": {
+            "import": "./dist/services/work-summary.service.js",
+            "types": "./dist/services/work-summary.service.d.ts",
+            "default": "./dist/services/work-summary.service.js"
+        },
         "./task-execution-enqueue.service": {
             "import": "./dist/services/task-execution-enqueue.service.js",
             "types": "./dist/services/task-execution-enqueue.service.d.ts",
@@ -69,6 +74,11 @@
             "import": "./dist/services/organization.service.js",
             "types": "./dist/services/organization.service.d.ts",
             "default": "./dist/services/organization.service.js"
+        },
+        "./organization-invite.service": {
+            "import": "./dist/services/organization-invite.service.js",
+            "types": "./dist/services/organization-invite.service.d.ts",
+            "default": "./dist/services/organization-invite.service.js"
         },
         "./organization-errors": {
             "import": "./dist/services/organization-errors.js",

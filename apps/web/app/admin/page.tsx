@@ -62,7 +62,7 @@ export default function AdminDashboard() {
                     </CardHeader>
                     <CardContent>
                         <p className="text-2xl font-bold">{stats.activeUsers}</p>
-                        <p className="text-sm text-muted-foreground">+5% from last week</p>
+                        <p className="text-sm text-muted-foreground">Currently connected</p>
                     </CardContent>
                 </Card>
 
@@ -72,7 +72,7 @@ export default function AdminDashboard() {
                     </CardHeader>
                     <CardContent>
                         <p className="text-2xl font-bold">{stats.totalMessagesToday}</p>
-                        <p className="text-sm text-muted-foreground">+12% from yesterday</p>
+                        <p className="text-sm text-muted-foreground">Messages recorded today</p>
                     </CardContent>
                 </Card>
 
@@ -98,8 +98,8 @@ export default function AdminDashboard() {
                         <Link href="/admin/tool-grants" className="mt-3 ml-4 inline-block text-sm font-semibold underline">
                             Open Tool Grants
                         </Link>
-                        <Link href="/api/admin/execution-audit" className="mt-3 ml-4 inline-block text-sm font-semibold underline">
-                            Execution Audit API
+                        <Link href="/admin/execution-audit" className="mt-3 ml-4 inline-block text-sm font-semibold underline">
+                            Execution audit
                         </Link>
                     </CardContent>
                 </Card>

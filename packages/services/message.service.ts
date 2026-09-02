@@ -121,8 +121,10 @@ export async function createMessage(data: CreateMessageInput, senderId: string) 
         throw new Error("Failed to save message");
     }
 
+    const messageId = String(savedMessageId);
+
     // Populate sender and repliedTo so normalizeMessage can serialize them safely.
-    const populated = await Message.findById(savedMessageId)
+    const populated = await Message.findById(messageId)
         .populate("sender", "username profilePicture _id")
         .populate({
             path: "repliedTo",
@@ -132,7 +134,59 @@ export async function createMessage(data: CreateMessageInput, senderId: string) 
         .lean<IMessagePopulated>();
 
     if (!populated) throw new Error("Failed to retrieve saved message");
+
+    if (typeof data.content === "string" && data.content.includes("@")) {
+        void notifyMentionsFromMessage({
+            content: data.content,
+            conversationId: conversationId.toString(),
+            senderId,
+            messageId,
+        }).catch((error) => console.error("mention notify failed", error));
+    }
+
     return populated;
+}
+
+async function notifyMentionsFromMessage(input: {
+    content: string;
+    conversationId: string;
+    senderId: string;
+    messageId: string;
+}): Promise<void> {
+    const conversation = await Conversation.findById(input.conversationId)
+        .populate("participants", "username email")
+        .lean<{
+            participants?: Array<{
+                _id: Types.ObjectId;
+                username?: string;
+                email?: string;
+            }>;
+        } | null>();
+    if (!conversation?.participants?.length) return;
+
+    const { extractAssigneeUserIds } = await import("./message-intent.helpers");
+    const { notifyUsers } = await import("./notify.service");
+    const { escapeHtml } = await import("./html-escape");
+    const mentioned = extractAssigneeUserIds(
+        input.content,
+        conversation.participants.map((participant) => ({
+            userId: participant._id.toString(),
+            username: participant.username,
+            email: participant.email,
+        }))
+    ).filter((id) => id !== input.senderId);
+
+    if (mentioned.length === 0) return;
+
+    await notifyUsers(mentioned, {
+        kind: "mention",
+        subject: "You were mentioned in Semantask",
+        text: `You were mentioned: ${input.content.slice(0, 140)}`,
+        html: `<p>You were mentioned:</p><p>${escapeHtml(input.content.slice(0, 280))}</p>`,
+        dedupeKey: `mention:${input.messageId}`,
+        conversationId: input.conversationId,
+        entityId: input.messageId,
+    });
 }
 
 export async function updateMessageReaction({ messageId, emoji, userId }: { messageId: string; emoji: string; userId: string }) {

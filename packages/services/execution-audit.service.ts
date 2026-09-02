@@ -1,5 +1,7 @@
 import { Types } from "mongoose";
 import { connectToDatabase } from "@semantask/db";
+import TaskModel from "@semantask/db/models/Task";
+import { resolveUserRefs, userRefOrFallback } from "./user-ref.service";
 import ExecutionAuditLogModel, {
     hashExecutionParams,
     type ExecutionAuditAction,
@@ -87,8 +89,10 @@ export type ListExecutionAuditInput = {
 export type ExecutionAuditListItem = {
     id: string;
     taskId: string;
+    taskTitle?: string | null;
     conversationId: string;
     actorId: string | null;
+    actorRef?: import("@semantask/types").UserRef | null;
     runId: string | null;
     toolName: string;
     action: ExecutionAuditAction;
@@ -131,12 +135,26 @@ export async function listExecutionAudit(input: ListExecutionAuditInput = {}): P
             .lean<IExecutionAuditLog[]>(),
     ]);
 
+    const taskIds = Array.from(new Set(rows.map((row) => row.taskId.toString())));
+    const actorIds = Array.from(
+        new Set(rows.map((row) => row.actorId?.toString()).filter((id): id is string => Boolean(id)))
+    );
+    const [tasks, refs] = await Promise.all([
+        TaskModel.find({ _id: { $in: taskIds.map((id) => new Types.ObjectId(id)) } })
+            .select({ title: 1 })
+            .lean<{ _id: Types.ObjectId; title: string }[]>(),
+        resolveUserRefs(actorIds),
+    ]);
+    const titleById = new Map(tasks.map((task) => [task._id.toString(), task.title]));
+
     return {
         events: rows.map((row) => ({
             id: row._id.toString(),
             taskId: row.taskId.toString(),
+            taskTitle: titleById.get(row.taskId.toString()) ?? null,
             conversationId: row.conversationId.toString(),
             actorId: row.actorId ? row.actorId.toString() : null,
+            actorRef: row.actorId ? userRefOrFallback(row.actorId.toString(), refs) : null,
             runId: row.runId ?? null,
             toolName: row.toolName,
             action: row.action,

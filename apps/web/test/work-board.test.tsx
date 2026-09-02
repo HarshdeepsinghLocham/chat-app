@@ -114,6 +114,8 @@ describe("WorkBoardView", () => {
                 organizationId: "507f1f77bcf86cd799439015",
                 conversationId: undefined,
                 boardStatus: undefined,
+                priority: undefined,
+                due: undefined,
                 page: 1,
                 limit: 50,
             });
@@ -121,7 +123,7 @@ describe("WorkBoardView", () => {
 
         expect(await screen.findByTestId("work-board-columns")).toBeInTheDocument();
         const title = screen.getByTestId("work-board-card-title");
-        expect(title).toHaveAttribute("href", "/tasks/task-1");
+        expect(title).toHaveAttribute("href", "/work/task-1");
         expect(title.tagName).toBe("A");
         expect(patchTaskApi).not.toHaveBeenCalled();
         fireEvent.click(screen.getByTestId("work-board-move-doing"));
@@ -160,6 +162,8 @@ describe("WorkBoardView", () => {
                 organizationId: "507f1f77bcf86cd799439015",
                 conversationId: "507f1f77bcf86cd799439014",
                 boardStatus: undefined,
+                priority: undefined,
+                due: undefined,
                 page: 1,
                 limit: 50,
             });
@@ -181,6 +185,8 @@ describe("WorkBoardView", () => {
                 organizationId: undefined,
                 conversationId: "507f1f77bcf86cd799439014",
                 boardStatus: undefined,
+                priority: undefined,
+                due: undefined,
                 page: 1,
                 limit: 50,
             });

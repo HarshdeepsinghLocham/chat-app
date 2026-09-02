@@ -7,6 +7,7 @@ jest.mock("next/navigation", () => ({
 
 jest.mock("@semantask/services/organization-policy.service", () => ({
     isCoordinationBoardEnabled: jest.fn(() => false),
+    isOrgDashboardEnabled: jest.fn(() => false),
 }));
 
 jest.mock("@/components/inbox/inbox-subnav", () => ({

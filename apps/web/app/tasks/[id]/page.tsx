@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DeepLinkAccessView } from "@/components/deep-links/deep-link-access";
-import { conversationFocusHref } from "@/lib/work-links";
 import { ApiHttpError, getTask } from "@/lib/utils/api";
 
 export default function TaskDeepLinkPage() {
@@ -32,12 +31,7 @@ export default function TaskDeepLinkPage() {
             try {
                 const task = await getTask(id);
                 if (cancelled) return;
-                router.replace(
-                    conversationFocusHref(task.conversationId, {
-                        task: task._id,
-                        msg: task.sourceMessageIds[0] ?? null,
-                    })
-                );
+                router.replace(`/work/${encodeURIComponent(task._id)}`);
             } catch (error) {
                 if (cancelled) return;
                 if (error instanceof ApiHttpError) {

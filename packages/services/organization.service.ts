@@ -1,17 +1,19 @@
-import mongoose, { Types } from "mongoose";
+import type { UserRef } from "@semantask/types";
 import { connectToDatabase } from "@semantask/db";
-import OrganizationModel, {
-    type IOrganization,
-    type OrganizationStatus,
-} from "@semantask/db/models/Organization";
 import OrganizationMembershipModel, {
     ORGANIZATION_MEMBER_ROLES,
     type IOrganizationMembership,
     type OrganizationMemberRole,
 } from "@semantask/db/models/OrganizationMembership";
+import OrganizationModel, {
+    type IOrganization,
+    type OrganizationStatus,
+} from "@semantask/db/models/Organization";
+import mongoose, { Types } from "mongoose";
 import { AuthorizationError } from "./authorization-errors";
 import { isMongoTransactionUnsupported } from "./mongo-transaction";
 import { ValidationError } from "./organization-errors";
+import { resolveUserRefs } from "./user-ref.service";
 
 export const ORGANIZATION_ID_HEADER = "x-organization-id";
 
@@ -312,6 +314,7 @@ export async function listOrganizationMembers(
     userId: string;
     role: OrganizationMemberRole;
     createdAt: string;
+    user: UserRef;
 }>> {
     await assertMembership(organizationId, actorUserId);
     await connectToDatabase();
@@ -322,12 +325,21 @@ export async function listOrganizationMembers(
         .sort({ createdAt: 1 })
         .lean<IOrganizationMembership[]>();
 
-    return members.map((member) => ({
-        id: member._id.toString(),
-        userId: member.userId.toString(),
-        role: member.role,
-        createdAt: member.createdAt.toISOString(),
-    }));
+    const refs = await resolveUserRefs(members.map((member) => member.userId.toString()));
+
+    return members.map((member) => {
+        const userId = member.userId.toString();
+        return {
+            id: member._id.toString(),
+            userId,
+            role: member.role,
+            createdAt: member.createdAt.toISOString(),
+            user: refs.get(userId) ?? {
+                id: userId,
+                username: "Unknown user",
+            },
+        };
+    });
 }
 
 export async function removeOrganizationMember(input: {
@@ -357,6 +369,50 @@ export async function removeOrganizationMember(input: {
     }
 
     await OrganizationMembershipModel.deleteOne({ _id: target._id });
+}
+
+export async function updateOrganizationMemberRole(input: {
+    organizationId: string;
+    actorUserId: string;
+    userId: string;
+    role: OrganizationMemberRole;
+}): Promise<IOrganizationMembership> {
+    await assertCanManageMembers(input.organizationId, input.actorUserId);
+    if (!isValidObjectId(input.userId)) {
+        throw new AuthorizationError("FORBIDDEN", "Invalid user");
+    }
+    if (!ORGANIZATION_MEMBER_ROLES.includes(input.role) || input.role === "owner") {
+        throw new ValidationError("Role must be admin or member");
+    }
+
+    await connectToDatabase();
+    const target = await OrganizationMembershipModel.findOne({
+        organizationId: new Types.ObjectId(input.organizationId),
+        userId: new Types.ObjectId(input.userId),
+    });
+    if (!target) {
+        throw new AuthorizationError("NOT_FOUND", "Membership not found");
+    }
+    if (target.role === "owner") {
+        throw new ValidationError("Cannot change the organization owner role");
+    }
+
+    target.role = input.role;
+    await target.save();
+    return target.toObject() as IOrganizationMembership;
+}
+
+export async function leaveOrganization(input: {
+    organizationId: string;
+    actorUserId: string;
+}): Promise<void> {
+    await connectToDatabase();
+    const membership = await assertMembership(input.organizationId, input.actorUserId);
+    if (membership.role === "owner") {
+        throw new ValidationError("Owners cannot leave without transferring ownership");
+    }
+
+    await OrganizationMembershipModel.deleteOne({ _id: membership._id });
 }
 
 export async function assertUsersAreOrgMembers(

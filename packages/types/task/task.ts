@@ -1,3 +1,5 @@
+import type { MessageSemanticType } from "./semantic.js";
+
 export type TaskStatus = "pending" | "executing" | "completed" | "failed" | "partial" | "waiting_for_input";
 
 export type TaskLifecycleState =
@@ -41,7 +43,49 @@ export function resolveBoardStatus(input: {
 
 export type TaskSource = "ai" | "manual" | "imported";
 
-import type { MessageSemanticType } from "./semantic.js";
+export const COORDINATION_STATUSES = [
+    "OPEN",
+    "IN_PROGRESS",
+    "BLOCKED",
+    "AWAITING_APPROVAL",
+    "COMPLETED",
+    "CANCELLED",
+] as const;
+
+export type CoordinationStatus = (typeof COORDINATION_STATUSES)[number];
+
+export function deriveCoordinationStatus(input: {
+    boardStatus?: BoardStatus | null;
+    status: TaskStatus;
+    lifecycleState?: TaskLifecycleState | null;
+    cancelRequestedAt?: string | Date | null;
+    pendingApproval?: boolean;
+}): CoordinationStatus {
+    if (input.cancelRequestedAt) {
+        return "CANCELLED";
+    }
+    if (
+        input.lifecycleState === "completed"
+        || input.boardStatus === "done"
+        || input.status === "completed"
+    ) {
+        return "COMPLETED";
+    }
+    if (input.lifecycleState === "blocked") {
+        return "BLOCKED";
+    }
+    if (input.lifecycleState === "waiting_for_approval" || input.pendingApproval) {
+        return "AWAITING_APPROVAL";
+    }
+    if (
+        input.boardStatus === "doing"
+        || input.lifecycleState === "executing"
+        || input.status === "executing"
+    ) {
+        return "IN_PROGRESS";
+    }
+    return "OPEN";
+}
 
 export type {
     ActionableSemanticType,
@@ -140,6 +184,8 @@ export interface MessageTaskMetadata {
 export interface TaskRecord {
     _id: string;
     conversationId: string;
+    /** Human-readable conversation title when enriched for product UI. */
+    conversationLabel?: string | null;
     parentTaskId: string | null;
     /** Present when created by accepting a WorkSuggestion. */
     suggestionId?: string | null;
@@ -151,6 +197,14 @@ export interface TaskRecord {
     lifecycleState?: TaskLifecycleState;
     priority: TaskPriority;
     assignees: string[];
+    /** Derived product coordination status. Not a persisted enum. */
+    coordinationStatus?: import("./task.js").CoordinationStatus;
+    /** First assignee, resolved for product UI. */
+    ownerRef?: import("../user/user.js").UserRef | null;
+    /** Assignees resolved for product UI. */
+    assigneeRefs?: import("../user/user.js").UserRef[];
+    /** Linked execution actions when the product GET enriches the record. */
+    executionActions?: TaskActionRecord[];
     dueAt: string | null;
     createdBy: string;
     source: TaskSource;
@@ -202,6 +256,7 @@ export interface TaskActionRecord {
     toolName: string | null;
     messageId: string | null;
     executionState: "requested" | "approval_pending" | "approved" | "rejected" | "queued" | "running" | "succeeded" | "failed" | "blocked" | "expired" | null;
+    parameters?: Record<string, unknown>;
     summary: string | null;
     error: string | null;
     patch: {

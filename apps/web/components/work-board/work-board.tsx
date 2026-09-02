@@ -8,13 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActiveOrganizationId } from "@/lib/hooks/useActiveOrganizationId";
+import { useActiveOrganization } from "@/lib/hooks/useActiveOrganization";
 import {
     mutationErrorMessage,
     useMoveWorkBoardCard,
     useWorkBoardList,
     WORK_BOARD_PAGE_LIMIT,
 } from "@/lib/queries/use-work-board";
+import { UserChip } from "@/components/people/user-chip";
 import { conversationMessageHref, taskHref } from "@/lib/work-links";
 import { getTask } from "@/lib/utils/api";
 import { reviewSuggestionHref } from "@/lib/work-suggestions/map";
@@ -50,19 +51,19 @@ function groupByBoardStatus(items: TaskRecord[]): Record<BoardStatus, TaskRecord
 }
 
 export function WorkBoardView() {
-    const organizationId = useActiveOrganizationId();
+    const { organizationId, organization } = useActiveOrganization();
     const searchParams = useSearchParams();
     const highlightedTaskId = searchParams.get("task");
     const queryConversationId = searchParams.get("conversationId")?.trim() ?? "";
     const [conversationId, setConversationId] = useState(queryConversationId);
     const [page, setPage] = useState(1);
+    const [dueFilter, setDueFilter] = useState<"all" | "overdue" | "none">("all");
+    const [priorityFilter, setPriorityFilter] = useState("");
     const [deepLinkResolved, setDeepLinkResolved] = useState(!highlightedTaskId);
 
     useEffect(() => {
-        if (queryConversationId) {
-            setConversationId(queryConversationId);
-            setPage(1);
-        }
+        setConversationId(queryConversationId);
+        setPage(1);
     }, [queryConversationId]);
 
     useEffect(() => {
@@ -105,6 +106,8 @@ export function WorkBoardView() {
         conversationId: scopedConversationId,
         page,
         limit: WORK_BOARD_PAGE_LIMIT,
+        priority: priorityFilter || undefined,
+        due: dueFilter,
         enabled: deepLinkResolved,
     });
     const moveMutation = useMoveWorkBoardCard(listQuery.listParams);
@@ -167,26 +170,66 @@ export function WorkBoardView() {
                         {organizationId ? (
                             <>
                                 <span className="text-muted-foreground">Organization </span>
-                                <span className="font-mono text-xs break-all">{organizationId}</span>
+                                <span className="font-medium" data-testid="work-board-org-name">
+                                    {organization?.name ?? "Organization"}
+                                </span>
                             </>
                         ) : (
                             <span className="text-muted-foreground">
-                                Personal — enter a conversation id to load the board
+                                Personal — select a conversation to load the board
                             </span>
                         )}
                     </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="board-conversation">Conversation id</Label>
-                        <Input
-                            id="board-conversation"
-                            data-testid="work-board-conversation"
-                            value={conversationId}
-                            onChange={(event) => {
-                                setPage(1);
-                                setConversationId(event.target.value);
-                            }}
-                            placeholder={organizationId ? "Optional narrow filter" : "Required for personal"}
-                        />
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="space-y-2">
+                            <Label htmlFor="board-conversation">Conversation</Label>
+                            <Input
+                                id="board-conversation"
+                                data-testid="work-board-conversation"
+                                value={conversationId}
+                                onChange={(event) => {
+                                    setPage(1);
+                                    setConversationId(event.target.value);
+                                }}
+                                placeholder={organizationId ? "Optional filter" : "Required for personal"}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="board-due">Due</Label>
+                            <select
+                                id="board-due"
+                                data-testid="work-board-due-filter"
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                value={dueFilter}
+                                onChange={(event) => {
+                                    setPage(1);
+                                    setDueFilter(event.target.value as typeof dueFilter);
+                                }}
+                            >
+                                <option value="all">All</option>
+                                <option value="overdue">Overdue</option>
+                                <option value="none">No due date</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="board-priority">Priority</Label>
+                            <select
+                                id="board-priority"
+                                data-testid="work-board-priority-filter"
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                value={priorityFilter}
+                                onChange={(event) => {
+                                    setPage(1);
+                                    setPriorityFilter(event.target.value);
+                                }}
+                            >
+                                <option value="">All</option>
+                                <option value="low">low</option>
+                                <option value="medium">medium</option>
+                                <option value="high">high</option>
+                                <option value="urgent">urgent</option>
+                            </select>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
@@ -292,9 +335,17 @@ export function WorkBoardView() {
                                                     Assignees
                                                 </dt>
                                                 <dd className="font-medium">
-                                                    {task.assignees.length > 0
-                                                        ? `${task.assignees.length} assigned`
-                                                        : "Unassigned"}
+                                                    {(task.assigneeRefs ?? []).length > 0 ? (
+                                                        <div className="flex flex-wrap gap-2 pt-1">
+                                                            {(task.assigneeRefs ?? []).map((user) => (
+                                                                <UserChip key={user.id} user={user} size={20} />
+                                                            ))}
+                                                        </div>
+                                                    ) : task.assignees.length > 0 ? (
+                                                        `${task.assignees.length} assigned`
+                                                    ) : (
+                                                        "Unassigned"
+                                                    )}
                                                 </dd>
                                             </div>
                                         </dl>
@@ -304,7 +355,7 @@ export function WorkBoardView() {
                                                 className="underline underline-offset-2 hover:opacity-80"
                                                 data-testid="work-board-conversation-link"
                                             >
-                                                Conversation
+                                                {task.conversationLabel?.trim() || "Conversation"}
                                             </Link>
                                             {task.suggestionId ? (
                                                 <Link

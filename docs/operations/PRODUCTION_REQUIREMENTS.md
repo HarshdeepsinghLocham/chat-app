@@ -261,9 +261,12 @@ The former migration env vars (`TASK_EXECUTION_FSM_SHADOW_MODE`, `TASK_STATE_PRO
 
 Autonomous `send_email` actions are gated by `evaluateExecutionPolicy` (`apps/task-worker/services/execution-policy.ts`).
 
-| Variable | Precedence |
-|----------|------------|
-| `TASK_WORKER_ALLOWED_EMAIL_DOMAINS` | Deploy-wide allowlist (org `allowedEmailDomains` still wins when set) |
+| Layer | Precedence |
+|-------|------------|
+| `OrganizationPolicy.allowedEmailDomains` | Wins when non-empty |
+| `TASK_WORKER_ALLOWED_EMAIL_DOMAINS` | Deploy-wide default allowlist |
+
+Per-intent confidence thresholds and prompt guard mode are configured on `OrganizationPolicy` (`confidenceThresholds`, `promptGuardMode`). Code defaults apply when unset — not env.
 
 Format: comma-separated domains, case-insensitive (e.g. `example.com,mail.example.com`).
 

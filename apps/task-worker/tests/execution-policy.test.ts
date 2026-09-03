@@ -7,7 +7,6 @@ import {
 import { getExecutionConfidenceThreshold } from "../services/execution-confidence.js";
 
 const ENV_KEYS = [
-    "TASK_EXECUTION_CONFIDENCE_THRESHOLDS",
     "DEFAULT_EXECUTION_MODE",
     "GRANDFATHER_AUTO_TENANTS",
     "TASK_WORKER_ALLOWED_EMAIL_DOMAINS",
@@ -74,19 +73,26 @@ test("task at 0.72 auto-executes under default 0.7 threshold", () => {
     assert.ok(decision.reasons.some((reason) => reason.includes("0.72 ≥ 0.70")));
 });
 
-test("env overlay raises task threshold", () => {
-    process.env.TASK_EXECUTION_CONFIDENCE_THRESHOLDS = JSON.stringify({ task: 0.9 });
-    assert.equal(getExecutionConfidenceThreshold("task"), 0.9);
-
+test("org confidenceThresholds.task overrides code default", () => {
     const decision = evaluateExecutionPolicy({
         actionType: "none",
         confidence: 0.8,
         semanticType: "task",
-        executionModeEnforce: false,
+        organizationId: "507f1f77bcf86cd799439011",
+        orgPolicy: {
+            version: 2,
+            executionMode: "auto_execute",
+            confidenceThresholds: { task: 0.85 },
+        },
+        executionModeEnforce: true,
     });
 
     assert.equal(decision.outcome, "approval_required");
-    assert.equal(decision.threshold, 0.9);
+    assert.equal(decision.threshold, 0.85);
+});
+
+test("code default task threshold is 0.7", () => {
+    assert.equal(getExecutionConfidenceThreshold("task"), 0.7);
 });
 
 test("send_email without recipients is blocked", () => {
@@ -200,8 +206,7 @@ test("grandfather wins over org executionMode field", () => {
     assert.equal(decision.executionMode, "auto_execute");
 });
 
-test("org confidenceThresholds.task beats TASK_EXECUTION_CONFIDENCE_THRESHOLDS", () => {
-    process.env.TASK_EXECUTION_CONFIDENCE_THRESHOLDS = JSON.stringify({ task: 0.9 });
+test("org confidenceThresholds.task wins over code default", () => {
     const decision = evaluateExecutionPolicy({
         actionType: "none",
         confidence: 0.8,

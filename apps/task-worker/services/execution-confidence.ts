@@ -13,56 +13,15 @@ export const DEFAULT_EXECUTION_CONFIDENCE_THRESHOLDS: Record<MessageSemanticType
     unknown: 0.7,
 };
 
-function clampThreshold(value: number): number {
-    if (!Number.isFinite(value)) {
-        return GLOBAL_EXECUTION_CONFIDENCE_BASELINE;
-    }
-
-    return Math.max(0, Math.min(1, value));
-}
-
-function parseThresholdOverrides(): Partial<Record<MessageSemanticType, number>> {
-    const raw = process.env.TASK_EXECUTION_CONFIDENCE_THRESHOLDS;
-    if (!raw?.trim()) {
-        return {};
-    }
-
-    try {
-        const parsed = JSON.parse(raw) as unknown;
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-            return {};
-        }
-
-        const overrides: Partial<Record<MessageSemanticType, number>> = {};
-        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-            if (!(key in DEFAULT_EXECUTION_CONFIDENCE_THRESHOLDS)) {
-                continue;
-            }
-
-            if (typeof value !== "number") {
-                continue;
-            }
-
-            overrides[key as MessageSemanticType] = clampThreshold(value);
-        }
-
-        return overrides;
-    } catch {
-        return {};
-    }
-}
-
+/** Code default when no org `confidenceThresholds` entry applies. Org policy overlays win. */
 export function getExecutionConfidenceThreshold(
     semanticType?: MessageSemanticType | string | null
 ): number {
-    const overrides = parseThresholdOverrides();
-
     if (!semanticType || !(semanticType in DEFAULT_EXECUTION_CONFIDENCE_THRESHOLDS)) {
-        return overrides.unknown
-            ?? DEFAULT_EXECUTION_CONFIDENCE_THRESHOLDS.unknown
+        return DEFAULT_EXECUTION_CONFIDENCE_THRESHOLDS.unknown
             ?? GLOBAL_EXECUTION_CONFIDENCE_BASELINE;
     }
 
     const typed = semanticType as MessageSemanticType;
-    return overrides[typed] ?? DEFAULT_EXECUTION_CONFIDENCE_THRESHOLDS[typed];
+    return DEFAULT_EXECUTION_CONFIDENCE_THRESHOLDS[typed];
 }

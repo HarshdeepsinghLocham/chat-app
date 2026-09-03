@@ -11,7 +11,7 @@ export interface IOrganizationPolicy extends Document {
     _id: mongoose.Types.ObjectId;
     organizationId: mongoose.Types.ObjectId;
     version: number;
-    /** Per-intent confidence thresholds; missing keys inherit env defaults. */
+    /** Per-intent confidence thresholds; missing keys inherit code defaults. */
     confidenceThresholds?: Record<string, number> | null;
     /** Override process email domain allowlist when non-empty. */
     allowedEmailDomains?: string[] | null;

@@ -188,7 +188,7 @@ test("grandfather org resolves to auto_execute under enforce", () => {
     assert.equal(decision.executionMode, "auto_execute");
 });
 
-test("grandfather wins over org executionMode field", () => {
+test("explicit org executionMode beats grandfather list", () => {
     process.env.GRANDFATHER_AUTO_TENANTS = "507f1f77bcf86cd799439011";
     const decision = evaluateExecutionPolicy({
         actionType: "none",
@@ -202,8 +202,9 @@ test("grandfather wins over org executionMode field", () => {
         executionModeEnforce: true,
     });
 
-    assert.equal(decision.outcome, "auto_execute");
-    assert.equal(decision.executionMode, "auto_execute");
+    assert.equal(decision.outcome, "blocked");
+    assert.equal(decision.executionMode, "suggest_only");
+    assert.ok(decision.reasons.includes("execution_mode:suggest_only"));
 });
 
 test("org confidenceThresholds.task wins over code default", () => {

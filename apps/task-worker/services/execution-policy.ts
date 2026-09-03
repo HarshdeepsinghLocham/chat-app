@@ -18,7 +18,7 @@ import { getEnvAllowedEmailDomains } from "../config/tools.js";
 /**
  * Org `OrganizationPolicy` overlays code defaults for
  * `confidenceThresholds`, `allowedEmailDomains`, and `promptGuardMode`.
- * Execution mode uses `getEffectiveExecutionMode` (grandfather wins).
+ * Execution mode uses `getEffectiveExecutionMode` (org field wins).
  */
 export type OrganizationPolicyOverlay = {
     version: number;

@@ -225,7 +225,7 @@ db.toolgrants.aggregate([
 
 ### Grandfather `auto_execute` (one-shot)
 
-`GRANDFATHER_AUTO_TENANTS` still wins over the org policy field. To make that durable:
+`GRANDFATHER_AUTO_TENANTS` applies only when `OrganizationPolicy.executionMode` is unset. Persist then clear:
 
 1. `pnpm grandfather:auto-execute --dry-run` (reads `GRANDFATHER_AUTO_TENANTS` or `--ids=`)
 2. `pnpm grandfather:auto-execute`

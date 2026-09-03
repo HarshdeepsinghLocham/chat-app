@@ -408,6 +408,7 @@ async function persistGrandfatherAutoExecute(
 /**
  * Ops-only. No membership check. Writes `executionMode: auto_execute` so listed
  * orgs keep today's grandfather behavior after `GRANDFATHER_AUTO_TENANTS` is cleared.
+ * The env list is a bootstrap for unset policy only; an explicit org field wins.
  * Does not delete the env parser. Fails closed (no writes) if any id is invalid
  * or the organization is missing.
  */

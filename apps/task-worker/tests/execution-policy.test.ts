@@ -95,6 +95,19 @@ test("code default task threshold is 0.7", () => {
     assert.equal(getExecutionConfidenceThreshold("task"), 0.7);
 });
 
+test("inherited object keys fall back to the unknown numeric threshold", () => {
+    assert.equal(getExecutionConfidenceThreshold("toString"), 0.7);
+    assert.equal(getExecutionConfidenceThreshold("constructor"), 0.7);
+    const decision = evaluateExecutionPolicy({
+        actionType: "none",
+        confidence: 0.95,
+        semanticType: "toString" as never,
+        executionModeEnforce: false,
+    });
+    assert.equal(decision.threshold, 0.7);
+    assert.equal(typeof decision.threshold, "number");
+});
+
 test("send_email without recipients is blocked", () => {
     const decision = evaluateExecutionPolicy({
         actionType: "send_email",

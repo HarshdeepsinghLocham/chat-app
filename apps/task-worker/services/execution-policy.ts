@@ -9,16 +9,16 @@ import {
 } from "./execution-confidence.js";
 import {
     applyPromptGuardDecision,
-    getPromptGuardMode,
+    resolvePromptGuardMode,
     type PromptGuardMode,
     validateToolArgsAgainstContext,
 } from "./prompt-guard.js";
 import { getEnvAllowedEmailDomains } from "../config/tools.js";
 
 /**
- * Org `OrganizationPolicy` fields overlay env when set:
- * `confidenceThresholds`, `allowedEmailDomains`, `promptGuardMode`.
- * Execution mode uses `getEffectiveExecutionMode` (grandfather wins).
+ * Org `OrganizationPolicy` overlays code defaults for
+ * `confidenceThresholds`, `allowedEmailDomains`, and `promptGuardMode`.
+ * Execution mode uses `getEffectiveExecutionMode` (org field wins).
  */
 export type OrganizationPolicyOverlay = {
     version: number;
@@ -105,13 +105,6 @@ function resolveConfidenceThreshold(
         }
     }
     return getExecutionConfidenceThreshold(semanticType);
-}
-
-function resolvePromptGuardMode(orgPolicy?: OrganizationPolicyOverlay | null): PromptGuardMode {
-    if (orgPolicy?.promptGuardMode) {
-        return orgPolicy.promptGuardMode;
-    }
-    return getPromptGuardMode();
 }
 
 function resolveSemanticType(payload: RequestedPayload): MessageSemanticType | undefined {
@@ -225,7 +218,7 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
         const source = orgPolicy?.confidenceThresholds?.[intentLabel] != null
             || (orgPolicy?.confidenceThresholds && !semanticType)
             ? `org policy v${orgPolicy?.version}`
-            : "env/default";
+            : "default";
         reasons.push(
             `Low confidence for intent "${intentLabel}" (${confidence.toFixed(2)} < ${threshold.toFixed(2)}; ${source}).`
         );
@@ -283,7 +276,7 @@ export function evaluateExecutionPolicy(payload: RequestedPayload): ExecutionPol
         }
     }
 
-    const promptGuardMode = resolvePromptGuardMode(orgPolicy);
+    const promptGuardMode = resolvePromptGuardMode(orgPolicy?.promptGuardMode);
     if (
         promptGuardMode !== "off"
         && (payload.actionType === "send_email" || payload.actionType === "schedule_meeting")

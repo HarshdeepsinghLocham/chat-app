@@ -192,10 +192,11 @@ exports) would be safer but the choice keeps the surface area small.
     execution-mode defaults). Call-time `process.env`
     reads; `organization-policy.service.ts` re-exports the same helpers.
     WorkSuggestion ingress is always on; enqueue is blocked only under
-    `suggest_only`. Overlay order: code defaults → env → `OrganizationPolicy` field →
-    `GRANDFATHER_AUTO_TENANTS` for execution mode. Personal workspaces
-    (`organizationId` null) stay env/default-driven (ADR-004 / ADR-005).
-    New tenant behavior belongs on `OrganizationPolicy`, not a new env var.
+    `suggest_only`. Overlay order: `OrganizationPolicy.executionMode` (always
+    wins) → `GRANDFATHER_AUTO_TENANTS` only when the field is unset →
+    `DEFAULT_EXECUTION_MODE` / code default. Personal workspaces
+    (`organizationId` null) use the deployment/code default only.
+    Per-org confidence thresholds and prompt guard live on `OrganizationPolicy`.
     Worker LLM, runtime knobs, FSM migration flags, and tool adapters live in
     `apps/task-worker/config` (call-time reads; env names unchanged).
     `getFsmRollout()` is derived from the existing shadow/projection/emit vars.

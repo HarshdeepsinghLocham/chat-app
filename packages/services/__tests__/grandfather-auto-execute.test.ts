@@ -67,12 +67,12 @@ describe("applyGrandfatherAutoExecute", () => {
         expect(findOneAndUpdate).not.toHaveBeenCalled();
     });
 
-    it("dry-run reports would_apply without writing", async () => {
+    it("dry-run reports would_apply without writing when executionMode is unset", async () => {
         getOrganizationById.mockResolvedValue({ _id: ORG_A });
         findOne.mockReturnValue(leanOf({
             organizationId: ORG_A,
             version: 1,
-            executionMode: "suggest_only",
+            executionMode: null,
         }));
 
         const result = await applyGrandfatherAutoExecute({
@@ -86,13 +86,13 @@ describe("applyGrandfatherAutoExecute", () => {
             rows: [{
                 organizationId: ORG_A,
                 status: "would_apply",
-                previousMode: "suggest_only",
+                previousMode: null,
             }],
         });
         expect(findOneAndUpdate).not.toHaveBeenCalled();
     });
 
-    it("skips orgs already auto_execute and persists the rest", async () => {
+    it("skips orgs with any explicit execution mode", async () => {
         getOrganizationById.mockResolvedValue({ _id: "org" });
         findOne.mockImplementation((filter: { organizationId: { toString(): string } }) => {
             const id = String(filter.organizationId);
@@ -109,23 +109,47 @@ describe("applyGrandfatherAutoExecute", () => {
                 executionMode: "require_approval",
             });
         });
+
+        const result = await applyGrandfatherAutoExecute({
+            organizationIds: [ORG_A, ORG_B],
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.rows).toEqual([
+            { organizationId: ORG_A, status: "already_auto_execute", previousMode: "auto_execute" },
+            { organizationId: ORG_B, status: "already_explicit", previousMode: "require_approval" },
+        ]);
+        expect(findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it("persists auto_execute only when executionMode is unset", async () => {
+        getOrganizationById.mockResolvedValue({ _id: ORG_A });
+        findOne.mockReturnValue(leanOf({
+            organizationId: ORG_A,
+            version: 1,
+            executionMode: null,
+        }));
         findOneAndUpdate.mockReturnValue(leanOf({
-            organizationId: ORG_B,
+            organizationId: ORG_A,
             version: 2,
             executionMode: "auto_execute",
         }));
 
         const infoSpy = jest.spyOn(console, "info").mockImplementation(() => undefined);
         const result = await applyGrandfatherAutoExecute({
-            organizationIds: [ORG_A, ORG_B],
+            organizationIds: [ORG_A],
         });
         infoSpy.mockRestore();
 
         expect(result.ok).toBe(true);
         expect(result.rows).toEqual([
-            { organizationId: ORG_A, status: "already_auto_execute", previousMode: "auto_execute" },
-            { organizationId: ORG_B, status: "applied", previousMode: "require_approval" },
+            { organizationId: ORG_A, status: "applied", previousMode: null },
         ]);
         expect(findOneAndUpdate).toHaveBeenCalledTimes(1);
+        const [filter] = findOneAndUpdate.mock.calls[0] as [Record<string, unknown>];
+        expect(filter).toMatchObject({
+            version: 1,
+            executionMode: null,
+        });
     });
 });

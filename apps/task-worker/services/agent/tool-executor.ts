@@ -8,7 +8,8 @@ import { withSpan } from "@semantask/observability";
 import { resolveToolParameters } from "../resolve-tool-params.js";
 import {
     applyPromptGuardDecision,
-    getPromptGuardMode,
+    resolvePromptGuardMode,
+    type PromptGuardMode,
     validateToolArgsAgainstContext,
 } from "../prompt-guard.js";
 import { loadPromptGuardEmailContext } from "../prompt-guard-context.js";
@@ -346,9 +347,11 @@ export class ToolExecutor {
 
         const organizationId = options?.organizationId ?? null;
         let storedMode: ExecutionMode | null = null;
+        let orgPromptGuardMode: PromptGuardMode | null = null;
         if (organizationId) {
             const orgPolicy = await resolveOrganizationPolicy(organizationId);
             storedMode = orgPolicy?.executionMode ?? null;
+            orgPromptGuardMode = orgPolicy?.promptGuardMode ?? null;
         }
         const mode = getEffectiveExecutionMode({
             organizationId,
@@ -487,7 +490,7 @@ export class ToolExecutor {
             }
 
             const resolvedParams = resolution.params ?? {};
-            const promptGuardMode = getPromptGuardMode();
+            const promptGuardMode = resolvePromptGuardMode(orgPromptGuardMode);
             if (promptGuardMode !== "off") {
                 let participantEmails = options?.participantEmails;
                 let contactEmails = options?.contactEmails;

@@ -1,28 +1,27 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { test } from "node:test";
 import {
     applyPromptGuardDecision,
     buildFencedTaskFields,
+    DEFAULT_PROMPT_GUARD_MODE,
     fenceUntrustedContent,
-    getPromptGuardMode,
+    getDefaultPromptGuardMode,
     redactEmail,
+    resolvePromptGuardMode,
     sanitizeUntrustedContent,
     validateToolArgsAgainstContext,
 } from "../services/prompt-guard.js";
 
-afterEach(() => {
-    delete process.env.TASK_PROMPT_GUARD;
+test("getDefaultPromptGuardMode returns monitor", () => {
+    assert.equal(getDefaultPromptGuardMode(), "monitor");
+    assert.equal(DEFAULT_PROMPT_GUARD_MODE, "monitor");
 });
 
-test("getPromptGuardMode defaults to monitor", () => {
-    assert.equal(getPromptGuardMode(), "monitor");
-});
-
-test("getPromptGuardMode accepts off and enforce", () => {
-    process.env.TASK_PROMPT_GUARD = "off";
-    assert.equal(getPromptGuardMode(), "off");
-    process.env.TASK_PROMPT_GUARD = "ENFORCE";
-    assert.equal(getPromptGuardMode(), "enforce");
+test("resolvePromptGuardMode uses org mode when set", () => {
+    assert.equal(resolvePromptGuardMode("off"), "off");
+    assert.equal(resolvePromptGuardMode("enforce"), "enforce");
+    assert.equal(resolvePromptGuardMode(null), "monitor");
+    assert.equal(resolvePromptGuardMode(undefined), "monitor");
 });
 
 test("fenceUntrustedContent wraps text in delimiters", () => {
@@ -129,20 +128,18 @@ test("create_github_issue has no participant rule", () => {
 });
 
 test("applyPromptGuardDecision monitor allows after deny", () => {
-    process.env.TASK_PROMPT_GUARD = "monitor";
     const decision = applyPromptGuardDecision(
         { ok: false, reasons: ["bad recipient"] },
-        { tool: "send_email", taskId: "t1" }
+        { tool: "send_email", taskId: "t1", mode: "monitor" }
     );
     assert.equal(decision.allow, true);
     assert.equal(decision.mode, "monitor");
 });
 
 test("applyPromptGuardDecision enforce blocks after deny", () => {
-    process.env.TASK_PROMPT_GUARD = "enforce";
     const decision = applyPromptGuardDecision(
         { ok: false, reasons: ["bad recipient"] },
-        { tool: "send_email" }
+        { tool: "send_email", mode: "enforce" }
     );
     assert.equal(decision.allow, false);
     assert.equal(decision.mode, "enforce");

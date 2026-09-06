@@ -53,8 +53,10 @@ async function main(): Promise<void> {
     }
 
     const applied = result.rows.filter((row) => row.status === "applied").length;
-    const skipped = result.rows.filter((row) => row.status === "already_auto_execute").length;
-    console.log(`Persisted auto_execute for ${applied} org(s); ${skipped} already auto_execute.`);
+    const skipped = result.rows.filter((row) => (
+        row.status === "already_auto_execute" || row.status === "already_explicit"
+    )).length;
+    console.log(`Persisted auto_execute for ${applied} org(s); ${skipped} skipped (already set).`);
     console.log("Clear GRANDFATHER_AUTO_TENANTS in this deploy. Do not delete the env parser until the list is empty.");
 }
 

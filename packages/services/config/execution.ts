@@ -30,24 +30,23 @@ export function parseGrandfatherAutoTenants(raw?: string | null): Set<string> {
 /**
  * Overlay order for workspace execution mode (call-time; do not cache):
  *
- *   1. Code default — `suggest_only`
- *   2. `DEFAULT_EXECUTION_MODE` env
- *   3. `OrganizationPolicy.executionMode` when set
- *   4. `GRANDFATHER_AUTO_TENANTS` — listed org IDs force `auto_execute`
+ *   1. `OrganizationPolicy.executionMode` when set — always wins
+ *   2. `GRANDFATHER_AUTO_TENANTS` — listed orgs with no explicit mode → `auto_execute`
+ *   3. `DEFAULT_EXECUTION_MODE` env, else code default `suggest_only`
  *
- * Personal workspaces (`organizationId` null) use 1–2 only.
- * Execution mode is always enforced (not an overlay layer).
+ * Personal workspaces (`organizationId` null) use 3 only.
+ * Grandfather is a temporary bootstrap for unset policy, not a second policy system.
  */
 export function getEffectiveExecutionMode(args: {
     organizationId?: string | null;
     executionMode?: ExecutionMode | null;
 }): ExecutionMode {
+    if (args.executionMode && isExecutionModeValue(args.executionMode)) {
+        return args.executionMode;
+    }
     const organizationId = args.organizationId ?? null;
     if (organizationId && parseGrandfatherAutoTenants().has(organizationId)) {
         return "auto_execute";
-    }
-    if (args.executionMode && isExecutionModeValue(args.executionMode)) {
-        return args.executionMode;
     }
     return parseDefaultExecutionMode();
 }

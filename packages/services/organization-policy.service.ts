@@ -309,6 +309,7 @@ export type GrandfatherApplyStatus =
     | "applied"
     | "would_apply"
     | "already_auto_execute"
+    | "already_explicit"
     | "invalid_id"
     | "missing_org";
 
@@ -338,10 +339,16 @@ function uniqueOrganizationIds(ids: Iterable<string>): string[] {
     return unique;
 }
 
+function grandfatherSkipStatus(
+    mode: ExecutionMode
+): Extract<GrandfatherApplyStatus, "already_auto_execute" | "already_explicit"> {
+    return mode === "auto_execute" ? "already_auto_execute" : "already_explicit";
+}
+
 async function persistGrandfatherAutoExecute(
     organizationId: string,
     previousMode: ExecutionMode | null
-): Promise<void> {
+): Promise<Extract<GrandfatherApplyStatus, "applied" | "already_auto_execute" | "already_explicit">> {
     const organizationObjectId = new Types.ObjectId(organizationId);
     const maxAttempts = 5;
 
@@ -350,12 +357,13 @@ async function persistGrandfatherAutoExecute(
             organizationId: organizationObjectId,
         }).lean<IOrganizationPolicy>();
         const currentMode = normalizeStoredExecutionMode(previous?.executionMode);
-        if (currentMode === "auto_execute") {
-            return;
+        if (currentMode != null) {
+            return grandfatherSkipStatus(currentMode);
         }
 
         const filter: Record<string, unknown> = {
             organizationId: organizationObjectId,
+            executionMode: null,
         };
         if (previous) {
             filter.version = previous.version;
@@ -392,7 +400,7 @@ async function persistGrandfatherAutoExecute(
                 executionMode: "auto_execute",
                 version: updated.version,
             }));
-            return;
+            return "applied";
         } catch (error) {
             const maybeMongo = error as { code?: number };
             if (maybeMongo?.code === 11000) {
@@ -408,6 +416,7 @@ async function persistGrandfatherAutoExecute(
 /**
  * Ops-only. No membership check. Writes `executionMode: auto_execute` so listed
  * orgs keep today's grandfather behavior after `GRANDFATHER_AUTO_TENANTS` is cleared.
+ * The env list is a bootstrap for unset policy only; an explicit org field wins.
  * Does not delete the env parser. Fails closed (no writes) if any id is invalid
  * or the organization is missing.
  */
@@ -435,8 +444,12 @@ export async function applyGrandfatherAutoExecute(args: {
 
         const policy = await getOrganizationPolicy(organizationId);
         const previousMode = normalizeStoredExecutionMode(policy?.executionMode);
-        if (previousMode === "auto_execute") {
-            rows.push({ organizationId, status: "already_auto_execute", previousMode });
+        if (previousMode != null) {
+            rows.push({
+                organizationId,
+                status: grandfatherSkipStatus(previousMode),
+                previousMode,
+            });
             continue;
         }
 
@@ -458,8 +471,7 @@ export async function applyGrandfatherAutoExecute(args: {
         if (row.status !== "would_apply") {
             continue;
         }
-        await persistGrandfatherAutoExecute(row.organizationId, row.previousMode);
-        row.status = "applied";
+        row.status = await persistGrandfatherAutoExecute(row.organizationId, row.previousMode);
     }
 
     return { ok: true, dryRun: false, rows };

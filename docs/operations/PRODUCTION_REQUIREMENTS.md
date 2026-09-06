@@ -225,7 +225,7 @@ db.toolgrants.aggregate([
 
 ### Grandfather `auto_execute` (one-shot)
 
-`GRANDFATHER_AUTO_TENANTS` still wins over the org policy field. To make that durable:
+`GRANDFATHER_AUTO_TENANTS` applies only when `OrganizationPolicy.executionMode` is unset. Persist then clear:
 
 1. `pnpm grandfather:auto-execute --dry-run` (reads `GRANDFATHER_AUTO_TENANTS` or `--ids=`)
 2. `pnpm grandfather:auto-execute`
@@ -261,9 +261,12 @@ The former migration env vars (`TASK_EXECUTION_FSM_SHADOW_MODE`, `TASK_STATE_PRO
 
 Autonomous `send_email` actions are gated by `evaluateExecutionPolicy` (`apps/task-worker/services/execution-policy.ts`).
 
-| Variable | Precedence |
-|----------|------------|
-| `TASK_WORKER_ALLOWED_EMAIL_DOMAINS` | Deploy-wide allowlist (org `allowedEmailDomains` still wins when set) |
+| Layer | Precedence |
+|-------|------------|
+| `OrganizationPolicy.allowedEmailDomains` | Wins when non-empty |
+| `TASK_WORKER_ALLOWED_EMAIL_DOMAINS` | Deploy-wide default allowlist |
+
+Per-intent confidence thresholds and prompt guard mode are configured on `OrganizationPolicy` (`confidenceThresholds`, `promptGuardMode`). Code defaults apply when unset — not env.
 
 Format: comma-separated domains, case-insensitive (e.g. `example.com,mail.example.com`).
 

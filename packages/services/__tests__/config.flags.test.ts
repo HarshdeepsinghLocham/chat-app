@@ -60,7 +60,7 @@ describe("getEffectiveExecutionMode", () => {
         })).toBe("auto_execute");
     });
 
-    it("overlay: env → org field → grandfather wins; personal skips org/grandfather", () => {
+    it("explicit org executionMode beats DEFAULT_EXECUTION_MODE and grandfather", () => {
         process.env.DEFAULT_EXECUTION_MODE = "require_approval";
         process.env.GRANDFATHER_AUTO_TENANTS = orgId;
 
@@ -69,7 +69,11 @@ describe("getEffectiveExecutionMode", () => {
         expect(getEffectiveExecutionMode({
             organizationId: orgId,
             executionMode: "suggest_only",
-        })).toBe("auto_execute");
+        })).toBe("suggest_only");
+        expect(getEffectiveExecutionMode({
+            organizationId: orgId,
+            executionMode: "require_approval",
+        })).toBe("require_approval");
 
         delete process.env.GRANDFATHER_AUTO_TENANTS;
         expect(getEffectiveExecutionMode({
@@ -82,12 +86,16 @@ describe("getEffectiveExecutionMode", () => {
         })).toBe("require_approval");
     });
 
-    it("grandfather list wins over missing field", () => {
+    it("grandfather list applies only when org executionMode is unset", () => {
         process.env.GRANDFATHER_AUTO_TENANTS = orgId;
         expect(getEffectiveExecutionMode({
             organizationId: orgId,
             executionMode: null,
         })).toBe("auto_execute");
+        expect(getEffectiveExecutionMode({
+            organizationId: orgId,
+            executionMode: "suggest_only",
+        })).toBe("suggest_only");
     });
 });
 

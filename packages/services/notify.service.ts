@@ -69,10 +69,13 @@ async function resolveUserEmail(userId: string): Promise<{ email: string; userna
     return { email: user.email, username: user.username };
 }
 
-function resolveFromAddress(): string | undefined {
+function resolveResendFromAddress(): string | undefined {
+    return process.env.RESEND_FROM_EMAIL?.trim() || undefined;
+}
+
+function resolveSmtpFromAddress(): string | undefined {
     return (
-        process.env.RESEND_FROM_EMAIL?.trim()
-        || process.env.EMAIL_FROM?.trim()
+        process.env.EMAIL_FROM?.trim()
         || process.env.SMTP_USER?.trim()
         || undefined
     );
@@ -83,7 +86,7 @@ function isSmtpConfigured(): boolean {
         process.env.SMTP_HOST?.trim()
         && process.env.SMTP_USER?.trim()
         && process.env.SMTP_PASS?.trim()
-        && resolveFromAddress()
+        && resolveSmtpFromAddress()
     );
 }
 
@@ -127,9 +130,9 @@ async function sendEmail(input: {
     html: string;
 }): Promise<"sent" | "skipped" | "failed"> {
     const resendKey = process.env.RESEND_API_KEY?.trim();
-    const from = resolveFromAddress();
+    const resendFrom = resolveResendFromAddress();
 
-    if (resendKey && from) {
+    if (resendKey && resendFrom) {
         try {
             const response = await fetch("https://api.resend.com/emails", {
                 method: "POST",
@@ -138,7 +141,7 @@ async function sendEmail(input: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    from,
+                    from: resendFrom,
                     to: [input.to],
                     subject: input.subject,
                     text: input.text,
@@ -156,8 +159,9 @@ async function sendEmail(input: {
         }
     }
 
-    if (from && isSmtpConfigured()) {
-        return sendViaSmtp({ ...input, from });
+    const smtpFrom = resolveSmtpFromAddress();
+    if (smtpFrom && isSmtpConfigured()) {
+        return sendViaSmtp({ ...input, from: smtpFrom });
     }
 
     console.info(

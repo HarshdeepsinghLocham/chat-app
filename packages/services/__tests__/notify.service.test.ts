@@ -164,4 +164,39 @@ describe("notify.service", () => {
         );
         expect(notifyDedupeDeleteOne).not.toHaveBeenCalled();
     });
+
+    it("falls back to SMTP when Resend key is set without RESEND_FROM_EMAIL", async () => {
+        process.env.RESEND_API_KEY = "re_test";
+        process.env.SMTP_HOST = "smtp.example.com";
+        process.env.SMTP_USER = "mailer@example.com";
+        process.env.SMTP_PASS = "secret";
+        process.env.EMAIL_FROM = "noreply@example.com";
+        userFindById.mockReturnValue({
+            select: () => ({
+                lean: async () => ({
+                    email: "alex@example.com",
+                    username: "Alex",
+                }),
+            }),
+        });
+
+        await notifyUser({
+            userId: new Types.ObjectId().toString(),
+            kind: "task_assigned",
+            subject: "Assigned",
+            text: "You were assigned a task",
+            dedupeKey: "test-smtp-fallback",
+        });
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(createTransport).toHaveBeenCalled();
+        expect(sendMail).toHaveBeenCalledWith(
+            expect.objectContaining({
+                from: "noreply@example.com",
+                to: "alex@example.com",
+                subject: "Assigned",
+            })
+        );
+        expect(notifyDedupeDeleteOne).not.toHaveBeenCalled();
+    });
 });

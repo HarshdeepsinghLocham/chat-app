@@ -18,7 +18,25 @@ jest.mock("../notify.service", () => ({
     notifyUsers: (...args: unknown[]) => notifyUsers(...args),
 }));
 
-import { notifyApprovalRequired } from "../notify-approval.service";
+import {
+    APPROVAL_NOTIFY_PAGE_SIZE,
+    notifyApprovalRequired,
+} from "../notify-approval.service";
+
+function mockMembershipPages(
+    pages: Array<Array<{ _id: { toString(): string }; userId: { toString(): string } }>>
+) {
+    let call = 0;
+    membershipFind.mockImplementation(() => ({
+        select: () => ({
+            sort: () => ({
+                limit: () => ({
+                    lean: async () => pages[call++] ?? [],
+                }),
+            }),
+        }),
+    }));
+}
 
 describe("notifyApprovalRequired", () => {
     const organizationId = new Types.ObjectId().toString();
@@ -37,16 +55,12 @@ describe("notifyApprovalRequired", () => {
     });
 
     it("fans out to org owner/admin and excludes the actor", async () => {
-        membershipFind.mockReturnValue({
-            select: () => ({
-                limit: () => ({
-                    lean: async () => [
-                        { userId: { toString: () => managerId } },
-                        { userId: { toString: () => actorUserId } },
-                    ],
-                }),
-            }),
-        });
+        mockMembershipPages([
+            [
+                { _id: { toString: () => new Types.ObjectId().toString() }, userId: { toString: () => managerId } },
+                { _id: { toString: () => new Types.ObjectId().toString() }, userId: { toString: () => actorUserId } },
+            ],
+        ]);
 
         await notifyApprovalRequired({
             organizationId,
@@ -71,13 +85,9 @@ describe("notifyApprovalRequired", () => {
 
     it("appends absolute approvals CTA when APP_URL is set", async () => {
         process.env.APP_URL = "https://app.example.com";
-        membershipFind.mockReturnValue({
-            select: () => ({
-                limit: () => ({
-                    lean: async () => [{ userId: { toString: () => managerId } }],
-                }),
-            }),
-        });
+        mockMembershipPages([
+            [{ _id: { toString: () => new Types.ObjectId().toString() }, userId: { toString: () => managerId } }],
+        ]);
 
         await notifyApprovalRequired({
             organizationId,
@@ -103,5 +113,38 @@ describe("notifyApprovalRequired", () => {
         });
         expect(membershipFind).not.toHaveBeenCalled();
         expect(notifyUsers).not.toHaveBeenCalled();
+    });
+
+    it("notifies every page of owner/admin memberships", async () => {
+        const firstPageIds = Array.from({ length: APPROVAL_NOTIFY_PAGE_SIZE }, () =>
+            new Types.ObjectId().toString()
+        );
+        const overflowId = new Types.ObjectId().toString();
+        mockMembershipPages([
+            firstPageIds.map((id) => ({
+                _id: { toString: () => id },
+                userId: { toString: () => id },
+            })),
+            [
+                {
+                    _id: { toString: () => overflowId },
+                    userId: { toString: () => overflowId },
+                },
+            ],
+        ]);
+
+        await notifyApprovalRequired({
+            organizationId,
+            taskId,
+            actionId,
+            title: "Coordinate launch",
+            conversationId,
+            actorUserId,
+        });
+
+        expect(membershipFind).toHaveBeenCalledTimes(2);
+        expect(notifyUsers).toHaveBeenCalledTimes(2);
+        expect(notifyUsers.mock.calls[0][0]).toEqual(firstPageIds);
+        expect(notifyUsers.mock.calls[1][0]).toEqual([overflowId]);
     });
 });

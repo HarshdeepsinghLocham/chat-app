@@ -6,11 +6,11 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { SocketEvents } from "@semantask/types";
 
-const on = jest.fn();
-const off = jest.fn();
+const mockOn = jest.fn();
+const mockOff = jest.fn();
 
 jest.mock("@/lib/socket/socketClient", () => ({
-    getSocket: () => ({ on, off }),
+    getSocket: () => ({ on: mockOn, off: mockOff }),
 }));
 
 jest.mock("@/context/UserContext", () => ({
@@ -21,14 +21,14 @@ import { NotificationTray } from "@/components/notifications/notification-tray";
 
 describe("NotificationTray", () => {
     beforeEach(() => {
-        on.mockReset();
-        off.mockReset();
+        mockOn.mockReset();
+        mockOff.mockReset();
         window.localStorage.clear();
     });
 
     it("links approval_required items to /inbox/approvals", () => {
         render(<NotificationTray />);
-        const handler = on.mock.calls.find(
+        const handler = mockOn.mock.calls.find(
             (call) => call[0] === SocketEvents.USER_NOTIFICATION
         )?.[1] as (payload: Record<string, unknown>) => void;
         expect(typeof handler).toBe("function");
@@ -48,7 +48,7 @@ describe("NotificationTray", () => {
 
     it("links assigned items to the task page", () => {
         render(<NotificationTray />);
-        const handler = on.mock.calls.find(
+        const handler = mockOn.mock.calls.find(
             (call) => call[0] === SocketEvents.USER_NOTIFICATION
         )?.[1] as (payload: Record<string, unknown>) => void;
 
